@@ -40,6 +40,7 @@ Borrowed with gratitude and skepticism: the prose-workflow style from [addyosman
 | `/review` | [skills/review](skills/review/SKILL.md) | Compare what happened to what was intended. Multiple lenses, no self-congratulation. |
 | `/compound` | [skills/compound](skills/compound/SKILL.md) | Distill the cycle into memory. Update skills themselves when a lesson is structural. |
 | `/rederive` | [skills/rederive](skills/rederive/SKILL.md) | Regenerate derived artifacts from the raw stream. |
+| `/video-editor-social` | [skills/video-editor-social](skills/video-editor-social/SKILL.md) | Turn recordings into transcript-based highlights, clips, captions, chapters, and publishing assets. |
 
 ## Directory map
 
@@ -58,7 +59,7 @@ life-os/
 │   └── patterns/        ← recurring shapes you've noticed in your own life/work
 ├── agents/              ← the durable agents: Liv (Chief of Staff), Max (CEO).
 │                          Few agents, many hats — see agents/README.md
-├── skills/              ← the 7 loop skills (the hats). Editable; /compound may edit them.
+├── skills/              ← loop and capability skills (the hats). Editable; /compound may edit them.
 ├── commands/            ← thin slash-command wrappers
 └── .claude-plugin/      ← manifest so this installs as a plugin
 ```
