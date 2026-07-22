@@ -6,7 +6,7 @@ The map of compounded knowledge. Agents: read this at the start of any non-trivi
 
 <!-- One line per lesson file: filename — the lesson in a sentence. -->
 
-*(empty — the first /compound writes the first line)*
+- [lessons/live-config-is-ground-truth.md](lessons/live-config-is-ground-truth.md) — source files declare intent; the live runtime is reality and can drift with no error. Diagnose from the resolved live value, fix both layers, diff them.
 
 ## Patterns
 
