@@ -59,6 +59,7 @@ life-os/
 │                          layer, one source of truth for keys (Doppler by
 │                          default — see its runbook.md)
 ├── derived/             ← transcripts, summaries, indexes. Disposable, rederivable.
+├── docs/                ← domain specs. One subject each, stated once, in depth.
 ├── memory/              ← compounded learnings. The part that makes you smarter.
 │   ├── index.md         ← map of what's in memory; read this first
 │   ├── lessons/         ← one file per durable lesson
@@ -73,6 +74,28 @@ life-os/
 ## Agents: few loops, many hats
 
 Where most frameworks spawn an agent per task, life-os keeps **a small roster of durable agents** — persistent working relationships that accumulate context — and has them wear the skills as hats. [Liv](agents/liv.md) (personal Chief of Staff) runs the life outside work and the loop itself: personal ops, household, triage, orientation, reviews, memory curation. [Max](agents/max.md) (CEO) runs the work: strategy, tracks, tradeoffs, the discipline of not doing things. The line between them is personal/work, not operational/strategic. You are the board. Continuity is the point: ephemeral agents start from zero every time; durable agents compound, which is the same bet the rest of this system makes. Details and rules in [agents/README.md](agents/README.md).
+
+## Context hierarchy: four layers, one direction
+
+An agent's behavior gets assembled from a lot of files — operating rules, specs, agent definitions, accumulated memory. Most setups let all of that arrive as one flat pile of prose with nothing declaring which part wins. It works until two files disagree, and then the answer depends on whichever copy the model happened to weight that turn. That's not a memory problem or a tidiness problem; it's a missing precedence rule.
+
+life-os gives every file one job and one authority level:
+
+| Layer | Where | Who writes it |
+|-------|-------|---------------|
+| 1 — Global rules | `AGENTS.md` | you |
+| 2 — Domain specs | `docs/*.md` — one subject each, stated once, in depth | you, from agent-proposed diffs |
+| 3 — Identity | `agents/<name>.md` — only what makes one agent different | you |
+| 4 — Memory | `memory/` — what was learned | the agent, continuously |
+
+**A layer may only narrow the layer above it, never contradict it. When two disagree, the higher one wins and the lower one is a defect to delete** — not a tiebreaker, not extra context, a defect.
+
+Two consequences do most of the work:
+
+- **A memory file may never contain a rule.** Memory holds non-normative facts: project state, why a decision was made, what's parked. If what the agent learned is a rule about its own behavior, it doesn't get a memory file — it proposes a diff to layer 1 or 2 and waits for you. This is the part that stops conflicts being *generated*, rather than reconciling them afterward. Left unchecked, agent-written memory quietly accumulates behavioral rules that nobody reviewed and that contradict the rules you actually wrote.
+- **Layer 1 points at layer 2; it never summarizes it.** A summary is a second copy, and second copies drift. The drift is rarely dramatic — usually it's the same rule written three slightly different ways until one of them is subtly wrong.
+
+**Nothing lives only in the harness.** Every layer lives in this repo and is *linked into* whatever coding agent is running — its global-config slot points at `AGENTS.md`, its memory folder is a symlink to `memory/`. So agent memory writes land in git, show up in `git status`, and get reviewed at commit time instead of accumulating invisibly in a tool's private directory. Any harness-native memory store is a disposable cache, never a source of record — which is also what makes the whole thing portable when you switch tools.
 
 ## Day to day
 
