@@ -14,7 +14,8 @@ source "$OPS_DIR/stream-paths.env"
 source "$OPS_DIR/lib/gate.sh"
 source "$OPS_DIR/lib/restic-lib.sh"
 
-defer_if_busy macbook-backup
+# BACKUP_FORCE=1 runs now regardless of the gate (used by the first seed run).
+[ "${BACKUP_FORCE:-0}" = "1" ] || defer_if_busy macbook-backup
 
 # Regenerate the "reinstall everything" manifests before the snapshot, so the
 # backup always carries a current rebuild recipe (see docs/macbook-setup.md).
