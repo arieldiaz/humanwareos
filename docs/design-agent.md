@@ -8,10 +8,12 @@ Budget: 500 words. Over it, consolidate rather than extend.
 
 1. Read this file.
 2. Read the instance's sibling `docs/design-agent-instance.md`, when present.
-3. Follow the foundation, preferences, surface recipe, and current brief named by that overlay, in that order.
+3. Use the overlay's scope map to load only the foundation, preferences, surface recipe, conventions, and current brief that govern the task.
 4. Treat prior artifacts as reference evidence unless a named authority file promotes them into a rule.
 
 An instance may symlink this file into its own `docs/` directory. Its sibling overlay adds paths and local rules without restating this contract.
+
+Authority is scoped, not merely sequential: a global foundation constrains every task, while product rules, surface recipes, exercise conventions, and briefs govern only the work they name. A narrower file may extend a broader one inside its scope but may not silently contradict it.
 
 ## Resolve the register first
 
