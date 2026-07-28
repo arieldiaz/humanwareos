@@ -24,7 +24,7 @@ A structured reply has exactly three areas, in this order.
 
 **Lead the opening summary with the bad news.** If something went wrong, you were wrong, a call was made under uncertainty, or the plan changed — that goes in the summary, before the good news, in your own words. Then give each of those its own section below so it is visible, not folded into a paragraph about something else.
 
-**Aim for medium detail in area 2, not sparse.** The human wants to see the work: what was done, what was tried, what is blocked and why, the paths and commits. DRY and brevity govern *repetition* — they are not a licence to strip the details down to a line per section. Under-reporting is as much a defect as bloat; when the two pull against each other, cut the duplication, not the substance.
+**Detail in area 2 is sized by what they need, not by how much you did.** Keep what they must act on, verify, or would be wrong without: what was done, what was tried, what is blocked and why, the paths and commits. Cut proof of work — provenance nobody asked for, how confident you are, which docs you checked, the options you rejected, a caveat on a claim nobody disputed. Every sentence earns its place or moves to the commit message. Under-reporting is also a defect, but bloat is the one that actually happens.
 
 **DRY across the whole message.** Any fact stated twice is a defect: say it once, in the place it belongs.
 
