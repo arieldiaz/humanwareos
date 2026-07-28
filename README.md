@@ -43,7 +43,7 @@ Borrowed with gratitude and skepticism: the prose-workflow style from [addyosman
 
 ## Status framework
 
-Every item lives in exactly one of four states — 🔄 in-process, 🗓️ scheduled, 🚫 blocked, or ✅ done. No open-ended "someday" pile: if it isn't scheduled with a date, it's killed. Agents signal state as a reaction; the identity reaction means "I've got it." Full spec in [docs/status-framework.md](docs/status-framework.md).
+Every item lives in exactly one state — 🔄 in-process, then ❓ clarify / ▶️ approve / ✋ act depending on what you owe it, or 🗓️ scheduled, or ✅ done. There is no generic "blocked": saying you are blocked without saying what is owed is exactly what the three middle states exist to fix. No open-ended "someday" pile either — if it isn't scheduled with a date, it's killed. Agents signal state as a reaction; the identity reaction means "I've got it." Full spec in [docs/status-framework.md](docs/status-framework.md).
 
 ## Directory map
 
