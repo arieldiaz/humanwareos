@@ -70,6 +70,7 @@ Slack renders a raw path as dead text and an upload as a permanent duplicate in 
 - **Committed → repo link, and this is the default.** Link the blob at a SHA, not a branch, when the version matters. Always give the absolute local path alongside; the link supplements the path, never replaces it.
 - **Uncommitted, or a quick read → canvas.** Publish with the instance's markdown-to-canvas tool, never by hand.
 - **They ask for it inline → inline.** Their request beats both defaults.
+- **Lives in an external tool → link the object, never name it.** A Notion page, ticket, or doc referenced by bare title or id is not reachable. Give the URL. When such a page is mirrored into the repo, the copy carries `source_url` in its frontmatter so the original stays one click away.
 
 **A canvas is a UX affordance, not a record — the repo file is the record.** Thread canvases are ephemeral and belong to the thread that prompted them; when that thread's strip goes ✅, clean them up in the same turn. A standing canvas is kept only when the human has asked for that specific doc. A channel's native tab canvas is created on first render and edited in place after. Never edit a canvas by hand — the next render overwrites it.
 
