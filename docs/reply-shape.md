@@ -32,7 +32,7 @@ A structured reply has exactly three areas, in this order.
 
 ## Shape by situation
 
-**Anything with work they have to do by hand** gets an explicit split: what is done, and what needs them, under `## Action Required`. Mandatory whenever it applies, and it survives every brevity rule — a manual step mentioned in passing gets lost across machines. The action sentence carries the direct link and the exact field or key name. If the action is "reply to confirm," the requested reply goes in quotes, defaulting to `"done"`. If nothing needs them, say so in one line. When the turn closes on `## ✋ Act`, that step is *also* in this split — the closing header points at it, it does not replace it.
+**Anything with work they have to do by hand** gets an explicit split: what is done, and what needs them, under `## Action Required`. Mandatory whenever it applies, and it survives every brevity rule — a manual step mentioned in passing gets lost across machines. The action sentence carries the most convenient deep link the system permits — the exact project, config, record, or control, never a dashboard or home page when a closer target is known — and names the exact field or key. If the action is "reply to confirm," the requested reply goes in quotes, defaulting to `"done"`. If nothing needs them, say so in one line. When the turn closes on `## ✋ Act`, that step is *also* in this split — the closing header points at it, it does not replace it.
 
 **Bugs and incidents:** the fix, one line of cause, then whether anything needs them. No evidence trail, no file:line, no config mechanics, no git provenance, no menu of options. Detail goes in the commit message or a worklog.
 
