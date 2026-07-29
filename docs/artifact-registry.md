@@ -26,7 +26,9 @@ Every artifact has `project`, `id`, `title`, `date`, optional `iteration`, `type
 
 ## Publishing contract
 
-The private artifact page may expose a **Publish to www** action. It validates slugs and resolved roots, rejects symlinks and private references, copies a self-contained artifact to the public repository at the same relative path, strips private-only controls, commits and pushes, and returns the canonical public URL.
+The private artifact page may expose a **Publish to www** action. It validates slugs and resolved roots, rejects symlinks and private references, copies a self-contained artifact to the public repository at the same relative path, strips private-only controls, commits and pushes, then waits for the public host to serve a marker unique to that publish.
+
+Publishing is a state machine: preflight → commit → push → deploy → live or error. The private page polls an inline status endpoint and shows the public link only in the live state. A successful Git push is not deployment proof.
 
 Keep repository credentials on the server. The browser calls a tailnet-only publisher endpoint and never receives a token. Require explicit confirmation because the resulting URL is public.
 
