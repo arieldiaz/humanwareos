@@ -1,5 +1,7 @@
 # ops/ — the stream pipeline
 
+For project-oriented HTML, video, and file outputs, see the private-to-public mirror pattern in [docs/artifact-registry.md](../docs/artifact-registry.md). A reference tailnet-only publisher lives at `ops/artifacts/publisher.py`; instances provide roots, hostnames, private-marker rules, and service wiring.
+
 Capture → sync → transcribe → backup, all local. MacBook records, mini keeps and computes, NAS archives. See [STREAM.md](../STREAM.md) for the architecture; this is the setup guide.
 
 **These scripts are a working first draft** — written blind against your machines. Test each stage with junk files before trusting it with real life. The delete-from-MacBook step in particular: run it a few times watching both ends.
