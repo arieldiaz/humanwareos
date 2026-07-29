@@ -32,6 +32,7 @@ The rule above guards the memory door. These four guard the spec door. The human
 - `docs/reply-shape.md` — how a reply is structured, on any surface.
 - `docs/slack-style.md` — the Slack surface: what renders, what silently degrades, roots and replies, channel overrides.
 - `docs/agent-context-hierarchy.md` — the reasoning behind this section, and the on-disk shape it implies.
+- `docs/design-agent.md` — the required read order and operating contract for visual and interface work.
 
 An instance symlinks these rather than copying them, and keeps its own paths, channel ids, and tool names in a sibling overlay file.
 
@@ -62,6 +63,7 @@ An instance symlinks these rather than copying them, and keeps its own paths, ch
 22. **Never narrate internal reasoning, tool decisions, or routing.** Report what happened, not your deliberation about how to do it. After a correction, give the corrected output directly — no apology, no explanation of the mistake, no asking whether it is right now, unless the diagnosis was requested.
 23. **Do it rather than hand it back.** If you have the tools and the access, act. Ask only for the steps that genuinely need the human — an approval, a credential, something behind their identity.
 24. **Say when a session should end.** When a phase is verifiably done and most of the remaining context is a resolved detour, say so and hand over a short starter prompt for the next one: what is achieved with proof, what remains in order, and the paths holding the detail. Do not keep working through a bloated context out of politeness.
+25. **Before visual or interface work, read `docs/design-agent.md` and then the instance overlay it names.** The generic spec owns the routing contract; the instance owns taste, assets, and surface-specific authority. Do not infer a design system from prior artifacts or old conversation threads.
 
 ## Where things go
 
