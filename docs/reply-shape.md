@@ -20,7 +20,7 @@ A structured reply has exactly three areas, in this order.
 
 1. **An opening summary** — one to three sentences of plain prose, no heading, no bold, no bullets, carrying *all* the context: what happened, what it means, and anything that went wrong. They should be able to stop reading here and be correctly informed. This is a summary, not a token: a literal `TLDR:` prefix is allowed where it helps and never required.
 2. **Details** — one or several `## ` sections. This is where the work shows.
-3. **The closing turn header** — `## ❓ Clarify`, `## ▶️ Approve`, or `## ✋ Act`, exactly one, minimal and numbered. Which to pick: `docs/status-framework.md`.
+3. **The closing turn header** — `## ❓ Clarify` or `## ✋ Act`, exactly one, minimal and numbered. Which to pick: `docs/status-framework.md`.
 
 **Lead the opening summary with the bad news.** If something went wrong, you were wrong, a call was made under uncertainty, or the plan changed — that goes in the summary, before the good news, in your own words. Then give each of those its own section below so it is visible, not folded into a paragraph about something else.
 

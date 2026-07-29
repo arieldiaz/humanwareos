@@ -26,7 +26,7 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 - **Never type a raw `~`.** Write "about". A bare tilde pairs with the next one anywhere later — including inside backticks, striking the code marks with it — and backslash is not an escape, it renders literally. Backticked tildes are safe only when no bare one exists in the message.
 - No blank-line spacers around headings; header blocks carry their own padding.
 - Lists use `- `, never a literal `•`. One bullet is one uninterrupted list item — a hard line break or manual indent inside it kills the hanging indent.
-- **No emoji in headings.** The sole exception is the closing `❓ Clarify` / `▶️ Approve` / `✋ Act` header, whose emoji is load-bearing — copy those three exactly, they are lifecycle states owned by `docs/status-framework.md`.
+- **No emoji in headings.** The sole exception is the closing `❓ Clarify` / `✋ Act` header, whose emoji is load-bearing — copy those two exactly, they are lifecycle states owned by `docs/status-framework.md`.
 - **Tables: fenced code block, space-aligned, ≤60 chars.** Slack has no table primitive; a pipe table renders as literal `|` junk. Use one when comparing 3+ options across several attributes. Over about 6×5, use a canvas.
 - **Specialized vocabulary:** `**term** (short plain definition)` at first use in a thread, then append the entry to the instance's glossary. Never silently swap in a simpler word. Do not re-define a term already glossed in the same thread.
 - Diagrams ship as a viewable HTML artifact plus editable source.
@@ -47,11 +47,11 @@ An explicit @mention always gets a real reply. The one exception is guest channe
 
 ## The closing header, on this surface
 
-Every visible message ends with exactly one of `## ❓ Clarify`, `## ▶️ Approve`, `## ✋ Act`, numbered beneath, no preamble, no exceptions — including one-line and conversational replies. Which one to pick, what each means, and the Clarify budget: `docs/status-framework.md`.
+Every visible message ends with exactly one of `## ❓ Clarify`, `## ✋ Act`, numbered beneath, no preamble, no exceptions — including one-line and conversational replies. Which one to pick, what each means, and the Clarify budget: `docs/status-framework.md`.
 
 The header and the root strip are one decision and can never disagree: `## ✋ Act` means the strip's status slot becomes ✋ before you end the turn.
 
-**Never set ✅ yourself.** ✅ is the human's confirmation of the user-level outcome, not your report that the work compiled. Setting it and then asking for approval in the same message contradicts itself. When they do approve, the ✅ re-lay and the final `## Run` message are one action, in one turn.
+**Never set ✅ yourself.** ✅ is the human's confirmation of the user-level outcome, not your report that the work compiled. Setting it and then asking them to confirm in the same message contradicts itself. When they do confirm, the ✅ re-lay and the final `## Run` message are one action, in one turn.
 
 ## Channel overrides
 
