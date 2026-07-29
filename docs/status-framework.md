@@ -1,6 +1,6 @@
 # Status framework
 
-The shared status taxonomy for Life OS and any instance built on it. Every item is in exactly one lifecycle state — there is nothing else. Agents (Liv 🦋 / Max 🦊) signal the state as part of the run strip on the human's thread root. **Lifecycle status is always the first reaction on the strip**, followed by an `agent → harness → model` triplet per agent in the thread.
+The shared status taxonomy for Humanware OS and any instance built on it. Every item is in exactly one lifecycle state — there is nothing else. Agents (Liv 🦋 / Max 🦊) signal the state as part of the run strip on the human's thread root. **Lifecycle status is always the first reaction on the strip**, followed by an `agent → harness → model` triplet per agent in the thread.
 
 Budget: 1,800 words. Over it, consolidate — do not extend. Counted in words because these files are not hard-wrapped.
 

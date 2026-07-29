@@ -66,13 +66,13 @@ Every layer lives in a git repo and is *linked into* whatever harness is running
 ## On disk
 
 ```
-life-os/                      the framework — generic, opinionated, owns every rule
+Humanware-OS/                 the framework — generic, opinionated, owns every rule
   AGENTS.md                   Layer 1 — the constitution
   docs/*.md                   Layer 2 — one subject each
   agents/liv.md, max.md       Layer 3 — identity, differences only
   memory/                     Layer 4
 
-<instance>/                   a person's own life-os
+<instance>/                   a person's own Humanware OS
   docs/<spec>.md              symlink to the framework file — never a copy
   docs/<spec>-instance.md     the overlay: paths, registries, channel ids
   memory/                     Layer 4 — this instance's memory

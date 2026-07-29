@@ -128,6 +128,6 @@ separately rather than quietly rewritten during the move.
 1. Does `arieldiazcom/DESIGN.md` become a surface recipe under the foundation,
    or stay an independent implementation guide in its own repo? It is
    currently duplicated at two paths, which the bible itself flags.
-2. Do these files genericize upstream into life-os, or stay instance-specific
+2. Do these files genericize upstream into Humanware OS, or stay instance-specific
    in ariel-os? The register rule and the exercise conventions look generic;
    the palette and the AD gesture do not.

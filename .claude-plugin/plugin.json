@@ -1,6 +1,6 @@
 {
-  "name": "life-os",
-  "description": "An operating system for a life that compounds: append-only event stream, OODA-shaped loop, and memory that writes itself back.",
+  "name": "humanware-os",
+  "description": "The open operating system for the human side of AI: durable agents, shared memory, and a loop that compounds context.",
   "version": "0.1.0",
   "author": {
     "name": "Ariel Diaz"

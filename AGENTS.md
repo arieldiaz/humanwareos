@@ -1,6 +1,6 @@
 # Operating rules for agents in this repo
 
-You are working inside a life-os — the operating system for its owner's life. These rules override your defaults.
+You are working inside Humanware OS—the operating system for the human side of AI. These rules override your defaults.
 
 This file is Layer 1 and is the harness-neutral canonical copy. Claude Code only auto-loads a file literally named `CLAUDE.md`, so `~/.claude/CLAUDE.md` is a thin symlink pointing here — a harness shim, never edited by hand. Any AGENTS.md-aware tool reads this path directly.
 

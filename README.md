@@ -1,16 +1,29 @@
-# life-os
+# Humanware OS
 
-**An operating system for a life that compounds.**
+**The open operating system for the human side of AI.**
 
-Not a productivity template. Not a second-brain filing system. A small, opinionated framework for running your life the way good systems run: raw history you never lose, a loop you actually follow, and memory that makes every cycle smarter than the last. Built to be worked by AI agents (cloud for judgment, local for privacy) and edited like an essay.
+Software runs computers. Firmware runs hardware. Humanware helps a person
+remember, decide, create, and act—with AI agents that build context instead of
+starting over.
 
-Three ideas, fused:
+Humanware OS is a small, opinionated framework for giving durable agents shared
+memory, a clear operating loop, and access to the interfaces you already use.
+It is not another chatbot, productivity template, or second-brain filing
+system. It is the layer that helps the human stay oriented and in command.
 
-1. **Event-stream everything.** Raw inputs — voice notes, screenshots, articles, call recordings, journal fragments — land in an append-only stream and are never edited. They are history. Everything useful (transcripts, summaries, plans, indexes) is *derived* from the stream and can be thrown away and re-derived later with better models. The stream is the source of truth; everything else is a cache. (Concept via [Machina's second-brain article](https://x.com/EXM7777/status/2073045719020343705).)
-2. **A loop, not a pipeline.** Work moves through an OODA-shaped cycle — observe, orient, decide, act — plus review. Not just for code: for decisions, writing, health, projects, anything.
-3. **Compounding.** Every cycle ends by writing back what was learned, so the next cycle starts smarter. This is the whole point. A system that doesn't compound is just a filing cabinet.
+Four principles shape it:
 
-Borrowed with gratitude and skepticism: the prose-workflow style from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills), the compounding loop and strategy anchor from [Every's compound engineering](https://github.com/EveryInc/compound-engineering-plugin). Dogma left at the door — no TDD religion, no Google worship. Verification is proportional to stakes, not ritual.
+1. **Human in command.** Agents bring judgment and context forward. The human
+   remains the author, owner, and final decision-maker.
+2. **Durable relationships.** A small roster of agents learns how you work over
+   time. Fewer agents, deeper context.
+3. **Memory that compounds.** Every meaningful cycle writes back what it
+   learned, so the next one starts smarter.
+4. **Your interfaces.** Work where conversation already happens and speak
+   naturally—including voice.
+
+The framework is open. The implementation is personal. Fork the system, name
+your agents, and let your version grow around the life and work it supports.
 
 ---
 
@@ -43,12 +56,16 @@ Borrowed with gratitude and skepticism: the prose-workflow style from [addyosman
 
 ## Status framework
 
-Every item lives in exactly one state — 🔄 in-process, then ❓ clarify / ▶️ approve / ✋ act depending on what you owe it, or 🗓️ scheduled, or ✅ done. There is no generic "blocked": saying you are blocked without saying what is owed is exactly what the three middle states exist to fix. No open-ended "someday" pile either — if it isn't scheduled with a date, it's killed. Agents signal state as a reaction; the identity reaction means "I've got it." Full spec in [docs/status-framework.md](docs/status-framework.md).
+Every item lives in exactly one state — 🔄 in-process, then ❓ clarify or ✋ act
+depending on what the human owes it, 🗓️ scheduled, or ✅ done. There is no
+generic "blocked": name the answer or action needed. No open-ended "someday"
+pile either—if it is not scheduled with a date, kill it. Full spec in
+[docs/status-framework.md](docs/status-framework.md).
 
 ## Directory map
 
 ```
-life-os/
+humanware-os/
 ├── README.md            ← you are here
 ├── AGENTS.md            ← operating rules every agent session loads
 ├── STRATEGY.md          ← durable anchor: who you are, what matters, current tracks
@@ -72,7 +89,14 @@ life-os/
 
 ## Agents: few loops, many hats
 
-Where most frameworks spawn an agent per task, life-os keeps **a small roster of durable agents** — persistent working relationships that accumulate context — and has them wear the skills as hats. [Liv](agents/liv.md) (personal Chief of Staff) runs the life outside work and the loop itself: personal ops, household, triage, orientation, reviews, memory curation. [Max](agents/max.md) (CEO) runs the work: strategy, tracks, tradeoffs, the discipline of not doing things. The line between them is personal/work, not operational/strategic. You are the board. Continuity is the point: ephemeral agents start from zero every time; durable agents compound, which is the same bet the rest of this system makes. Details and rules in [agents/README.md](agents/README.md).
+Where most frameworks spawn an agent per task, Humanware OS keeps **a small
+roster of durable agents**—persistent working relationships that accumulate
+context—and has them wear skills as hats. [Liv](agents/liv.md) (personal Chief
+of Staff) runs life outside work and the loop itself. [Max](agents/max.md)
+(CEO) runs work: strategy, tracks, tradeoffs, and the discipline of not doing
+things. You are the board. Continuity is the point: ephemeral agents start from
+zero every time; durable agents compound. Details in
+[agents/README.md](agents/README.md).
 
 ## Day to day
 
@@ -122,7 +146,11 @@ The flow: record anywhere → auto-ingest to the spool → sync to the mini → 
 
 ## Why the stream is sacred
 
-This repo's relationship to the [event-stream idea](https://x.com/EXM7777/status/2073045719020343705) is: **capture is write-once, understanding is re-runnable.** Today's transcription of a voice note is today's best effort. In two years, a better model re-reads the same audio and hears the hesitation before you said yes. If you'd saved only the transcript, that's gone. So:
+Humanware OS follows one rule from the
+[event-stream idea](https://x.com/EXM7777/status/2073045719020343705):
+**capture is write-once, understanding is re-runnable.** Today's transcription
+of a voice note is today's best effort. In two years, a better model may hear
+what today's missed. If you saved only the transcript, that context is gone.
 
 - The stream is legally read-only in this house. Agents refuse to edit it. You should too.
 - Nothing in `derived/` is precious. Delete freely; `/rederive` rebuilds.
@@ -136,7 +164,10 @@ Everything here is a draft of your system, not the system. The skills are prose 
 
 This repo is the public framework, meant to stay generic. Your life goes in a private instance — full mechanics in [docs/adopt.md](docs/adopt.md):
 
-1. **Create your instance:** clone this repo and push it to a fresh *private* repo named `<you>-os`, keeping life-os wired as the `upstream` remote. (Not GitHub's "Use this template" button — it severs the shared history that keeps upstream merges clean; see [docs/adopt.md](docs/adopt.md).) The instance is where STRATEGY.md gets filled, `memory/` accumulates, and your machines' config lives. Nothing personal ever goes in the framework repo.
+1. **Create your instance:** run the installer to clone this framework into a
+   private instance while keeping Humanware OS wired as the `upstream` remote.
+   The instance is where `STRATEGY.md` gets filled, `memory/` accumulates, and
+   your machines' config lives. Nothing personal belongs in the framework repo.
 2. **Pull framework improvements down** with `git fetch upstream && git merge upstream/main` — the shared merge-base keeps these small and clean.
 3. **Send improvements back — deliberately, never wholesale.** When living in your instance produces a structural improvement (a sharper skill, a better rule, a pipeline fix), *genericize it* — strip names, paths, personal context — commit it on a branch cut from `upstream/main`, and PR it here. The flow is one-way by default: instance → template only by extraction, template → instance by merge.
 4. Keep agent definition files template-clean in your instance too: what Liv and Max *are* belongs in `agents/`; what they *know about you* belongs in your `memory/`. This keeps upstream merges painless and your private context private.
@@ -147,12 +178,32 @@ The framework is the transferable part (loop, tiers, stream discipline); the `op
 
 ## Install
 
+Humanware OS has no runtime or package-manager dependency. Create a local
+instance with one command:
+
 ```
-/plugin marketplace add arieldiaz/life-os
-/plugin install life-os
+curl -fsSL https://raw.githubusercontent.com/arieldiaz/Humanware-OS/main/install.sh | sh -s -- my-humanware
 ```
 
-Or just open this folder in any AGENTS.md-aware coding agent — `AGENTS.md` does the rest.
+To create and push a new private GitHub instance in the same step:
+
+```
+curl -fsSL https://raw.githubusercontent.com/arieldiaz/Humanware-OS/main/install.sh | sh -s -- my-humanware --repo YOUR-GITHUB-USER/my-humanware
+```
+
+The second form requires the
+[GitHub CLI](https://cli.github.com/) to be installed and authenticated. The
+installer preserves shared Git history and leaves the public framework as the
+`upstream` remote, so future updates are:
+
+```
+git fetch upstream
+git merge upstream/main
+```
+
+Open the new folder in any `AGENTS.md`-aware coding agent; `AGENTS.md` does the
+rest. See [docs/adopt.md](docs/adopt.md) for the repository model, privacy
+boundary, and contribution flow.
 
 ## Sources & inspirations
 

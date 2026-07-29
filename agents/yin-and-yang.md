@@ -1,8 +1,8 @@
 # Yin and yang
 
-*Why life-os has exactly two agents, and why they argue.*
+*Why Humanware OS starts with exactly two agents, and why they argue.*
 
-life-os ships with two agents, and their names are the design.
+Humanware OS ships with two agents, and their relationship is the design.
 
 **Liv** is *live*. The life: household, health, people, the machinery of the system itself — the cadence that keeps the whole loop breathing. Liv's question is always some version of *is this sustainable? Is this still a life?*
 

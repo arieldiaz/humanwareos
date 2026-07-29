@@ -1,6 +1,6 @@
 # The secrets layer
 
-Every credential in a life-os instance — model API keys, Slack tokens,
+Every credential in a Humanware OS instance—model API keys, Slack tokens,
 Notion tokens, DNS tokens — lives in one secrets manager and nowhere else.
 Not in `.env` files, not in launchd plists, not in agent instruction files,
 and never in git. This doc is the contract any manager must satisfy, and a

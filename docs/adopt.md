@@ -1,34 +1,53 @@
-# Adopting life-os
+# Adopting Humanware OS
 
-life-os is a framework you *run*, not a library you install. The framework stays public and generic; your life goes in a **private instance** — a repo named `<you>-os` where `STRATEGY.md` gets filled in, `memory/` accumulates, and your machines' real config lives. This doc is the mechanics of setting that up so the two repos stay connected for years: pulling framework improvements down stays a one-command merge, and sending improvements back up stays a deliberate, genericized act.
+Humanware OS is a framework you run, not a library you import. The framework
+stays public and generic; your context goes in a **private instance** where
+`STRATEGY.md` gets filled in, `memory/` accumulates, and your machines' real
+config lives. The installer keeps the two repositories connected so framework
+updates stay a clean merge and contributions back stay deliberate.
 
 ## Why clone → push, not the template button
 
-GitHub's "Use this template" button copies the files but **severs the history**: your new repo starts from a single squashed commit with no ancestor in common with life-os. That feels tidy on day one and hurts forever after — the first `git merge upstream/main` demands `--allow-unrelated-histories`, and without a shared merge-base git can't three-way merge, so routine framework updates arrive as conflict storms over files you never touched. The first instance of this framework learned that the hard way; one of its commits is literally titled "Join histories with upstream." Save yourself the surgery.
+GitHub's "Use this template" button copies the files but **severs the history**:
+your new repo starts with no ancestor in common with Humanware OS. Without a
+shared merge-base, routine framework updates become conflict storms.
 
 A GitHub *fork* keeps the history but can't be made private while the source is public, so it can't hold your life either.
 
-The pattern that works is a **private mirror with a shared merge-base**: clone life-os, push it to a fresh private repo, and keep life-os wired as the `upstream` remote.
+The pattern that works is a **private mirror with a shared merge-base**: clone
+Humanware OS, push it to a fresh private repo, and keep the framework wired as
+the `upstream` remote.
 
 ## Create your instance
 
-First make an empty private repo to receive the push. On github.com: New repository → name it `<you>-os` → Private → add **nothing** (no README, no license, no .gitignore — it must be truly empty). Or, with `<you>-os` replaced by your instance name:
+The installer can create the private GitHub repo, wire both remotes, and push
+the first branch:
 
 ```
-gh repo create <you>-os --private
+curl -fsSL https://raw.githubusercontent.com/arieldiaz/Humanware-OS/main/install.sh | sh -s -- my-humanware --repo YOUR-GITHUB-USER/my-humanware
 ```
 
-Now clone the framework and rewire the remotes: the clone's `origin` becomes `upstream` (the framework), and your private repo becomes `origin` (home). Replace `<you>-os` with your instance name and `<YOUR-GITHUB-USER>` with your GitHub username before pasting:
+This requires Git and the authenticated
+[GitHub CLI](https://cli.github.com/). For a local-only instance, omit
+`--repo`:
 
 ```
-git clone https://github.com/arieldiaz/life-os.git <you>-os
-cd <you>-os
+curl -fsSL https://raw.githubusercontent.com/arieldiaz/Humanware-OS/main/install.sh | sh -s -- my-humanware
+```
+
+You can also do the same wiring manually. Clone the framework, rename its
+remote to `upstream`, then add your empty private repo as `origin`:
+
+```
+git clone https://github.com/arieldiaz/Humanware-OS.git my-humanware
+cd my-humanware
 git remote rename origin upstream
-git remote add origin https://github.com/<YOUR-GITHUB-USER>/<you>-os.git
+git remote add origin https://github.com/YOUR-GITHUB-USER/my-humanware.git
 git push -u origin main
 ```
 
-Verify the wiring — `origin` should point at your private repo, `upstream` at life-os:
+Verify the wiring—`origin` should point at your private repo, `upstream` at
+Humanware OS:
 
 ```
 git remote -v
@@ -38,7 +57,7 @@ That's the whole setup. Day-to-day work happens on your instance's `main` and pu
 
 ## Pull framework improvements down
 
-Whenever life-os improves:
+Whenever Humanware OS improves:
 
 ```
 git fetch upstream
@@ -64,12 +83,13 @@ Port the change onto the branch by hand, or `git cherry-pick` the instance commi
 git diff upstream/main...HEAD
 ```
 
-Your private instance can't be a PR source, so contributions travel through a public fork of life-os. Create one, push the branch there, and open the PR (replace `<YOUR-GITHUB-USER>` with your GitHub username):
+Your private instance cannot be a PR source, so contributions travel through a
+public fork of Humanware OS:
 
 ```
-gh repo fork arieldiaz/life-os --remote --remote-name fork
+gh repo fork arieldiaz/Humanware-OS --remote --remote-name fork
 git push fork my-improvement
-gh pr create --repo arieldiaz/life-os --head <YOUR-GITHUB-USER>:my-improvement
+gh pr create --repo arieldiaz/Humanware-OS --head <YOUR-GITHUB-USER>:my-improvement
 ```
 
 ## `.example` files: the config seam
