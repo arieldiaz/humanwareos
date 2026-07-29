@@ -47,7 +47,7 @@ So a turn's closing header and the strip transition are one decision, not two, a
 
 **When the work is done, ask them to close the thread** — "Recommend closing this. Say the word and I'll mark it done." That is a Clarify, and it is the only ask in the message.
 
-Any Clarify may draw a question back instead of a "go." That is expected and needs no invitation. This is deliberately not an OODA loop — OODA is a single actor's loop; this is a two-actor handoff.
+Any Clarify may draw a question back instead of a "go." That is expected and needs no invitation. This is a two-actor handoff: the state always makes clear which actor owns the next move.
 
 ## Pickup & who acted
 

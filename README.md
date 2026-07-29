@@ -27,40 +27,57 @@ your agents, and let your version grow around the life and work it supports.
 
 ---
 
-## The loop
+## Clarify or Act
+
+Humanware OS makes the handoff between human and agent explicit. Every active
+thread starts 🔄 with the agent. When the agent stops, there are only two
+questions:
+
+- ❓ **Clarify** — the human owes an answer, judgment call, or go.
+- ✋ **Act** — the human owes work only they can do with their identity, access,
+  or hands.
+
+Everything else is either 🗓️ scheduled to resurface at a real time or ✅ done
+after the human confirms the outcome. There is no generic “blocked” state and
+no open-ended someday pile.
+
+The same language appears twice: as the status emoji on the thread and as the
+final heading in the agent’s reply. The thread can be understood from the
+channel list before anyone opens it.
+
+## A visible record of who worked
+
+The thread’s emoji strip carries provenance as well as status:
 
 ```
-            ┌──────────────────────────────────────────┐
-            │                                          │
-            ▼                                          │
-  OBSERVE ──▶ ORIENT ──▶ DECIDE ──▶ ACT ──▶ REVIEW ──▶ COMPOUND
-  capture     make        commit     do      compare    write it
-  raw, no     sense,      to a      the      intent     back so
-  judgment    connect     plan      work     vs result  next loop
-              to memory                                 is easier
-              & strategy
-
-  REDERIVE runs orthogonally: regenerate any derived artifact
-  from the stream whenever models or your questions improve.
+🔄 · 🦊 · Codex · GPT
 ```
 
-| Command | Skill | What it does |
-|---------|-------|--------------|
-| `/observe` | [skills/observe](skills/observe/SKILL.md) | Capture raw input into the stream. Append-only, timestamped, never edited. |
-| `/orient` | [skills/orient](skills/orient/SKILL.md) | Make sense of what's in front of you. Pull in STRATEGY.md and memory. Ask questions inline, one at a time. |
-| `/decide` | [skills/decide](skills/decide/SKILL.md) | Turn orientation into a small, committed plan with explicit "done" criteria. |
-| `/act` | [skills/act](skills/act/SKILL.md) | Execute in thin slices. Verify proportional to stakes. |
-| `/review` | [skills/review](skills/review/SKILL.md) | Compare what happened to what was intended. Multiple lenses, no self-congratulation. |
-| `/compound` | [skills/compound](skills/compound/SKILL.md) | Distill the cycle into memory. Update skills themselves when a lesson is structural. |
-| `/rederive` | [skills/rederive](skills/rederive/SKILL.md) | Regenerate derived artifacts from the raw stream. |
+The first emoji is the lifecycle state. Then each contributor adds an
+agent → harness → model triplet:
 
-## Status framework
+- 🦋 **Liv** — personal Chief of Staff and system cadence.
+- 🦊 **Max** — work, strategy, products, and tradeoffs.
+- The harness and model tiles record which runtime produced the work.
 
-Every item lives in exactly one state — 🔄 in-process, then ❓ clarify or ✋ act
-depending on what the human owes it, 🗓️ scheduled, or ✅ done. There is no
-generic "blocked": name the answer or action needed. No open-ended "someday"
-pile either—if it is not scheduled with a date, kill it. Full spec in
-[docs/status-framework.md](docs/status-framework.md).
+The result is a compact answer to three questions: where is this, who owns it,
+and what intelligence did the work? See
+[docs/status-framework.md](docs/status-framework.md) for the complete contract.
+
+## The skills underneath
+
+Agents use a small set of editable skills to capture, make sense of, execute,
+review, and compound work:
+
+| Command | What it does |
+|---------|--------------|
+| `/observe` | Capture raw input into the append-only stream. |
+| `/orient` | Connect the current situation to strategy and memory. |
+| `/decide` | Commit to a plan with explicit done criteria. |
+| `/act` | Execute in thin, proportionally verified slices. |
+| `/review` | Compare intent with what actually happened. |
+| `/compound` | Write the durable lesson back into the system. |
+| `/rederive` | Regenerate derived artifacts as models improve. |
 
 ## Directory map
 
@@ -212,8 +229,6 @@ This framework stands on three borrowed ideas, remixed:
 - **The compounding loop and strategy anchor** — [Every's compound engineering](https://github.com/EveryInc/compound-engineering-plugin) ([essay](https://every.to/chain-of-thought/compound-engineering-how-every-codes-with-agents)): each unit of work should make the next one easier. Generalized here from code to everything.
 - **Prose-workflow skills with anti-rationalization tables** — [Addy Osmani's agent-skills](https://github.com/addyosmani/agent-skills): skills as workflows agents follow, with excuses pre-rebutted. Borrowed the form, dropped the TDD liturgy.
 - **Event-stream everything** — [Machina's "How to build a second brain" article](https://x.com/EXM7777/status/2073045719020343705): capture raw and append-only, derive understanding, re-derive as models improve.
-
-Plus a general OODA-loop shape (Boyd), because observe–orient–decide–act was the right skeleton all along.
 
 ## License
 

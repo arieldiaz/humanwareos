@@ -7,7 +7,7 @@ description: Capture raw input into the append-only event stream. Use when anyth
 
 ## Overview
 
-Get the raw thing into the external stream at near-zero cost, in its rawest available form, with capture-time context. This is the O in the loop and the foundation of everything else: you can't rederive what you didn't keep.
+Get the raw thing into the external stream at near-zero cost, in its rawest available form, with capture-time context. This is the foundation of everything else: you can't rederive what you didn't keep.
 
 ## When to use
 
