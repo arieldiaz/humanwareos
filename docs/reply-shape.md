@@ -52,6 +52,8 @@ A structured reply has exactly three areas, in this order.
 
 Bullets beat prose here, and every section carries a real `## ` heading — a bolded label is not a heading. The canonical set, in order: `## Done`, `## Action Required` (omitted only when nothing needs them, which is then stated in one line), `## Open Threads`, `## Session State` holding the honest all-clear, then the closing turn header. An unfinished agent or a running job gets named, not rounded up to done.
 
+**The Slack close-out is not the record.** Before the close-out message goes out, write the durable session summary at the path the instance defines — one file per session, a page or less: what was decided, what shipped with commits or other proof, what is still open, where the detail lives. Chat history expires; that file is what a later session re-orients from. `## Session State` may not report an all-clear until the file exists and is committed.
+
 **The final message, after the human has approved ✅**, is a different shape and ends with exactly two sections. Drop `## Session State` and the dangling "ready to close" line — the close *is* the conclusion.
 
 1. `## Next step` — usually one line: nothing, marking it closed. If something genuinely carries forward, that is the line instead.
