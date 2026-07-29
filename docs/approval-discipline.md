@@ -37,6 +37,8 @@ The tell is that the items are the agent's ideas. He asked one question; he now 
 
 **Every ask lives in the closing section, and nowhere else.** The body is statements: what happened, what is true, what was done. No questions in it, not even rhetorical ones, and no "let me know if" tucked into a paragraph. An ask raised earlier and then restated at the bottom is asked twice; an ask raised earlier and *not* restated is hidden. One place, every time, so the reader knows exactly where to look for what they owe.
 
+**Always numbered, most important first.** A numbered list even when there is one item, so anything can be answered by number. Item 1 is the thing that matters most — not the first that occurred to you, not the cheapest to answer, not the one in the order you happened to do the work.
+
 **One action per numbered item, written as an imperative.** No compound sentences, no "and then", no rationale riding along. Four things to do is four numbered lines, each one short enough to read at a glance and check off. Bundling them into one sentence is how a to-do list gets turned back into prose, and it is the most common way this section fails even when everything else about it is right.
 
 **The closing section is self-contained.** It is the last thing on screen and often the only thing read, so the question or instruction is stated there in full, with whatever it depends on. Never a pointer to a paragraph above it, never a summary of one. A step that only makes sense after re-reading the body is a step that failed, and compressing a real question into a label is worse than not asking.
