@@ -1,0 +1,90 @@
+# OpenClaw instance patches
+
+These are narrow, version-scoped compatibility patches for the globally
+installed OpenClaw runtime. They exist only until the corresponding upstream
+fix ships in a stable release.
+
+Instance-owned declarative configuration lives one level up:
+
+- `agents.patch.json5` — agent identities, defaults, and model selection.
+- `models.patch.json5` — model aliases and default fallbacks.
+- `runtime.patch.json5` — local media preprocessing and ACP harness policy.
+
+## 2026.7.1-2 recovered exec warnings
+
+`patch-2026.7.1-2-exec-warning.mjs` ports the upstream warning policy that
+treats a successful user-facing reply as recovery proof for shell/exec
+failures. It does not suppress failed message sends, writes, deletes, or a
+terminal exec failure with no user-facing reply.
+
+Run it after installing or updating OpenClaw 2026.7.1-2 and before restarting
+the gateway. The script is idempotent and fails closed if the expected bundle
+shape is absent.
+
+## 2026.7.1-2 message_tool_only fallback
+
+`patch-2026.7.1-2-message-tool-only-fallback.mjs` stops the gateway from
+silently discarding a turn's final text in `message_tool_only` delivery mode
+when the agent never delivered via the message tool. Upstream forces that mode
+for restart-recovered sessions (and some session-stable resolutions), has a
+no-visible-reply fallback wired only for the Feishu channel, and explicitly
+disables it for `message_tool_only` — so on Slack the reply is dropped with a
+single WARN (2026-07-24: Liv's #marriage reply existed in her transcript,
+never posted; see `memory/lessons/delivered-means-tool-confirmed.md`).
+
+The patched drop branch delivers the final reply IFF: mode is
+`message_tool_only`, send policy allows, no message-tool delivery was
+observed this turn (`observedReplyDelivery`, set by the agent runner on a
+committed message-tool send — so healthy tool-using turns never double-post),
+the turn is a real user turn (not heartbeat/cron-event/exec-event/room_event),
+and the text is non-empty. Same run/apply rules as above: idempotent, fails
+closed, restart the gateway after applying. Upstream report:
+`upstream-report-message-tool-only-drop.md`.
+
+## 2026.7.1-2 observed delivery in all modes
+
+`patch-2026.7.1-2-observed-delivery-all-modes.mjs` makes the agent runner
+report a committed message-tool send to the dispatch layer
+(`onObservedReplyDelivery`) in every delivery mode, not only
+`message_tool_only`. Without it, a healthy automatic-mode turn that replies
+via the message tool and ends with empty final text (the mandated behavior
+in this instance) registers as "no visible dispatch" — the gateway logs the
+zero-payload WARN and the heartbeat raises a false dropped-reply alert
+(2026-07-25: three false alerts for Max #heirlooming turns whose replies had
+all landed). The delivery-evidence flag it forwards is already computed
+mode-independently; the patch removes only the mode gate on the
+notification. Same rules: idempotent, fails closed, restart after applying.
+
+## 2026.7.1 Slack rich_text rendering
+
+`patch-2026.7.1-slack-rich-text.mjs` gives Slack replies real Block Kit
+structure instead of flattened mrkdwn text. Slack's `text` field has no list
+primitive, so upstream renders markdown lists as literal `• ` lines: wrapped
+lines snap back to column 0 (no hanging indent) and nested items get two
+leading spaces instead of a real depth level. Hanging indents, true ordered
+lists, quote and code primitives, and heading blocks exist only in
+`rich_text`/`header` blocks on the `blocks` field.
+
+The converter lives in `slack-rich-text/markdown-to-rich-text.mjs` (unit tests
+alongside it: `cd slack-rich-text && node --test`). It is copied into the Slack
+plugin dist as `openclaw-instance-rich-text.js` and wired into the two visible
+text paths:
+
+- `readSlackReplyBlocks` in `replies-*.js` — agent reply payloads. Explicit
+  caller-supplied blocks always win; auto blocks only fill the gap.
+- the chunk post in `send-*.js` — the message tool, which is how every visible
+  reply in this instance is actually delivered.
+
+Both keep the mrkdwn string as Slack's notification/fallback `text`. The
+converter returns `null` — leaving upstream behavior untouched — for plain
+prose with no list/heading/quote/code structure, multi-chunk or media sends,
+input over 10k characters, and anything over 45 blocks.
+
+Mapping notes worth remembering: Slack has exactly ONE heading size
+(`header`), so markdown `#`/`##` become `header` blocks (which carry their own
+vertical padding, i.e. the section spacing) and `###`+ become bold rich_text
+lines. `rich_text` text is raw, not mrkdwn, so HTML entities are unescaped and
+`:emoji:` shortcodes must be emitted as `emoji` elements; user/channel
+mentions become `user`/`channel` elements.
+
+Same rules: idempotent, fails closed, restart the gateway after applying.
