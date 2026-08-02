@@ -43,7 +43,7 @@ Goal: Apple Watch voice capture into #audio-inbox, no phone.
 
 Post the detail as replies **in the same turn**, with the root strip laid first and the turn's closing header on the last of them. **Read `docs/status-framework.md` before laying a strip** — what goes in it, the fixed order, and the re-lay-on-every-transition rule all live there. A root with no replies is an announcement, and an announcement is not a deliverable. **One item, one root** — anything you would close independently gets its own.
 
-An explicit @mention always gets a response. When the message needs acknowledgment, not content — a stop, a thanks, a go received — an emoji reaction on it is the preferred ack and may be the whole turn. The one exception is guest channels, below.
+An explicit @mention always gets a response. When the message needs acknowledgment, not content — a stop, a thanks, a go received — an emoji reaction on it is the whole turn: no message explaining the ack after it. 👍 is the first such ack; further no-explanation acks get defined as they come up. The one exception is guest channels, below.
 
 ## The closing header, on this surface
 
