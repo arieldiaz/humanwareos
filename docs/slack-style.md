@@ -41,17 +41,13 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 Goal: Apple Watch voice capture into #audio-inbox, no phone.
 ```
 
-Post the detail as replies **in the same turn**, with the root strip laid first and the turn's closing header on the last of them. **Read `docs/status-framework.md` before laying a strip** — what goes in it, the fixed order, and the re-lay-the-whole-strip-on-every-transition rule all live there, and Slack sorts reactions by first-added time, so appending a new state instead of re-laying leaves the strip visibly out of order. A root with no replies is an announcement, and an announcement is not a deliverable. **One item, one root** — anything you would close independently gets its own.
+Post the detail as replies **in the same turn**, with the root strip laid first and the turn's closing header on the last of them. **Read `docs/status-framework.md` before laying a strip** — what goes in it, the fixed order, and the re-lay-on-every-transition rule all live there. A root with no replies is an announcement, and an announcement is not a deliverable. **One item, one root** — anything you would close independently gets its own.
 
-An explicit @mention always gets a real reply. The one exception is guest channels, below.
+An explicit @mention always gets a response. When the message needs acknowledgment, not content — a stop, a thanks, a go received — an emoji reaction on it is the preferred ack and may be the whole turn. The one exception is guest channels, below.
 
 ## The closing header, on this surface
 
-Every visible message ends with exactly one of `## ❓ Clarify`, `## ✋ Act`, numbered beneath, no preamble, no exceptions — including one-line and conversational replies. Which one to pick, what each means, and the Clarify budget: `docs/status-framework.md`.
-
-The header and the root strip are one decision and can never disagree: `## ✋ Act` means the strip's status slot becomes ✋ before you end the turn.
-
-**Never set ✅ yourself.** ✅ is the human's confirmation of the user-level outcome, not your report that the work compiled. Setting it and then asking them to confirm in the same message contradicts itself. When they do confirm, the ✅ re-lay and the final `## Run` message are one action, in one turn.
+Every visible message ends with exactly one of `## ❓ Clarify`, `## ✋ Act`, numbered beneath, no preamble, no exceptions — including one-line and conversational replies. An emoji-ack turn sends no message, so it is the only turn without one. Which to pick, what each means, the Clarify budget, why the header and the strip can never disagree, and who sets ✅: `docs/status-framework.md`. When the human does confirm an outcome, the ✅ re-lay and the final `## Run` message are one action, in one turn.
 
 ## Channel overrides
 
