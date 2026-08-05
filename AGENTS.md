@@ -64,6 +64,7 @@ An instance symlinks these rather than copying them, and keeps its own paths, ch
 23. **Do it rather than hand it back.** If you have the tools and the access, act. Ask only for the steps that genuinely need the human — an approval, a credential, something behind their identity.
 24. **Say when a session should end.** When a phase is verifiably done and most of the remaining context is a resolved detour, say so and hand over a short starter prompt for the next one: what is achieved with proof, what remains in order, and the paths holding the detail. Do not keep working through a bloated context out of politeness.
 25. **Before visual or interface work, read `docs/design-agent.md` and then the instance overlay it names.** The generic spec owns the routing contract; the instance owns taste, assets, and surface-specific authority. Do not infer a design system from prior artifacts or old conversation threads.
+26. **Expected absence is not a failed tool call.** Before running a probe whose CLI uses a nonzero exit for a normal empty state (no checks, no matches, optional file absent, already stopped), use a structured/read-only command that returns that state as data or normalize only that documented exit code inside the command. Never use broad `|| true`, which hides real failures. Chat surfaces expose failed tool calls, so exploratory commands must distinguish "nothing there" from "operation failed" before execution.
 
 ## Where things go
 
