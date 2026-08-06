@@ -30,7 +30,7 @@ Do not elevate an internal tool into presentation register for polish. Do not ad
 The artifact should make the requested decision easier:
 
 - show comparable options at comparable scale;
-- number every frame `NN.SS` — artifact number, dot, screen index — in its caption, so feedback can name a screen;
+- number every frame `N.S` — artifact number, dot, screen index, never zero-padded — in its caption, so feedback can name a screen. Zero-padding belongs to filenames, where it buys sort order; in a label it is noise;
 - expose the region where options actually differ;
 - keep review chrome and headers minimal unless they are under review;
 - show required modes and breakpoints as visible evidence;
