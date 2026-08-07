@@ -33,6 +33,7 @@ The rule above guards the memory door. These four guard the spec door. The human
 - `docs/slack-style.md` — the Slack surface: what renders, what silently degrades, roots and replies, channel overrides.
 - `docs/agent-context-hierarchy.md` — the reasoning behind this section, and the on-disk shape it implies.
 - `docs/design-agent.md` — the required read order and operating contract for visual and interface work.
+- `docs/permission-model.md` — how capabilities are named, scoped, justified, recorded, granted, and reviewed.
 
 An instance symlinks these rather than copying them, and keeps its own paths, channel ids, and tool names in a sibling overlay file.
 
