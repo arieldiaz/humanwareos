@@ -56,6 +56,8 @@ The agent's **identity reaction** (🦋 Liv / 🦊 Max) is the "I've got it" sig
 - 🦋✅ = Liv done · 🦊✅ = Max done
 - 🦋🗓️ = Liv scheduled a follow-up · 🦊❓ = Max is waiting on an answer or a go
 
+The same glyphs mark ownership inline: when more than one actor shares a thread, an action or next-step line is prefixed with its owner — 🦋, 🦊, or 🙋 for the human. A single-agent thread stays unprefixed.
+
 ## The run strip
 
 Before an agent's first visible response in a thread, it reacts to the human's root message with the run strip. The strip is the durable thread-level ownership and lifecycle record; a per-message reply signature covers which runtime produced an individual message.
