@@ -55,6 +55,27 @@ all landed). The delivery-evidence flag it forwards is already computed
 mode-independently; the patch removes only the mode gate on the
 notification. Same rules: idempotent, fails closed, restart after applying.
 
+## 2026.7.1 prompt boilerplate override
+
+`patch-2026.7.1-prompt-boilerplate.mjs` rewrites the two per-turn prompt
+injections that contradict the instance's layer-2 specs and win by proximity:
+
+- the Slack plugin's `response_format` block, which instructed Slack mrkdwn
+  (`*single asterisks*`, "no markdown headings") while this instance writes
+  standard Markdown rendered by the rich-text patch — it now states the house
+  render chain, so `docs/slack-style.md` no longer has to spend words
+  overriding it every turn;
+- the core group-chat context in `buildGroupChatContext`: "mostly lurk / add
+  clear value" (replaced — unprompted speech is governed by the instance's
+  channel registry, and an explicit mention always gets a response, twice as
+  "Be extremely selective"), and "not document-style spacing" (replaced —
+  reply structure is owned by `docs/reply-shape.md`).
+
+Plugin hooks were evaluated first and cannot do this: `before_prompt_build`
+can append or blindly replace the whole system prompt but never sees the
+assembled text, so surgical removal is impossible (verified 2026-08-07 on
+2026.7.1-1). Same rules: idempotent, fails closed, restart after applying.
+
 ## 2026.7.1 Slack rich_text rendering
 
 `patch-2026.7.1-slack-rich-text.mjs` gives Slack replies real Block Kit
