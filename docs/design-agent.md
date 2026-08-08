@@ -25,12 +25,18 @@ Every design task uses one of three registers:
 
 Do not elevate an internal tool into presentation register for polish. Do not add manifesto copy, decorative staging, material taxonomies, or mood-board framing unless the request needs them.
 
+## Choose artifact or code
+
+Use a review artifact when a material visual direction, hierarchy, flow, or comparison is unresolved and the human needs to judge it. Use production code when the direction is approved and the task is implementation, integration, behavior, a bug fix, or a small deterministic refinement.
+
+When interaction itself is the unresolved design question, build an interactive review artifact outside the production surface. If materially different visual directions remain plausible, artifact first. Otherwise, code. An artifact is not required to apply an approved specification or change one obvious token or state.
+
 ## Review contract
 
 The artifact should make the requested decision easier:
 
 - show comparable options at comparable scale;
-- number every frame `N.S` — artifact number, dot, screen index, never zero-padded — in its caption, so feedback can name a screen. Zero-padding belongs to filenames, where it buys sort order; in a label it is noise;
+- number every frame `N.S` — artifact number, dot, screen index, never zero-padded — at the start of its caption, so feedback can name a screen. Designed ordinal labels are never zero-padded; zero-padding belongs only to machine-sortable filenames or conventional data such as timestamps;
 - expose the region where options actually differ;
 - keep review chrome and headers minimal unless they are under review;
 - show required modes and breakpoints as visible evidence;
