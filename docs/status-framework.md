@@ -65,12 +65,15 @@ Before an agent's first visible response in a thread, it reacts to the human's r
 **Order is fixed and is the whole point of the strip:**
 
 1. **Lifecycle status — always first, always exactly one.** One state for the thread, not per agent: `:arrows_counterclockwise:` while active, then one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` as the outcome, matching the reply's closing header. `:white_check_mark:` requires the human to confirm the user-level outcome is complete; finishing an agent turn, draft, commit, or subtask does not count.
-2. **Then one triplet per agent, in `agent → harness → model` order**, agents ordered by first involvement in the thread:
+2. **Then one provenance group per agent, in `agent → harness → model → thinking` order**, agents ordered by first involvement in the thread:
 - **Agent:** `:butterfly:` for Liv, `:fox_face:` for Max.
 - **Harness:** the delivering harness tile. Omitted for native local models, which collapses that agent's triplet to a pair.
 - **Model:** the resolved session model tile, read off the runtime line and not the config default — a thread stays on the model it started with even after a pin flip.
+- **Thinking:** the resolved active-session reasoning level, normalized to `off`, `low`, `medium`, `high`, `max`, or `auto`. `auto` means the provider/runtime chooses. If the adapter cannot prove the effective value, it omits the tile and logs `thinking_unknown`; it never guesses from model family or raw token budget.
 
-Multiple agents and multiple models in one thread are fine — the strip just grows by whole triplets. Two agents reads `status · liv harness model · max harness model`.
+Multiple agents, models, and thinking levels in one thread are fine — the strip grows by complete provenance groups. Two agents reads `status · liv harness model thinking · max harness model thinking`.
+
+Thinking is provenance, not lifecycle. If it changes mid-thread, replace that agent's root thinking tile before the next reply; old per-message signatures remain historical truth. The semantic levels are shared across surfaces, while each surface owns its asset/render adapter.
 
 Which glyph maps to which model or harness is a runtime lookup owned by the instance, not a rule this spec fixes. The instance keeps a tile table and this spec keeps the ordering contract.
 
@@ -80,14 +83,15 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 Examples:
 - Max on Opus via Claude Code, working → 🔄 🦊 `:h_cc:` `:m_opus:`
-- Max on GPT via Codex, done → ✅ 🦊 `:h_codex:` `:m_gpt:`
-- Liv on a native Llama fallback, waiting on a go → ❓ 🦋 `:m_llama:`
-- Both agents in one thread, working → 🔄 🦋 `:h_cc:` `:m_opus:` 🦊 `:h_codex:` `:m_gpt:`
+- Max on GPT via Codex at high thinking, done → ✅ 🦊 `:h_codex:` `:m_gpt:` `:think_high:`
+- Liv on a native Llama fallback with thinking off, waiting on a go → ❓ 🦋 `:m_llama:` `:think_off:`
+- Both agents in one thread, working → 🔄 🦋 `:h_cc:` `:m_opus:` `:think_auto:` 🦊 `:h_codex:` `:m_gpt:` `:think_high:`
 
 Surface-specific carve-outs — channels that get no strip at all — live with the surface: `docs/slack-style.md`.
 
 ## Changelog
 
+- **2026-08-08** — Added provider-neutral thinking provenance after each model tile: `off / low / medium / high / max / auto`, resolved from the active session and omitted when unknown.
 - **2026-07-28** — Retired ▶️ approve and `:arrow_forward:`. Two human-facing states remain: ❓ answer something, ✋ go do something. A go is a Clarify question with the recommendation already written in.
 - **2026-07-26** — Split "blocked" into ❓ clarify / ▶️ approve / ✋ act and retired `:no_entry_sign:`. The three are simultaneously the lifecycle states and the closing header of every reply, so the strip and the message can no longer disagree. ❓ returns with a defined meaning after being dropped as a handshake reaction on 2026-07-23 — it is now a lifecycle state, not an ack.
 - **2026-07-25** — Fixed the run-strip order: status first *always*, then `agent · harness · model` per agent. Because reactions sort by first-added time, a lifecycle transition now re-lays the whole strip instead of appending the new state at the end.
