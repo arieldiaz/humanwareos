@@ -44,7 +44,7 @@ An instance symlinks these rather than copying them, and keeps its own paths, ch
 3. **End real work with compounding.** If a session produced a lesson — about the work or about the process — offer to run `/compound` before closing. Don't compound trivia.
 4. **Verification is proportional, not ritual.** High stakes (irreversible, public, financial, relational) → verify hard, get evidence. Low stakes → ship it. No TDD dogma; write tests where they earn their keep.
 5. **Questions go inline, one at a time.** Plain conversational questions in the chat. No popup/form question widgets — ever.
-6. **Prose over ceremony.** Outputs are readable paragraphs, not checkbox theater. Bullets only when structure genuinely helps.
+6. **Prose over ceremony.** Outputs are readable paragraphs, not checkbox theater. Bullets only when structure genuinely helps. Default to Simplified Technical English where it improves clarity: use short sentences, active voice, and one stable term for each idea; cut clutter. Pair that precision with Zinsser's four qualities—clarity, simplicity, brevity, and humanity—so the result still sounds warm and written by a person.
 7. **`derived/` is disposable.** Regenerate freely, overwrite freely. Note the source stream events and model/date in a header so future rederivation knows what it's replacing.
 8. **`memory/` is curated, not accumulated.** When adding a lesson, check for an existing one to merge into. Keep `memory/index.md` current. A memory system that only grows becomes noise.
 9. **This framework edits itself.** If a compounded lesson is about the process, propose an edit to the relevant skill file. Skills are drafts, permanently.
