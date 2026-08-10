@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "humanwareos-buzz-community",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-10",
+  "routes": [
+    {
+      "pattern": "community.humanwareos.com",
+      "custom_domain": true
+    }
+  ],
+  "containers": [
+    {
+      "class_name": "BuzzRelay",
+      "image": "./Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BUZZ_RELAY",
+        "class_name": "BuzzRelay"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BuzzRelay"]
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

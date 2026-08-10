@@ -1,0 +1,4 @@
+ARG BUZZ_IMAGE=ghcr.io/block/buzz:main
+FROM ${BUZZ_IMAGE}
+
+EXPOSE 3000 8080

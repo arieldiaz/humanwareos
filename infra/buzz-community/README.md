@@ -1,0 +1,89 @@
+# HumanwareOS Buzz community alpha
+
+Deploys one Buzz relay container behind a Cloudflare Worker at
+`community.humanwareos.com`. PostgreSQL and Redis remain managed external
+services; media and git objects live in two private Cloudflare R2 buckets.
+
+This is an alpha, deliberately capped at one `standard-1` container and 250
+WebSocket connections. The Worker keeps one named container instance, proxies
+WebSockets, exposes separate Worker and relay readiness probes, and passes only
+an explicit set of runtime settings and secrets into the container.
+
+## Architecture
+
+```text
+community.humanwareos.com
+  -> Cloudflare Worker (TLS, hostname, edge controls)
+  -> one Buzz Cloudflare Container (HTTP + WebSocket)
+       -> managed PostgreSQL over TLS
+       -> managed Redis over TLS
+       -> R2 media bucket
+       -> R2 git-object bucket
+
+Mac mini runner -> outbound authenticated Buzz connection only
+```
+
+The Mac mini is not an availability dependency. It can run coding sessions and
+agents, but public human chat remains in the cloud when the mini is offline.
+
+## Required Doppler keys
+
+Use project `arielos-core`, config `prd`. Values never enter this repo.
+
+- Existing Cloudflare keys: `CF_ACCOUNT_ID`, `CF_HUMANWAREOS_PLATFORM_TOKEN`,
+  `CF_HUMANWAREOS_R2_ACCESS_KEY_ID`, `CF_HUMANWAREOS_R2_SECRET_ACCESS_KEY`
+- Managed services: `BUZZ_COMMUNITY_DATABASE_URL`, `BUZZ_COMMUNITY_REDIS_URL`
+- Relay identity: `BUZZ_COMMUNITY_RELAY_PRIVATE_KEY`,
+  `BUZZ_COMMUNITY_OWNER_PUBKEY`
+- Git hook signing: `BUZZ_COMMUNITY_GIT_HOOK_HMAC_SECRET`
+
+The database URL must be the Supabase direct or session-mode TLS URL, not the
+transaction pooler. Redis must expose ordinary Redis protocol with TLS; a
+REST-only cache product is not compatible with Buzz Pub/Sub and Lua usage.
+
+## Verify without deploying
+
+```sh
+cd infra/buzz-community
+npm ci
+doppler run --project arielos-core --config prd -- npm run check
+```
+
+`npm run check` validates the required Doppler keys and performs a Cloudflare
+container dry-run. It does not create resources or publish a Worker.
+
+## Deploy
+
+```sh
+cd infra/buzz-community
+doppler run --project arielos-core --config prd -- npm run deploy
+```
+
+Deployment creates the two R2 buckets if absent, streams the mapped Worker
+secrets to Wrangler over stdin, builds the Buzz image, deploys the Worker and
+container, and attaches the custom hostname. It does not provision PostgreSQL
+or Redis.
+
+## Acceptance checks
+
+1. `GET /_alpha/worker-health` returns Worker JSON without starting the relay.
+2. `GET /_alpha/relay-readiness` returns Buzz readiness after cold start.
+3. A WebSocket remains usable for 30 minutes and reconnects after a forced
+   container restart.
+4. Buzz's startup git conformance probe passes against the git R2 bucket.
+5. Upload, authenticated download, delete, and retention cleanup pass against
+   the media R2 bucket.
+6. A database backup restores into a clean Supabase project.
+7. Disconnecting the Mac mini does not affect human chat.
+
+## Hard gates
+
+- Do not deploy until [block/buzz#5522](https://github.com/block/buzz/pull/5522)
+  is merged and the published Buzz image contains its R2-compatible deletion
+  path.
+- Start with ten invited people and three public channels.
+- Never place Claude, Codex, or other subscription credentials in the public
+  container. Each user supplies their own supported provider credential; the
+  Mac mini keeps Ariel's subscription-backed coding sessions private.
+- Keep normal container internet egress enabled for PostgreSQL and Redis TCP.
+  Revisit host allowlisting only after compatible provider endpoints are known.

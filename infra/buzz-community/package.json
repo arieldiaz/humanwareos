@@ -1,0 +1,15 @@
+{
+  "name": "humanwareos-buzz-community",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/preflight.mjs && wrangler deploy --dry-run --outdir dist",
+    "provision:r2": "node scripts/provision-r2.mjs",
+    "sync:secrets": "node scripts/sync-secrets.mjs",
+    "deploy": "node scripts/deploy.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/containers": "0.3.7",
+    "wrangler": "4.120.1"
+  }
+}
