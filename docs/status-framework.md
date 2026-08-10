@@ -1,6 +1,6 @@
 # Status framework
 
-The shared status taxonomy for Humanware OS and any instance built on it. Every item is in exactly one lifecycle state — there is nothing else. Agents (Liv 🦋 / Max 🦊) signal the state as part of the run strip on the human's thread root. **Lifecycle status is always the first reaction on the strip**, followed by an `agent → harness → model` triplet per agent in the thread.
+The shared status taxonomy for Humanware OS and any instance built on it. Every item is in exactly one lifecycle state. Agents (Liv 🦋 / Max 🦊) signal it in the run strip on the human's thread root. **Lifecycle status is always first**, followed by an `agent → harness → model → thinking` provenance group per agent.
 
 Budget: 1,800 words. Over it, consolidate — do not extend. Counted in words because these files are not hard-wrapped.
 
@@ -27,9 +27,9 @@ There are four *phases*, and the phase where the ball is in the human's court ha
 
 **There is no generic "blocked" state and `:no_entry_sign:` is retired** — it was doing three jobs badly, and the whole value of a status glyph in the channel list is that it says what to do about it. Waiting on the outside world (a vendor, a build, a third party) is not a state of its own: if it has a resurface date it is 🗓️, and if it does not, it is still 🔄 and on the agent to chase.
 
-## One vocabulary, two surfaces
+## One vocabulary, every surface
 
-**These are the same glyphs that close every chat message**, as the `## ❓ Clarify` / `## ✋ Act` header — same character, same meaning, one on the root strip and one at the foot of the reply. Formatting rules for the header live with the surface (`docs/slack-style.md`); this file owns what the glyphs mean and which one to pick.
+**These are the same glyphs that close every chat message**, as the `## ❓ Clarify` / `## ✋ Act` header — same character and meaning on the root strip and at the foot of the reply. This file owns the semantics; each surface spec owns rendering.
 
 So a turn's closing header and the strip transition are one decision, not two, and they can never disagree: when a reply ends in `## ✋ Act`, the strip's status slot becomes ✋ in the same turn. 🔄 is the only state that is never a header — it means the agent hasn't stopped yet.
 
@@ -67,7 +67,7 @@ Before an agent's first visible response in a thread, it reacts to the human's r
 1. **Lifecycle status — always first, always exactly one.** One state for the thread, not per agent: `:arrows_counterclockwise:` while active, then one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` as the outcome, matching the reply's closing header. `:white_check_mark:` requires the human to confirm the user-level outcome is complete; finishing an agent turn, draft, commit, or subtask does not count.
 2. **Then one provenance group per agent, in `agent → harness → model → thinking` order**, agents ordered by first involvement in the thread:
 - **Agent:** `:butterfly:` for Liv, `:fox_face:` for Max.
-- **Harness:** the delivering harness tile. Omitted for native local models, which collapses that agent's triplet to a pair.
+- **Harness:** the delivering harness tile. Omitted for native local models, which shortens that agent's provenance group.
 - **Model:** the resolved session model tile, read off the runtime line and not the config default — a thread stays on the model it started with even after a pin flip.
 - **Thinking:** the resolved active-session reasoning level, normalized to `off`, `low`, `medium`, `high`, `max`, or `auto`. `auto` means the provider/runtime chooses. If the adapter cannot prove the effective value, it omits the tile and logs `thinking_unknown`; it never guesses from model family or raw token budget.
 
@@ -79,7 +79,7 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 ### Transitions
 
-**Any platform that orders reactions by first-added time — Slack included — forces a re-lay of the strip on every lifecycle transition.** Removing 🔄 and adding ✅ would park ✅ at the *end*. The transition procedure is therefore: read the root's current reactions, remove every strip reaction, then re-add them in canonical order. Non-strip reactions (anything a human added) are left alone. An agent joining a thread that already has a strip appends its own triplet and does not need to re-lay, since triplets are ordered by arrival anyway. Never blindly add a lifecycle reaction, and never leave two lifecycle reactions up. If the runtime model or harness changes mid-thread, replace that agent's corresponding tile before the next visible reply.
+**Any platform that orders reactions by first-added time — Slack and Buzz included — forces a re-lay on every lifecycle transition.** Removing 🔄 and adding ✅ would park ✅ at the end. Read the root reactions, remove every strip reaction, then re-add them in canonical order. Leave human reactions alone. An agent joining an existing strip appends its provenance group. Never blindly add a lifecycle reaction or leave two lifecycle reactions. If runtime provenance changes mid-thread, replace that agent's corresponding tiles before the next reply.
 
 Examples:
 - Max on Opus via Claude Code, working → 🔄 🦊 `:h_cc:` `:m_opus:`
@@ -87,7 +87,7 @@ Examples:
 - Liv on a native Llama fallback with thinking off, waiting on a go → ❓ 🦋 `:m_llama:` `:think_off:`
 - Both agents in one thread, working → 🔄 🦋 `:h_cc:` `:m_opus:` `:think_auto:` 🦊 `:h_codex:` `:m_gpt:` `:think_high:`
 
-Surface-specific carve-outs — channels that get no strip at all — live with the surface: `docs/slack-style.md`.
+Surface-specific carve-outs — channels that get no strip — live in the applicable surface spec.
 
 ## Changelog
 

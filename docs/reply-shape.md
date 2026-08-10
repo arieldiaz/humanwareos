@@ -1,46 +1,46 @@
 # Reply shape
 
-How an agent reply is structured, on any surface. Slack mechanics: `docs/slack-style.md`; lifecycle states: `docs/status-framework.md`. Layer 2 spec — `docs/agent-context-hierarchy.md`.
+How an agent conversation and reply are structured, on any surface. Surface mechanics: `docs/slack-style.md` or `docs/buzz-style.md`; lifecycle states: `docs/status-framework.md`. Layer 2 spec — `docs/agent-context-hierarchy.md`.
 
 Budget: 500 words.
 
 ## Replies should be succinct and accurate
 
-Headers and bullets are for when the human must act on several separate things or compare options. Everything else — answers, opinions, thinking together, "here's what I found" — is paragraphs. The failure mode is turning a conversation into a consultant deliverable: extra headings, a bolded label on every paragraph, an actionless action section, a closing line restating the message. When in doubt, write prose and stop sooner.
+Use headers and bullets when the human must act on several things or compare options. Answers, opinions, and thinking together are paragraphs. Avoid consultant theater: extra headings, labeled paragraphs, actionless action sections, and repeated conclusions. When in doubt, write prose and stop sooner.
 
-One header is always earned: the closing turn header, even on a one-line answer. Sole exception: a goal post, which hands its header to the turn's last message — `docs/slack-style.md`.
+One header is always earned: the closing turn header, even on a one-line answer. Sole exception: the goal post below, which hands its header to the turn's last message.
+
+## Conversation topology
+
+**Only the human creates roots.** Collect sub-agent and multi-model work into the existing thread. The exception is an approved **spin-out**: create its root and begin work that turn.
+
+**The first agent post in a work thread is one short `Goal:` line.** Put detail in replies that turn. Lay the root strip before the first substantive reply. One independently closeable item gets one root; a root without worked replies is only an announcement.
+
+An explicit @mention always gets a response. When acknowledgment alone is enough, a reaction is the whole turn. Surface-specific guest and trigger rules may narrow this.
 
 ## Three sections to each reply
 
-A structured reply has exactly three sections, each with an H2 heading. A short prose answer keeps only the last.
+A structured reply has three H2 sections. A short prose answer keeps only the last.
 
-1. `## TLDR` — one to three sentences of plain prose, no formatting, carrying all the context. The human should be able to read the TLDR alone and make the decision; everything below is context and learning.
-2. `## Background` — key actions, challenges, recommendations, brief and summarized for human consumption. Assume it will be skipped: no critical info lives only here. Create `###` sub-sections as needed with descriptive headings.
-3. The decision — the closing turn header, `## ❓ Clarify` or `## ✋ Act`, with minimal numbered steps if needed. Act is specific actions only the human can take — do everything else yourself, deep-link the exact control, and put a requested reply in quotes (default `"done"`). Clarify is open questions before progressing. Which to pick: `docs/status-framework.md`.
+1. `## TLDR` — one to three plain sentences sufficient for the decision.
+2. `## Background` — brief context; no critical fact lives only here. Use descriptive `###` sections only when needed.
+3. `## ❓ Clarify` or `## ✋ Act` — minimal numbered steps. Act contains only work requiring the human's hands; Clarify contains questions needed to proceed. Semantics: `docs/status-framework.md`.
 
 ## Shape by situation
 
-- **Bugs and incidents** → the fix, one line of cause, whether anything needs them. Detail lives in the commit or a worklog.
-- **Postmortems** → what happened, recommendation, what you need from them. Three short sections.
+- **Bugs and incidents** → fix, cause, and whether the human must act. Detail lives in the commit or worklog.
+- **Postmortems** → what happened, recommendation, and human action. Three short sections.
 - **Teaching** → answer first, keep the context that teaches, skimmable.
-- **Exploring / thinking out loud** → real prose, no structure, no pushing to resolution or converting into a deliverable. The closing header carries a light standing offer, made once.
-- **Long prose** still gets `###` sub-headings past about three paragraphs — length triggers, not format. A bolded lead-in is not a heading.
+- **Exploring / thinking aloud** → prose without forced resolution. The closing header carries one light standing offer.
+- **Long prose** → descriptive `###` headings after about three paragraphs. Bold labels are not headings.
 - Never a loose closing paragraph, forced CTA, or internal action phrased as their instruction.
 
 ## Session close-out
 
-The final message after the human's "close" approval is the session summary, as bullets:
+After the human approves closure, send a bullet summary:
 
 - one line of what was completed
 - next step if relevant (e.g. kicking off a new session with this spec)
-- session stats, generated by the instance's thread-stats tool from the harness transcript's `usage` records — never hand-written
-
-```
-## Run
-- 8.3h · 266 turns · opus · 16 msgs from you / 15 from me
-- 1,151 words in / 6,080 out · 55.2M tokens in / 149k out
-- API list: $62 cached / $280 uncached · Actual: $0 on sub
-- Efficiency: two full reads of a 500-line spec cost ~40k in; grep the section first next time
-```
+- measured session stats from the harness transcript's usage records
 
 Each session summary is also saved as a markdown file at the path the instance defines — chat history expires; the file is the durable record.

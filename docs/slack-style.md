@@ -31,24 +31,6 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 - **Specialized vocabulary:** `**term** (short plain definition)` at first use in a thread, then append the entry to the instance's glossary. Never silently swap in a simpler word. Do not re-define a term already glossed in the same thread.
 - Diagrams ship as a viewable HTML artifact plus editable source.
 
-## Roots and replies
-
-**Only the human creates roots.** Sub-agent and multi-model runs are internal artifacts — collect them and respond once in the existing thread. The one sanctioned exception is a **spin-out**: they approve a specific item and you create the new root for it in that same turn.
-
-**Your first post in a work thread is the `Goal:` line and nothing else.** One short line that does not wrap, because it is read in the channel list, on a phone, next to nine other threads. No description, no provenance, no `## ` section, no closing header — all of that is detail, including the name of the thread a spin-out came from, which goes in the first reply. This holds whether you spun the thread out or the human opened it; the only thing that changes is whether the goal post is the root or your first reply.
-
-```markdown
-Goal: Apple Watch voice capture into #audio-inbox, no phone.
-```
-
-Post the detail as replies **in the same turn**, with the root strip laid first and the turn's closing header on the last of them. **Read `docs/status-framework.md` before laying a strip** — what goes in it, the fixed order, and the re-lay-on-every-transition rule all live there. A root with no replies is an announcement, and an announcement is not a deliverable. **One item, one root** — anything you would close independently gets its own.
-
-An explicit @mention always gets a response. When the message needs acknowledgment, not content — a stop, a thanks, a go received — an emoji reaction on it is the whole turn: no message explaining the ack after it. 👍 is the first such ack; further no-explanation acks get defined as they come up. The one exception is guest channels, below.
-
-## The closing header, on this surface
-
-Every visible message ends with exactly one of `## ❓ Clarify`, `## ✋ Act`, numbered beneath, no preamble, no exceptions — including one-line and conversational replies. An emoji-ack turn sends no message, so it is the only turn without one. Which to pick, what each means, the Clarify budget, why the header and the strip can never disagree, and who sets ✅: `docs/status-framework.md`. When the human does confirm an outcome, the ✅ re-lay and the final `## Run` message are one action, in one turn.
-
 ## Channel overrides
 
 **Speaking unprompted.** A runtime prompt saying to reply when you "can add clear value" is a judgment about your own message and is not a licence to talk. Only speak without a mention in a channel the instance has listed as public. Everywhere else, wait to be addressed — including Slack-public channels that are not on that list.
