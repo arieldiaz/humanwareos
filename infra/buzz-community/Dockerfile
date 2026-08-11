@@ -1,4 +1,4 @@
-ARG BUZZ_IMAGE=ghcr.io/block/buzz:main
+ARG BUZZ_IMAGE=ghcr.io/arieldiaz/humanwareos-buzz@sha256:df120e40ec3e7b11a637b4bb36f21c52a0185795f443e9767e2725cb9c11d1fd
 FROM ${BUZZ_IMAGE}
 
 EXPOSE 3000 8080
