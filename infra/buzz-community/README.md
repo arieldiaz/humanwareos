@@ -51,6 +51,13 @@ The probe performs `SELECT 1` against PostgreSQL, then verifies Redis TLS, `PING
 
 ## Deploy
 
+The alpha deploys a relay image built from the maintained
+[`arieldiaz/buzz`](https://github.com/arieldiaz/buzz) fork. The fork tracks
+`block/buzz`; deployment tags are pinned to a tested commit, while
+`r2-alpha` is only a moving convenience tag. Build the pinned image with the
+`Buzz community image` GitHub Actions workflow before changing `BUZZ_IMAGE`
+in the Dockerfile.
+
 ```sh
 cd infra/buzz-community
 doppler run -- npm run deploy
@@ -70,7 +77,11 @@ Deployment creates the two R2 buckets if absent, streams the mapped Worker secre
 
 ## Hard gates
 
-- Do not deploy until [block/buzz#5522](https://github.com/block/buzz/pull/5522) is merged and the published Buzz image contains its R2-compatible deletion path.
+- Deploy only an immutable image tag built from a tested commit in
+  `arieldiaz/buzz` that contains the R2-compatible deletion path. Continue
+  upstreaming the patch through
+  [block/buzz#5522](https://github.com/block/buzz/pull/5522); after merge, drop
+  the fork-only patch and resume building from clean upstream commits.
 - Start with ten invited people and three public channels.
 - Never place Claude, Codex, or other operator subscription credentials in the public container. Each user supplies their own supported provider credential; private subscription-backed coding sessions stay on the operator's runner.
 - Keep normal container internet egress enabled for PostgreSQL and Redis TCP. Revisit host allowlisting only after compatible provider endpoints are known.
