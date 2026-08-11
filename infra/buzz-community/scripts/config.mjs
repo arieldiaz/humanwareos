@@ -21,6 +21,26 @@ export function assertEnvironment() {
     throw new Error(`Missing Doppler keys: ${missing.join(", ")}`);
   }
 
+  for (const name of requiredDopplerKeys.filter((key) => key.startsWith("CF_"))) {
+    if (!/^[\x21-\x7e]+$/.test(process.env[name])) {
+      throw new Error(`${name} must be one printable ASCII value, not copied console output`);
+    }
+  }
+
+  for (const name of ["CF_ACCOUNT_ID", "CF_HUMANWAREOS_R2_ACCESS_KEY_ID"]) {
+    if (!/^[0-9a-fA-F]{32}$/.test(process.env[name])) {
+      throw new Error(`${name} must be 32 hexadecimal characters`);
+    }
+  }
+
+  if (process.env.CF_HUMANWAREOS_PLATFORM_TOKEN.length < 40) {
+    throw new Error("CF_HUMANWAREOS_PLATFORM_TOKEN is unexpectedly short");
+  }
+
+  if (!/^[0-9a-fA-F]{64}$/.test(process.env.CF_HUMANWAREOS_R2_SECRET_ACCESS_KEY)) {
+    throw new Error("CF_HUMANWAREOS_R2_SECRET_ACCESS_KEY must be 64 hexadecimal characters");
+  }
+
   const database = new URL(process.env.BUZZ_COMMUNITY_DATABASE_URL);
   if (!["postgres:", "postgresql:"].includes(database.protocol)) {
     throw new Error("BUZZ_COMMUNITY_DATABASE_URL must use postgres:// or postgresql://");
