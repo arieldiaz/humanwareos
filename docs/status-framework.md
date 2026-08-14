@@ -62,7 +62,7 @@ The same glyphs mark ownership inline: when more than one actor shares a thread,
 
 Before an agent's first visible response in a thread, it reacts to the human's root message with the run strip. The strip is the durable thread-level ownership and lifecycle record; a per-message reply signature covers which runtime produced an individual message.
 
-**Order is fixed and is the whole point of the strip:**
+**The tiles, and the order they are laid in:**
 
 1. **Lifecycle status — always first, always exactly one.** One state for the thread, not per agent: `:arrows_counterclockwise:` while active, then one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` as the outcome, matching the reply's closing header.
 2. **Then one provenance group per agent, in `agent → harness → model → thinking` order**, agents ordered by first involvement in the thread:
@@ -73,9 +73,9 @@ Before an agent's first visible response in a thread, it reacts to the human's r
 
 Multiple agents, models, and thinking levels in one thread are fine — the strip grows by complete provenance groups. Two agents reads `status · liv harness model thinking · max harness model thinking`.
 
-Thinking is provenance, not lifecycle. If it changes mid-thread, replace that agent's root thinking tile before the next reply; old per-message signatures remain historical truth. The semantic levels are shared across surfaces, while each surface owns its asset/render adapter.
+Thinking is provenance, not lifecycle. If it changes mid-thread, replace that agent's root thinking tile before the next reply; old per-message signatures remain historical truth. The levels are shared across surfaces; each surface owns its render adapter.
 
-Which glyph maps to which model or harness is a runtime lookup owned by the instance, not a rule this spec fixes. The instance keeps a tile table and this spec keeps the ordering contract.
+Which glyph maps to which model or harness is a runtime lookup owned by the instance, not a rule this spec fixes.
 
 ### Transitions
 
@@ -101,4 +101,4 @@ Surface-specific carve-outs — channels that get no strip — live in the appli
 - **2026-07-28** — Retired ▶️ approve and `:arrow_forward:`. Two human-facing states remain: ❓ answer something, ✋ go do something.
 - **2026-07-26** — Split "blocked" into ❓ clarify / ▶️ approve / ✋ act and retired `:no_entry_sign:`. The three are simultaneously the lifecycle states and the closing header of every reply, so the strip and the message can no longer disagree.
 - **2026-07-25** — Fixed the run-strip order: status first, then `agent · harness · model` per agent.
-- **2026-07-23** — Made the thread root the canonical home for the strip, reduced to its core: removed 👀, 📌, and the handshake reactions 🎯/❓/🧠/🙈.
+- **2026-07-23** — Made the thread root the home for the strip; removed 👀, 📌, and the handshake reactions.
