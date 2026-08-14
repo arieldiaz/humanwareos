@@ -64,7 +64,7 @@ Before an agent's first visible response in a thread, it reacts to the human's r
 
 **Order is fixed and is the whole point of the strip:**
 
-1. **Lifecycle status — always first, always exactly one.** One state for the thread, not per agent: `:arrows_counterclockwise:` while active, then one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` as the outcome, matching the reply's closing header. `:white_check_mark:` requires the human to confirm the user-level outcome is complete; finishing an agent turn, draft, commit, or subtask does not count.
+1. **Lifecycle status — always first, always exactly one.** One state for the thread, not per agent: `:arrows_counterclockwise:` while active, then one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` as the outcome, matching the reply's closing header.
 2. **Then one provenance group per agent, in `agent → harness → model → thinking` order**, agents ordered by first involvement in the thread:
 - **Agent:** `:butterfly:` for Liv, `:fox_face:` for Max.
 - **Harness:** the delivering harness tile. Omitted for native local models, which shortens that agent's provenance group.
@@ -79,7 +79,13 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 ### Transitions
 
-**Any platform that orders reactions by first-added time — Slack and Buzz included — forces a re-lay on every lifecycle transition.** Removing 🔄 and adding ✅ would park ✅ at the end. Read the root reactions, remove every strip reaction, then re-add them in canonical order. Leave human reactions alone. An agent joining an existing strip appends its provenance group. Never blindly add a lifecycle reaction or leave two lifecycle reactions. If runtime provenance changes mid-thread, replace that agent's corresponding tiles before the next reply.
+**The strip is written by the surface adapter; agents never write reactions themselves.** One writer is the whole reason the order is stable. The agent ends its turn in the right state — that is what the closing header is — and the adapter derives the strip from it.
+
+**Any platform that orders reactions by first-added time — Slack and Buzz included — forces a re-lay on every transition**, because removing 🔄 and adding ✅ would park ✅ at the end. The whole strip comes off and goes back on in canonical order, leaving human reactions alone and never leaving two lifecycle reactions. A second agent contributes its provenance group; a tile they share can only render once. Changed provenance replaces that agent's tiles.
+
+**When the adapter cannot finish a re-lay it reports in the thread, never only to a log** — an unreported failure is how an agent comes to believe it set a state it never set.
+
+**Only the human sets ✅**, by reacting on the root or saying the word. It is the one transition an agent cannot make alone.
 
 Examples:
 - Max on Opus via Claude Code, working → 🔄 🦊 `:h_cc:` `:m_opus:`
@@ -91,9 +97,9 @@ Surface-specific carve-outs — channels that get no strip — live in the appli
 
 ## Changelog
 
+- **2026-08-14** — Gave the surface adapter sole ownership of the strip, made ✅ the human's to set, and required re-lay failures to surface in the thread.
 - **2026-08-08** — Added provider-neutral thinking provenance after each model tile: `off / low / medium / high / max / auto`, resolved from the active session and omitted when unknown.
-- **2026-07-28** — Retired ▶️ approve and `:arrow_forward:`. Two human-facing states remain: ❓ answer something, ✋ go do something. A go is a Clarify question with the recommendation already written in.
-- **2026-07-26** — Split "blocked" into ❓ clarify / ▶️ approve / ✋ act and retired `:no_entry_sign:`. The three are simultaneously the lifecycle states and the closing header of every reply, so the strip and the message can no longer disagree. ❓ returns with a defined meaning after being dropped as a handshake reaction on 2026-07-23 — it is now a lifecycle state, not an ack.
-- **2026-07-25** — Fixed the run-strip order: status first *always*, then `agent · harness · model` per agent. Because reactions sort by first-added time, a lifecycle transition now re-lays the whole strip instead of appending the new state at the end.
-- **2026-07-23** — Made the thread root the canonical home for the complete run strip. Pickup must land before the first visible agent reply; lifecycle replaces in place while owner/model/harness persist.
-- **2026-07-23** — Established as a global framework, then reduced to its core. Removed 👀 (pickup is the identity reaction), 📌 parked (replaced by schedule-or-kill under 🗓️), and the handshake reactions 🎯/❓/🧠/🙈 — the thread itself carries acknowledgment.
+- **2026-07-28** — Retired ▶️ approve and `:arrow_forward:`. Two human-facing states remain: ❓ answer something, ✋ go do something.
+- **2026-07-26** — Split "blocked" into ❓ clarify / ▶️ approve / ✋ act and retired `:no_entry_sign:`. The three are simultaneously the lifecycle states and the closing header of every reply, so the strip and the message can no longer disagree.
+- **2026-07-25** — Fixed the run-strip order: status first *always*, then `agent · harness · model` per agent.
+- **2026-07-23** — Made the thread root the canonical home for the strip. Established as a global framework, then reduced to its core: removed 👀, 📌 parked, and the handshake reactions 🎯/❓/🧠/🙈.

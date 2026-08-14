@@ -16,7 +16,8 @@ Budget: 700 words. Over it, consolidate — do not extend.
 
 The strip's content, order, and lifecycle semantics are owned by `docs/status-framework.md` and are unchanged on this surface. What Buzz changes is the mechanics:
 
-- **Buzz orders reactions by first-added time** (verified 2026-08-10), so the re-lay-on-every-transition procedure applies here exactly as on Slack: remove every strip reaction, re-add in canonical order.
+- **Buzz orders reactions by first-added time** (verified 2026-08-10), so the re-lay-on-every-transition rule applies exactly as on Slack: the whole strip comes off and goes back on in canonical order.
+- **Buzz has no strip adapter yet, so this is the one surface where the agent still lays the strip by hand** — the standing exception to the adapter-only ownership in `docs/status-framework.md`. It ends when the relay gains a send hook.
 - **Adding** a custom-emoji reaction takes the bare shortcode plus `--emoji-url`. **Removing** one requires the `:colon:` form; a bare shortcode remove fails silently at the CLI level, which corrupts strip order on the next lay — check remove results.
 - **Duplicate adds are rejected cleanly** by the relay, so a blind re-lay is safe and doubles as presence detection.
 - Reactions are signed events: the strip is attributable, so the identity laying it must be the agent the strip claims. A strip laid under the wrong key is provenance corruption, not cosmetics.
