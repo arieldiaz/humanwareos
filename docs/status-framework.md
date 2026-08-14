@@ -79,9 +79,9 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 ### Transitions
 
-**The strip is written by the surface adapter; agents never write reactions themselves.** One writer is the whole reason the order is stable. The agent ends its turn in the right state — that is what the closing header is — and the adapter derives the strip from it.
+**The strip is written by the surface adapter; agents never write reactions themselves.** The agent ends its turn in the right state — that is what the closing header is — and the adapter derives the strip from it.
 
-**Any platform that orders reactions by first-added time — Slack and Buzz included — forces a re-lay on every transition**, because removing 🔄 and adding ✅ would park ✅ at the end. The whole strip comes off and goes back on in canonical order, leaving human reactions alone and never leaving two lifecycle reactions. A second agent contributes its provenance group; a tile they share can only render once. Changed provenance replaces that agent's tiles.
+**Membership is the contract; position is best effort.** A strip holding exactly the right tiles is correct even when the platform renders them out of canonical order, and the adapter leaves it alone. Any platform that orders reactions by first-added time — Slack and Buzz included — pins a tile to where it landed: one another reactor still holds cannot be moved, and one the adapter re-adds returns to its old position. So order is only achievable while re-laying, and the set of tiles changing is the only thing that triggers a re-lay. The whole strip comes off and goes back on in canonical order, leaving human reactions alone and never leaving two lifecycle reactions. A second agent contributes its provenance group; a shared tile renders once. Changed provenance replaces that agent's tiles.
 
 **When the adapter cannot finish a re-lay it journals the fault for scheduled review, and posts in the thread only when the fault survives a retry.** An unreported failure is how an agent believes it set a state it never set; reporting every blip makes the human the monitor.
 
@@ -96,9 +96,9 @@ Surface-specific carve-outs — channels that get no strip — live in the appli
 
 ## Changelog
 
-- **2026-08-14** — Gave the surface adapter sole ownership of the strip, made ✅ the human's to set, and routed re-lay failures to a reviewed journal before the thread.
+- **2026-08-14** — Gave the surface adapter sole ownership of the strip, made ✅ the human's to set, routed re-lay failures to a reviewed journal before the thread, and made membership rather than position the contract.
 - **2026-08-08** — Added provider-neutral thinking provenance after each model tile: `off / low / medium / high / max / auto`, resolved from the active session and omitted when unknown.
 - **2026-07-28** — Retired ▶️ approve and `:arrow_forward:`. Two human-facing states remain: ❓ answer something, ✋ go do something.
 - **2026-07-26** — Split "blocked" into ❓ clarify / ▶️ approve / ✋ act and retired `:no_entry_sign:`. The three are simultaneously the lifecycle states and the closing header of every reply, so the strip and the message can no longer disagree.
-- **2026-07-25** — Fixed the run-strip order: status first *always*, then `agent · harness · model` per agent.
-- **2026-07-23** — Made the thread root the canonical home for the strip. Established as a global framework, then reduced to its core: removed 👀, 📌 parked, and the handshake reactions 🎯/❓/🧠/🙈.
+- **2026-07-25** — Fixed the run-strip order: status first, then `agent · harness · model` per agent.
+- **2026-07-23** — Made the thread root the canonical home for the strip, reduced to its core: removed 👀, 📌, and the handshake reactions 🎯/❓/🧠/🙈.
