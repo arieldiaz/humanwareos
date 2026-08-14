@@ -83,7 +83,7 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 **Any platform that orders reactions by first-added time — Slack and Buzz included — forces a re-lay on every transition**, because removing 🔄 and adding ✅ would park ✅ at the end. The whole strip comes off and goes back on in canonical order, leaving human reactions alone and never leaving two lifecycle reactions. A second agent contributes its provenance group; a tile they share can only render once. Changed provenance replaces that agent's tiles.
 
-**When the adapter cannot finish a re-lay it reports in the thread, never only to a log** — an unreported failure is how an agent comes to believe it set a state it never set.
+**When the adapter cannot finish a re-lay it journals the fault for scheduled review, and posts in the thread only when the fault survives a retry.** An unreported failure is how an agent believes it set a state it never set; reporting every blip makes the human the monitor.
 
 **Only the human sets ✅**, by reacting on the root or saying the word. It is the one transition an agent cannot make alone.
 
@@ -91,13 +91,12 @@ Examples:
 - Max on Opus via Claude Code, working → 🔄 🦊 `:h_cc:` `:m_opus:`
 - Max on GPT via Codex at high thinking, done → ✅ 🦊 `:h_codex:` `:m_gpt:` `:think_high:`
 - Liv on a native Llama fallback with thinking off, waiting on a go → ❓ 🦋 `:m_llama:` `:think_off:`
-- Both agents in one thread, working → 🔄 🦋 `:h_cc:` `:m_opus:` `:think_auto:` 🦊 `:h_codex:` `:m_gpt:` `:think_high:`
 
 Surface-specific carve-outs — channels that get no strip — live in the applicable surface spec.
 
 ## Changelog
 
-- **2026-08-14** — Gave the surface adapter sole ownership of the strip, made ✅ the human's to set, and required re-lay failures to surface in the thread.
+- **2026-08-14** — Gave the surface adapter sole ownership of the strip, made ✅ the human's to set, and routed re-lay failures to a reviewed journal before the thread.
 - **2026-08-08** — Added provider-neutral thinking provenance after each model tile: `off / low / medium / high / max / auto`, resolved from the active session and omitted when unknown.
 - **2026-07-28** — Retired ▶️ approve and `:arrow_forward:`. Two human-facing states remain: ❓ answer something, ✋ go do something.
 - **2026-07-26** — Split "blocked" into ❓ clarify / ▶️ approve / ✋ act and retired `:no_entry_sign:`. The three are simultaneously the lifecycle states and the closing header of every reply, so the strip and the message can no longer disagree.
