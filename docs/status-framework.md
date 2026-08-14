@@ -60,7 +60,7 @@ The same glyphs mark ownership inline: when more than one actor shares a thread,
 
 ## The run strip
 
-Before an agent's first visible response in a thread, it reacts to the human's root message with the run strip. The strip is the durable thread-level ownership and lifecycle record; a per-message reply signature covers which runtime produced an individual message.
+Before an agent's first visible response in a thread, it reacts to the human's root message with the run strip: the durable thread-level ownership and lifecycle record. A per-message reply signature covers an individual message.
 
 **The tiles, and the order they are laid in:**
 
