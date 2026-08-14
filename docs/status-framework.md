@@ -81,7 +81,7 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 **The strip is written by the surface adapter; agents never write reactions themselves.** The agent ends its turn in the right state — that is what the closing header is — and the adapter derives the strip from it.
 
-**Membership is the contract; position is best effort.** A strip holding exactly the right tiles is correct even when the platform renders them out of canonical order, and the adapter leaves it alone. Any platform that orders reactions by first-added time — Slack and Buzz included — pins a tile to where it landed: one another reactor still holds cannot be moved, and one the adapter re-adds returns to its old position. So order is only achievable while re-laying, and the set of tiles changing is the only thing that triggers a re-lay. The whole strip comes off and goes back on in canonical order, leaving human reactions alone and never leaving two lifecycle reactions. A second agent contributes its provenance group; a shared tile renders once. Changed provenance replaces that agent's tiles.
+**Membership is the contract; position is best effort.** A strip holding exactly the right tiles is correct even when the platform renders them out of canonical order, and the adapter leaves it alone. Any platform that orders reactions by first-added time — Slack and Buzz included — pins a tile to where it landed: one another reactor still holds cannot be moved, and one the adapter re-adds returns to its old position. So order is only achievable while re-laying, and the set of tiles changing is the only thing that triggers a re-lay. The whole strip comes off and goes back on in canonical order, leaving human reactions alone and never leaving two lifecycle reactions. A second agent contributes its provenance group; a shared tile renders once. Changed provenance replaces that agent's tiles. Nothing else disturbs a strip that settled out of order, so a scheduled sweep re-lays those; where it cannot tell which agent a tile belongs to it reports the thread instead of guessing.
 
 **When the adapter cannot finish a re-lay it journals the fault for scheduled review, and posts in the thread only when the fault survives a retry.** An unreported failure is how an agent believes it set a state it never set; reporting every blip makes the human the monitor.
 
@@ -92,7 +92,7 @@ Examples:
 - Max on GPT via Codex at high thinking, done → ✅ 🦊 `:h_codex:` `:m_gpt:` `:think_high:`
 - Liv on a native Llama fallback with thinking off, waiting on a go → ❓ 🦋 `:m_llama:` `:think_off:`
 
-Surface-specific carve-outs — channels that get no strip — live in the applicable surface spec.
+Carve-outs — channels that get no strip — live in the surface spec.
 
 ## Changelog
 
