@@ -81,7 +81,7 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 **The strip is written by the surface adapter; agents never write reactions themselves.** The agent ends its turn in the right state — that is what the closing header is — and the adapter derives the strip from it.
 
-**Membership is the contract; position is best effort.** A strip holding exactly the right tiles is correct even when the platform renders them out of canonical order, and the adapter leaves it alone. Platforms that order reactions by first-added time — Slack and Buzz — pin a tile where it landed, including one another reactor still holds, so order is only reachable while re-laying and only a change in the set of tiles triggers one. The whole strip comes off and goes back on in canonical order, leaving human reactions alone and never leaving two lifecycle reactions. A second agent contributes its provenance group; a shared tile renders once. Changed provenance replaces that agent's tiles. Nothing else disturbs a strip that settled out of order, so a scheduled sweep re-lays those; where it cannot tell which agent a tile belongs to it reports the thread instead of guessing.
+**The contract is the right tiles, with the adapter's own in canonical order.** Slack and Buzz order reactions by first-added time, so order is only reachable by re-laying, and a tile another reactor also holds cannot be moved at all — those stay put and the rest are sequenced behind them. Membership alone is too weak: a lifecycle transition drops one tile and appends another, leaving the status tile last on a strip whose members are all correct. The whole strip comes off and goes back on in canonical order, leaving human reactions alone and never leaving two lifecycle reactions. A second agent contributes its provenance group; a shared tile renders once. Changed provenance replaces that agent's tiles. Nothing else disturbs a strip that settled out of order, so a scheduled sweep re-lays those; where it cannot tell which agent a tile belongs to it reports the thread instead of guessing.
 
 **When the adapter cannot finish a re-lay it journals the fault for scheduled review, and posts in the thread only when the fault survives a retry.** An unreported failure is how an agent believes it set a state it never set; reporting every blip makes the human the monitor.
 
@@ -96,7 +96,7 @@ Carve-outs — channels that get no strip — live in the surface spec.
 
 ## Changelog
 
-- **2026-08-14** — Gave the surface adapter sole ownership of the strip, made ✅ the human's to set, routed re-lay failures to a reviewed journal before the thread, and made membership rather than position the contract.
+- **2026-08-14** — Gave the surface adapter sole ownership of the strip, made ✅ the human's to set, routed re-lay failures to a reviewed journal before the thread, and settled the contract as the right tiles with the adapter's own in canonical order.
 - **2026-08-08** — Added provider-neutral thinking provenance after each model tile: `off / low / medium / high / max / auto`, resolved from the active session and omitted when unknown.
 - **2026-07-28** — Retired ▶️ approve and `:arrow_forward:`. Two human-facing states remain: ❓ answer something, ✋ go do something.
 - **2026-07-26** — Split "blocked" into ❓ clarify / ▶️ approve / ✋ act and retired `:no_entry_sign:`. The three are simultaneously the lifecycle states and the closing header of every reply, so the strip and the message can no longer disagree.
