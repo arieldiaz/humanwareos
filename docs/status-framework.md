@@ -60,7 +60,7 @@ The same glyphs mark ownership inline: when more than one actor shares a thread,
 
 ## The run strip
 
-Before an agent's first visible response in a thread, it reacts to the human's root message with the run strip: the durable thread-level ownership and lifecycle record. A per-message reply signature covers an individual message.
+Before its first visible response in a thread, an agent reacts to the human's root message with the run strip: the durable thread-level ownership and lifecycle record. A per-message reply signature covers an individual message.
 
 **The tiles, and the order they are laid in:**
 
@@ -96,7 +96,7 @@ Carve-outs — channels that get no strip — live in the surface spec.
 
 ## Changelog
 
-- **2026-08-14** — Gave the surface adapter sole ownership of the strip, made ✅ the human's to set, routed re-lay failures to a reviewed journal before the thread, and settled the contract as the right tiles with the adapter's own in canonical order.
+- **2026-08-14** — Gave the surface adapter sole ownership of the strip, made ✅ the human's to set, routed re-lay failures to a reviewed journal before the thread, and made the contract the right tiles in canonical order.
 - **2026-08-08** — Added provider-neutral thinking provenance after each model tile: `off / low / medium / high / max / auto`, resolved from the active session and omitted when unknown.
 - **2026-07-28** — Retired ▶️ approve and `:arrow_forward:`. Two human-facing states remain: ❓ answer something, ✋ go do something.
 - **2026-07-26** — Split "blocked" into ❓ clarify / ▶️ approve / ✋ act and retired `:no_entry_sign:`. The three are simultaneously the lifecycle states and the closing header of every reply, so the strip and the message can no longer disagree.
