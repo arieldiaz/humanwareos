@@ -18,6 +18,27 @@ const REQUIRED_SECRETS = [
   "RELAY_OWNER_PUBKEY",
 ];
 
+const BUZZ_DESKTOP_ORIGINS = new Set([
+  "tauri://localhost",
+  "http://tauri.localhost",
+]);
+
+function withDesktopCors(request, response) {
+  const origin = request.headers.get("Origin");
+  if (!origin || !BUZZ_DESKTOP_ORIGINS.has(origin)) return response;
+
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Access-Control-Allow-Methods", "*");
+  headers.set("Access-Control-Allow-Headers", "*");
+  headers.append("Vary", "Origin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 function requireSecrets(env) {
   const missing = REQUIRED_SECRETS.filter((name) => !env[name]);
   if (missing.length > 0) {
@@ -53,7 +74,8 @@ export class BuzzRelay extends Container {
       BUZZ_HEALTH_PORT: "8080",
       RELAY_URL: "wss://community.humanwareos.com",
       BUZZ_MEDIA_BASE_URL: "https://community.humanwareos.com/media",
-      BUZZ_CORS_ORIGINS: "https://community.humanwareos.com",
+      BUZZ_CORS_ORIGINS:
+        "https://community.humanwareos.com,tauri://localhost,http://tauri.localhost",
       RELAY_OWNER_PUBKEY: env.RELAY_OWNER_PUBKEY,
       BUZZ_AUTO_MIGRATE: "true",
       BUZZ_REQUIRE_AUTH_TOKEN: "true",
@@ -87,6 +109,6 @@ export default {
       const readiness = new Request(new URL("/_readiness", url), request);
       return relay(env).fetch(switchPort(readiness, 8080));
     }
-    return relay(env).fetch(request);
+    return withDesktopCors(request, await relay(env).fetch(request));
   },
 };
