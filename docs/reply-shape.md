@@ -24,7 +24,7 @@ A structured reply has three H2 sections. A short prose answer keeps only the la
 
 1. `## TLDR` — one to three plain sentences sufficient for the decision.
 2. `## Background` — brief context; no critical fact lives only here. Use descriptive `###` sections only when needed.
-3. `## ❓ Clarify` or `## ✋ Act` — minimal numbered steps. Act contains only work requiring the human's hands; Clarify contains questions needed to proceed. Semantics: `docs/status-framework.md`.
+3. `## ❓ Clarify` or `## ✋ Act` — minimal numbered steps. Act contains only work requiring the human's hands; Clarify contains questions needed to proceed. A parking turn ends `## 🗓️ Scheduled`; a close-out ends with the shape below. Semantics: `docs/status-framework.md`.
 
 ## Shape by situation
 
@@ -44,3 +44,5 @@ After the human approves closure, send a bullet summary:
 - measured session stats from the harness transcript's usage records
 
 Each session summary is also saved as a markdown file at the path the instance defines — chat history expires; the file is the durable record.
+
+The close-out reply ends `## Next step` + `## Run`, never Clarify or Act: the human's word already unlocked the close, and the adapter reads `## Run` as ✅.

@@ -29,7 +29,7 @@ There are four *phases*, and the phase where the ball is in the human's court ha
 
 ## One vocabulary, every surface
 
-**These are the same glyphs that close every chat message**, as the `## ❓ Clarify` / `## ✋ Act` header — same character and meaning on the root strip and at the foot of the reply. This file owns the semantics; each surface spec owns rendering.
+**These are the same glyphs that close every chat message** — `## ❓ Clarify`, `## ✋ Act`, `## 🗓️ Scheduled`, or the close-out's `## Run`, which is ✅'s header — same meaning on the root strip and at the foot of the reply. This file owns the semantics; each surface spec owns rendering.
 
 So a turn's closing header and the strip transition are one decision, not two, and they can never disagree: when a reply ends in `## ✋ Act`, the strip's status slot becomes ✋ in the same turn. 🔄 is the only state that is never a header — it means the agent hasn't stopped yet.
 
@@ -60,7 +60,7 @@ The same glyphs mark ownership inline: when more than one actor shares a thread,
 
 ## The run strip
 
-Before its first visible response in a thread, an agent reacts to the human's root message with the run strip: the durable thread-level ownership and lifecycle record. A per-message reply signature covers an individual message.
+Before an agent's first visible response in a thread, the surface adapter lays the run strip on the human's root message: the durable thread-level ownership and lifecycle record. A per-message reply signature covers an individual message.
 
 **The tiles, and the order they are laid in:**
 
@@ -85,7 +85,7 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 **When the adapter cannot finish a re-lay it journals the fault for scheduled review, and posts in the thread only when the fault survives a retry.** An unreported failure is how an agent believes it set a state it never set; reporting every blip makes the human the monitor.
 
-**Only the human sets ✅**, by reacting on the root or saying the word. It is the one transition an agent cannot make alone.
+**✅ is the human's decision** — their word in the thread or their own ✅ on the root. The word triggers the close-out and the adapter renders the tile; never ask for the reaction when the word was given.
 
 Examples:
 - Max on Opus via Claude Code, working → 🔄 🦊 `:h_cc:` `:m_opus:`
@@ -96,9 +96,8 @@ Carve-outs — channels that get no strip — live in the surface spec.
 
 ## Changelog
 
-- **2026-08-14** — Gave the surface adapter sole ownership of the strip, made ✅ the human's to set, routed re-lay failures to a reviewed journal before the thread, and made the contract the right tiles in canonical order.
-- **2026-08-08** — Added provider-neutral thinking provenance after each model tile: `off / low / medium / high / max / auto`, resolved from the active session and omitted when unknown.
-- **2026-07-28** — Retired ▶️ approve and `:arrow_forward:`. Two human-facing states remain: ❓ answer something, ✋ go do something.
-- **2026-07-26** — Split "blocked" into ❓ clarify / ▶️ approve / ✋ act and retired `:no_entry_sign:`. The three are simultaneously the lifecycle states and the closing header of every reply, so the strip and the message can no longer disagree.
-- **2026-07-25** — Fixed the run-strip order: status first, then a group per agent.
-- **2026-07-23** — Made the thread root the home for the strip; removed 👀, 📌, and the handshake reactions.
+- **2026-08-15** — RCR 2026-08-15-01: adapter named the strip's writer everywhere, ✅'s two triggers explicit, `## 🗓️ Scheduled` and `## Run` added to the closing headers.
+- **2026-08-14** — Adapter got sole ownership of the strip, ✅ became the human's, re-lay failures route to a reviewed journal, the contract became right tiles in canonical order.
+- **2026-08-08** — Added thinking provenance after each model tile (`off`→`auto`), resolved from the active session, omitted when unknown.
+- **2026-07-26/28** — Split "blocked" into states that name what the human owes; retired `:no_entry_sign:` and then ▶️ approve, leaving ❓ and ✋; states and closing headers became one vocabulary.
+- **2026-07-23/25** — Moved the strip to the thread root, status first then a group per agent; removed 👀, 📌, and the handshake reactions.
