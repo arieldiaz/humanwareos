@@ -37,12 +37,6 @@ A structured reply has three H2 sections. A short prose answer keeps only the la
 
 ## Session close-out
 
-After the human approves closure, send a bullet summary:
-
-- one line of what was completed
-- next step if relevant (e.g. kicking off a new session with this spec)
-- measured session stats from the harness transcript's usage records
+After the human approves closure, send a one-line closed statement, then the detail as its own reply — next step and measured stats from the harness usage records, ending `## Next step` + `## Run`, never Clarify or Act. The human's word already unlocked the close, and the adapter reads `## Run` as ✅.
 
 Each session summary is also saved as a markdown file at the path the instance defines — chat history expires; the file is the durable record.
-
-The close-out reply ends `## Next step` + `## Run`, never Clarify or Act: the human's word already unlocked the close, and the adapter reads `## Run` as ✅.
