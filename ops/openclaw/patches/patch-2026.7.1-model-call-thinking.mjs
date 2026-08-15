@@ -8,7 +8,16 @@ const selection = files.find((name) => {
   if (!/^selection-.*\.js$/.test(name)) return false;
   return fs.readFileSync(path.join(dist, name), "utf8").includes("transport: effectiveAgentTransport,");
 });
-if (!attempt || !selection) throw new Error("OpenClaw model-call bundles not found.");
+// Some chunk names exist twice: a real bundle plus a tiny re-export shim.
+// Select by content, never by name alone.
+const findByContent = (pattern, needle) => files.find((name) => {
+  if (!pattern.test(name)) return false;
+  return fs.readFileSync(path.join(dist, name), "utf8").includes(needle);
+});
+const lifecycle = findByContent(/^lifecycle-hook-helpers-.*\.js$/, "...params.modelId ? { modelId: params.modelId } : {},");
+const cliRunner = findByContent(/^cli-runner-.*\.js$/, "runAgentHarnessLlmOutputHook");
+const runAttempt = findByContent(/^run-attempt-.*\.js$/, "channelId: hookChannelId,");
+if (!attempt || !selection || !lifecycle || !cliRunner || !runAttempt) throw new Error("OpenClaw model-call bundles not found.");
 
 function patch(name, replacements) {
   const target = path.join(dist, name);
@@ -33,4 +42,26 @@ const selectionStatus = patch(selection, [[
   "\t\t\t\ttransport: effectiveAgentTransport,\n\t\t\t\tthinkLevel: params.thinkLevel,",
 ]]);
 
-console.log(JSON.stringify({ attempt: attemptStatus, selection: selectionStatus }));
+// The three patches above only cover the embedded runtime. CLI-harness runs
+// (claude-cli, codex app-server) never pass through that streamFn wrapper:
+// their only provenance-bearing hooks are llm_input/llm_output, whose shared
+// hook context omits the run's resolved thinkLevel even though it is in scope
+// (cli-runner sends it to the CLI as `thinking:`, run-attempt derives the
+// codex `effort` from it). Add it to both builders and let it through the
+// buildAgentHookContext whitelist that wraps every harness hook ctx.
+const lifecycleStatus = patch(lifecycle, [[
+  "\t\t...params.modelId ? { modelId: params.modelId } : {},",
+  "\t\t...params.modelId ? { modelId: params.modelId } : {},\n\t\t...params.thinkLevel ? { thinkLevel: params.thinkLevel } : {},",
+]]);
+
+const cliRunnerStatus = patch(cliRunner, [[
+  "\t\t...params.config ? { config: params.config } : {},",
+  "\t\t...params.config ? { config: params.config } : {},\n\t\t...params.thinkLevel ? { thinkLevel: params.thinkLevel } : {},",
+]]);
+
+const runAttemptStatus = patch(runAttempt, [[
+  "\t\tchannelId: hookChannelId,\n\t\t...hookContextWindowFields",
+  "\t\tchannelId: hookChannelId,\n\t\t...params.thinkLevel ? { thinkLevel: params.thinkLevel } : {},\n\t\t...hookContextWindowFields",
+]]);
+
+console.log(JSON.stringify({ attempt: attemptStatus, selection: selectionStatus, lifecycle: lifecycleStatus, cliRunner: cliRunnerStatus, runAttempt: runAttemptStatus }));

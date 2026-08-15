@@ -10,6 +10,27 @@ Instance-owned declarative configuration lives one level up:
 - `models.patch.json5` — model aliases and default fallbacks.
 - `runtime.patch.json5` — local media preprocessing and ACP harness policy.
 
+## 2026.7.1 thinking provenance on model hooks
+
+`patch-2026.7.1-model-call-thinking.mjs` makes the run's resolved thinking
+level reach plugin hooks, so a provenance consumer (the run-strip adapter)
+can lay a thinking tile it can prove instead of logging `thinking_unknown`
+on every reply. Two halves:
+
+- embedded runtime: `model_call_started`/`model_call_ended` events carry
+  `thinkLevel` (event base + the streamFn wrapper that feeds it);
+- CLI harnesses (claude-cli, codex app-server): the shared
+  `buildAgentHookContext` whitelist plus both harness hook-context builders
+  pass `thinkLevel` through, so `llm_input`/`llm_output` ctx carries it.
+  The value was already in scope at both sites — cli-runner sends it to the
+  CLI as `thinking:`, run-attempt derives the codex `effort` from it — it
+  just never reached the hook layer.
+
+When the run has no resolved level the field stays absent and consumers keep
+their fail-closed behavior. Chunk names can exist twice in dist (real bundle
+plus a re-export shim), so targets are selected by content, not name. Same
+rules: idempotent, fails closed, restart the gateway after applying.
+
 ## 2026.7.1-2 recovered exec warnings
 
 `patch-2026.7.1-2-exec-warning.mjs` ports the upstream warning policy that
