@@ -6,7 +6,7 @@ on:
       buzz_ref:
         description: Commit or branch in arieldiaz/buzz to build
         required: true
-        default: fb5c6ac363411c5944c2f7464ec5034d26091ca4
+        default: f1f9e09f27744936c9c950c120ac1de99c15c659
   push:
     branches:
       - feat/buzz-cloudflare-alpha
@@ -25,7 +25,7 @@ jobs:
         id: ref
         env:
           INPUT_REF: ${{ inputs.buzz_ref }}
-        run: echo "value=${INPUT_REF:-fb5c6ac363411c5944c2f7464ec5034d26091ca4}" >> "$GITHUB_OUTPUT"
+        run: echo "value=${INPUT_REF:-f1f9e09f27744936c9c950c120ac1de99c15c659}" >> "$GITHUB_OUTPUT"
 
       - name: Check out patched Buzz fork
         uses: actions/checkout@v4

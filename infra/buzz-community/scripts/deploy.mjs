@@ -16,4 +16,11 @@ for (const script of ["provision:r2", "sync:secrets"]) {
 }
 
 const deploy = spawnSync("npx", ["wrangler", "deploy"], { cwd, env, stdio: "inherit" });
-process.exit(deploy.status ?? 1);
+if (deploy.status !== 0) process.exit(deploy.status ?? 1);
+
+const restart = spawnSync("npm", ["run", "restart:relay"], {
+  cwd,
+  env,
+  stdio: "inherit",
+});
+process.exit(restart.status ?? 1);

@@ -23,6 +23,39 @@ const BUZZ_DESKTOP_ORIGINS = new Set([
   "http://tauri.localhost",
 ]);
 
+function hexToBytes(value) {
+  if (!/^[0-9a-f]{64}$/i.test(value)) return null;
+  return Uint8Array.from(value.match(/../g), (byte) => Number.parseInt(byte, 16));
+}
+
+async function authorizeRelayRestart(request, env) {
+  const timestamp = request.headers.get("X-Buzz-Timestamp");
+  const signature = hexToBytes(request.headers.get("X-Buzz-Signature") ?? "");
+  const issuedAt = Number(timestamp);
+  if (
+    !timestamp ||
+    !signature ||
+    !Number.isInteger(issuedAt) ||
+    Math.abs(Date.now() - issuedAt) > 5 * 60 * 1000
+  ) {
+    return false;
+  }
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(env.BUZZ_GIT_HOOK_HMAC_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  return crypto.subtle.verify(
+    "HMAC",
+    key,
+    signature,
+    new TextEncoder().encode(timestamp),
+  );
+}
+
 function withDesktopCors(request, response) {
   const origin = request.headers.get("Origin");
   if (!origin || !BUZZ_DESKTOP_ORIGINS.has(origin)) return response;
@@ -76,6 +109,7 @@ export class BuzzRelay extends Container {
       BUZZ_MEDIA_BASE_URL: "https://community.humanwareos.com/media",
       BUZZ_CORS_ORIGINS:
         "https://community.humanwareos.com,tauri://localhost,http://tauri.localhost",
+      BUZZ_INVITE_DEFAULT_CHANNELS: "general,welcome-everyone,bugs",
       RELAY_OWNER_PUBKEY: env.RELAY_OWNER_PUBKEY,
       BUZZ_AUTO_MIGRATE: "true",
       BUZZ_REQUIRE_AUTH_TOKEN: "true",
@@ -93,6 +127,11 @@ export class BuzzRelay extends Container {
       BUZZ_GIT_PACK_CACHE_PATH: "/tmp/buzz/pack-cache",
     };
   }
+
+  async restartForDeploy() {
+    await this.destroy();
+    return true;
+  }
 }
 
 function relay(env) {
@@ -108,6 +147,13 @@ export default {
     if (url.pathname === "/_alpha/relay-readiness") {
       const readiness = new Request(new URL("/_readiness", url), request);
       return relay(env).fetch(switchPort(readiness, 8080));
+    }
+    if (url.pathname === "/_alpha/relay-restart") {
+      if (request.method !== "POST" || !(await authorizeRelayRestart(request, env))) {
+        return new Response("Not found", { status: 404 });
+      }
+      await relay(env).restartForDeploy();
+      return Response.json({ ok: true, layer: "relay" });
     }
     return withDesktopCors(request, await relay(env).fetch(request));
   },
