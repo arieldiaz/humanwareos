@@ -4,6 +4,8 @@ Deploys one Buzz relay container behind a Cloudflare Worker at `community.humanw
 
 This is an alpha, deliberately capped at one `standard-1` container and 250 WebSocket connections. The Worker keeps one named container instance, proxies WebSockets, exposes separate Worker and relay readiness probes, and passes only an explicit set of runtime settings and secrets into the container.
 
+Community invites atomically add each claimant to `general`, `welcome-everyone`, and `bugs`. The relay rejects a claim if any configured default channel is missing, archived, private, or deleted, so onboarding cannot silently return to an empty first launch.
+
 ## Architecture
 
 ```text
@@ -64,6 +66,22 @@ doppler run -- npm run deploy
 ```
 
 Deployment creates the two R2 buckets if absent, streams the mapped Worker secrets to Wrangler over stdin, builds the Buzz image, deploys the Worker and container, and attaches the custom hostname. It does not provision PostgreSQL or Redis.
+
+## Repair existing alpha joiners
+
+The repair command backfills every invite-added relay member into the three default public channels and makes `agent-testing` private in one transaction. It is a dry run unless `--apply` is supplied.
+
+```sh
+cd infra/buzz-community
+doppler run -- npm run repair:onboarding -- --apply
+```
+
+After the next relay rollout refreshes signed NIP-29 events, verify the database memberships, private-channel visibility, and latest signed snapshots:
+
+```sh
+cd infra/buzz-community
+doppler run -- npm run verify:onboarding
+```
 
 ## Acceptance checks
 

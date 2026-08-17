@@ -76,6 +76,7 @@ export class BuzzRelay extends Container {
       BUZZ_MEDIA_BASE_URL: "https://community.humanwareos.com/media",
       BUZZ_CORS_ORIGINS:
         "https://community.humanwareos.com,tauri://localhost,http://tauri.localhost",
+      BUZZ_INVITE_DEFAULT_CHANNELS: "general,welcome-everyone,bugs",
       RELAY_OWNER_PUBKEY: env.RELAY_OWNER_PUBKEY,
       BUZZ_AUTO_MIGRATE: "true",
       BUZZ_REQUIRE_AUTH_TOKEN: "true",
