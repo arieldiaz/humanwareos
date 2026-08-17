@@ -4,6 +4,12 @@ import {
   getContainer,
   switchPort,
 } from "@cloudflare/containers";
+import {
+  BUZZ_DESKTOP_ORIGINS,
+  shouldRejectInviteClaim,
+} from "./invite-gate.js";
+
+export { shouldRejectInviteClaim } from "./invite-gate.js";
 
 export { ContainerProxy };
 
@@ -18,10 +24,18 @@ const REQUIRED_SECRETS = [
   "RELAY_OWNER_PUBKEY",
 ];
 
-const BUZZ_DESKTOP_ORIGINS = new Set([
-  "tauri://localhost",
-  "http://tauri.localhost",
-]);
+const DESKTOP_ONLY_INVITE_ERROR =
+  "This community alpha is desktop-only. Open this invite in Buzz Desktop.";
+
+function desktopOnlyInviteResponse() {
+  return Response.json(
+    { error: DESKTOP_ONLY_INVITE_ERROR },
+    {
+      status: 403,
+      headers: { "Cache-Control": "no-store" },
+    },
+  );
+}
 
 function hexToBytes(value) {
   if (!/^[0-9a-f]{64}$/i.test(value)) return null;
@@ -154,6 +168,9 @@ export default {
       }
       await relay(env).restartForDeploy();
       return Response.json({ ok: true, layer: "relay" });
+    }
+    if (shouldRejectInviteClaim(request, url)) {
+      return desktopOnlyInviteResponse();
     }
     return withDesktopCors(request, await relay(env).fetch(request));
   },

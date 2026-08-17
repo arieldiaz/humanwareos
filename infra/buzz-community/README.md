@@ -100,6 +100,7 @@ doppler run -- npm run verify:onboarding
   upstreaming the patch through
   [block/buzz#5522](https://github.com/block/buzz/pull/5522); after merge, drop
   the fork-only patch and resume building from clean upstream commits.
+- Keep invite claims desktop-only during the public alpha. The Cloudflare edge accepts `POST /api/invites/claim` only from Buzz Desktop's two Tauri origins; released mobile clients do not yet require or publish a human-readable profile name. Remove this edge gate only after mobile name onboarding is released and production verification proves signed profiles are created.
 - Start with ten invited people and three public channels.
 - Never place Claude, Codex, or other operator subscription credentials in the public container. Each user supplies their own supported provider credential; private subscription-backed coding sessions stay on the operator's runner.
 - Keep normal container internet egress enabled for PostgreSQL and Redis TCP. Revisit host allowlisting only after compatible provider endpoints are known.
