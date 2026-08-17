@@ -1,4 +1,4 @@
-ARG BUZZ_IMAGE=ghcr.io/arieldiaz/humanwareos-buzz@sha256:df120e40ec3e7b11a637b4bb36f21c52a0185795f443e9767e2725cb9c11d1fd
+ARG BUZZ_IMAGE=ghcr.io/arieldiaz/humanwareos-buzz@sha256:3a3322a9cb7884cc1da66c08e591162fed83312f0dfc794e575ac94333f5f5b6
 FROM ${BUZZ_IMAGE}
 
 LABEL org.humanwareos.buzz.config-revision="2026-08-15-desktop-cors"
