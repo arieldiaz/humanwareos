@@ -64,15 +64,15 @@ Before an agent's first visible response in a thread, the surface adapter lays t
 
 **The tiles, and the order they are laid in:**
 
-1. **One provenance group per agent, in `agent → harness → model → thinking` order**, agents ordered by first involvement in the thread:
+1. **Lifecycle status — first, zero or one.** One state for the thread, not per agent: nothing while on the agent; one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` when a turn stops, matching the closing header; 🔄 while a long turn runs. It sits first: it is the tile the human scans for.
+
+2. **One provenance group per agent, in `agent → harness → model → thinking` order**, agents ordered by first involvement in the thread:
 - **Agent:** `:butterfly:` for Liv, `:fox_face:` for Max.
 - **Harness:** the delivering harness tile. Omitted for native local models, which shortens that agent's provenance group.
 - **Model:** the resolved session model tile, read off the runtime line and not the config default — a thread stays on the model it started with even after a pin flip.
 - **Thinking:** the resolved active-session reasoning level, normalized to `off`, `low`, `medium`, `high`, `max`, or `auto`. `auto` means the provider/runtime chooses. If the adapter cannot prove the effective value, it omits the tile and logs `thinking_unknown`; it never guesses from model family or raw token budget.
 
-2. **Lifecycle status — last, zero or one.** One state for the thread, not per agent: nothing while on the agent; one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` when a turn stops, matching the closing header; 🔄 while a long turn runs. It sits last because it is the tile that changes — appended on stop, removed on resume, never resequenced.
-
-Multiple agents, models, and thinking levels in one thread are fine — the strip grows by complete provenance groups. Two agents reads `liv harness model thinking · max harness model thinking · status`.
+Multiple agents, models, and thinking levels in one thread are fine — the strip grows by complete provenance groups. Two agents reads `status · liv harness model thinking · max harness model thinking`.
 
 Thinking is provenance, not lifecycle. If it changes mid-thread, replace that agent's root thinking tile before the next reply; old per-message signatures remain historical truth. The levels are shared across surfaces; each surface owns its render adapter.
 
@@ -82,7 +82,7 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 **The strip is written by the surface adapter; agents never write reactions themselves.** The agent ends its turn in the right state — that is what the closing header is — and the adapter derives the strip from it.
 
-**The strip is append-only and the contract is membership of each agent's own tiles.** Slack and Buzz order reactions by first-added time and pin any tile a second reactor holds. With provenance laid first and status appended when the turn stops, canonical order is a property of the write sequence: every transition is a plain remove-and-append of the adapter's own tiles, and there is no order to enforce, sweep, or repair. Human reactions are never touched, a shared tile renders once and is never co-reacted, and changed provenance replaces only the changed tile. Strips laid before this rule may hold status first; that is historical, not drift.
+**The adapter re-lays the strip to canonical order — status first — on any send that finds it wrong; a canonical strip is a strict no-op.** Slack and Buzz order reactions by first-added time and only the account that added a reaction can remove it, so the adapter holds every agent's account and moves each tile with its own token: remove every agent-held tile, re-add in canonical sequence, verify once. Only a human-held tile is immovable — never removed, never co-reacted, excluded from the order contract; re-laid tiles land after it, which for a human ✅ still reads status-first. Non-strip reactions are never touched, a shared tile renders once, and changed provenance replaces only the changed tile.
 
 **When a write fails the adapter journals the fault for scheduled review — never a post in the thread.** The journal and its digest are the monitor; a strip problem is cosmetic and must not cost the human a read. An unreported failure is how an agent believes it set a state it never set, so every fault and recovery is journaled.
 
@@ -90,14 +90,14 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 Examples:
 - Max on Opus via Claude Code, working an ordinary turn → 🦊 `:h_cc:` `:m_opus:` (no status tile)
-- Max on GPT via Codex at high thinking, done → 🦊 `:h_codex:` `:m_gpt:` `:think_high:` ✅
-- Liv on a native Llama fallback with thinking off, waiting on a go → 🦋 `:m_llama:` `:think_off:` ❓
+- Max on GPT via Codex at high thinking, done → ✅ 🦊 `:h_codex:` `:m_gpt:` `:think_high:`
+- Liv on a native Llama fallback with thinking off, waiting on a go → ❓ 🦋 `:m_llama:` `:think_off:`
 
 Carve-outs — channels that get no strip — live in the surface spec.
 
 ## Changelog
 
-- **2026-08-17** — RCR 2026-08-17-01: strip became append-only with status last and absence-means-active; 🔄 restricted to long-running turns via the kickoff note; fault reporting became journal-only.
+- **2026-08-17** — RCR 2026-08-17-01/-02: status first, re-laid by a multi-account adapter; absence means active; 🔄 restricted to long runs via the kickoff note; faults journal-only.
 - **2026-08-15** — RCR 2026-08-15-01: adapter named the strip's writer everywhere, ✅'s two triggers explicit, `## 🗓️ Scheduled` and `## Run` added to the closing headers.
 - **2026-08-14** — Adapter got sole ownership of the strip, ✅ became the human's, re-lay failures route to a reviewed journal, the contract became right tiles in canonical order.
 - **2026-08-08** — Added thinking provenance after each model tile (`off`→`auto`), resolved from the active session, omitted when unknown.
