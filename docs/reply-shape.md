@@ -16,7 +16,7 @@ One header is always earned: the closing turn header, even on a one-line answer.
 
 **Only the human creates roots.** Collect sub-agent and multi-model work into the existing thread. The exception is an approved **spin-out**: create its root and begin work that turn.
 
-**The first agent post in a work thread is one short `Goal:` line.** Put detail in replies that turn. Lay the root strip before the first substantive reply. One independently closeable item gets one root; a root without worked replies is only an announcement.
+**The first agent post in a work thread is one short `Goal:` line.** Put detail in replies that turn. One independently closeable item gets one root; a root without worked replies is only an announcement.
 
 An explicit @mention always gets a response; when acknowledgment is enough, a reaction is the whole turn. Surface guest and trigger rules may narrow this.
 

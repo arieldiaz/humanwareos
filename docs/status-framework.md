@@ -1,6 +1,6 @@
 # Status framework
 
-The shared status taxonomy for Humanware OS and any instance built on it. Every item is in exactly one lifecycle state. Agents (Liv 🦋 / Max 🦊) signal it in the run strip on the human's thread root.
+The shared status taxonomy for Humanware OS and any instance built on it. Every item is in exactly one lifecycle state. The surface adapter signals it with a single status tile on the human's thread root; who ran what, on which model, is read from the posts themselves.
 
 Budget: 1,800 words. Over it, consolidate — do not extend. Counted in words because these files are not hard-wrapped.
 
@@ -29,9 +29,9 @@ There are four *phases*, and the phase where the ball is in the human's court ha
 
 ## One vocabulary, every surface
 
-**These are the same glyphs that close every chat message** — `## ❓ Clarify`, `## ✋ Act`, `## 🗓️ Scheduled`, or the close-out's `## Run`, which is ✅'s header — same meaning on the root strip and at the foot of the reply. This file owns the semantics; each surface spec owns rendering.
+**These are the same glyphs that close every chat message** — `## ❓ Clarify`, `## ✋ Act`, `## 🗓️ Scheduled`, or the close-out's `## Run`, which is ✅'s header — same meaning on the root tile and at the foot of the reply. This file owns the semantics; each surface spec owns rendering.
 
-So a turn's closing header and the strip transition are one decision, not two, and they can never disagree: when a reply ends in `## ✋ Act`, the strip's status slot becomes ✋ in the same turn. 🔄 is the only state that is never a header — it means the agent hasn't stopped yet.
+So a turn's closing header and the root-tile transition are one decision, not two, and they can never disagree: when a reply ends in `## ✋ Act`, the root tile becomes ✋ in the same turn. 🔄 is the only state that is never a header — it means the agent hasn't stopped yet.
 
 **The header is the recommendation.** Naming which state the turn ended in is the whole point: the human should know from the header alone whether they owe an answer or have to go do something — before reading a word under it.
 
@@ -49,54 +49,46 @@ So a turn's closing header and the strip transition are one decision, not two, a
 
 Any Clarify may draw a question back instead of a "go." That is expected and needs no invitation. This is a two-actor handoff: the state always makes clear which actor owns the next move.
 
-## Pickup & who acted
+## Who acted
 
-The agent's **identity reaction** (🦋 Liv / 🦊 Max) is the "I've got it" signal — there's no separate 👀. Combine identity with state to read who did what:
+Agent identity is not a root tile: the reply's author is the agent. When more than one actor shares a thread, an action or next-step line is prefixed with its owner's glyph — 🦋 Liv, 🦊 Max, or 🙋 the human. A single-agent thread stays unprefixed.
 
-- 🦋✅ = Liv done · 🦊✅ = Max done
-- 🦋🗓️ = Liv scheduled a follow-up · 🦊❓ = Max is waiting on an answer or a go
+## The root status tile
 
-The same glyphs mark ownership inline: when more than one actor shares a thread, an action or next-step line is prefixed with its owner — 🦋, 🦊, or 🙋 for the human. A single-agent thread stays unprefixed.
+The human's root message carries **exactly one adapter-held tile: the thread's lifecycle status** — zero or one. One state for the thread, not per agent: nothing while on the agent; one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` when a turn stops, matching the closing header; 🔄 while a long turn runs. Nothing else goes on the root: model, harness, and thinking change mid-thread, and the author is already on every reply, so a root copy of provenance is wrong by construction.
 
-## The run strip
+### The per-message run signature
 
-Before an agent's first visible response in a thread, the surface adapter lays the run strip on the human's root message: the durable thread-level ownership and lifecycle record. A per-message reply signature covers an individual message.
+**Every visible agent post ends with the run signature, appended by the surface adapter**: the runtime tile, then `model → harness → thinking`. Provenance lives where it changes — a mid-thread model or thinking switch simply shows on the posts where it happened, and old signatures remain historical truth.
 
-**The tiles, and the order they are laid in:**
-
-1. **Lifecycle status — first, zero or one.** One state for the thread, not per agent: nothing while on the agent; one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` when a turn stops, matching the closing header; 🔄 while a long turn runs. It sits first: it is the tile the human scans for.
-
-2. **One provenance group per agent, in `agent → harness → model → thinking` order**, agents ordered by first involvement in the thread:
-- **Agent:** `:butterfly:` for Liv, `:fox_face:` for Max.
-- **Harness:** the delivering harness tile. Omitted for native local models, which shortens that agent's provenance group.
-- **Model:** the resolved session model tile, read off the runtime line and not the config default — a thread stays on the model it started with even after a pin flip.
+- **Harness:** the delivering harness tile. Omitted for native local models, which shortens the signature.
+- **Model:** the resolved session model tile, read off the runtime and not the config default.
 - **Thinking:** the resolved active-session reasoning level, normalized to `off`, `low`, `medium`, `high`, `max`, or `auto`. `auto` means the provider/runtime chooses. If the adapter cannot prove the effective value, it omits the tile and logs `thinking_unknown`; it never guesses from model family or raw token budget.
 
-Multiple agents, models, and thinking levels in one thread are fine — the strip grows by complete provenance groups. Two agents reads `status · liv harness model thinking · max harness model thinking`.
-
-Thinking is provenance, not lifecycle. If it changes mid-thread, replace that agent's root thinking tile before the next reply; old per-message signatures remain historical truth. The levels are shared across surfaces; each surface owns its render adapter.
-
-Which glyph maps to which model or harness is a runtime lookup owned by the instance, not a rule this spec fixes.
+Which glyph maps to which model or harness is a runtime lookup owned by the instance, not a rule this spec fixes. Agents never type the signature themselves — the adapter appends it, and a hand-typed copy duplicates it.
 
 ### Transitions
 
-**The strip is written by the surface adapter; agents never write reactions themselves.** The agent ends its turn in the right state — that is what the closing header is — and the adapter derives the strip from it.
+**The tile is written by the surface adapter; agents never write reactions themselves.** The agent ends its turn in the right state — that is what the closing header is — and the adapter derives the tile from it. With one tile there is no order contract and nothing to re-lay: the adapter sets, swaps, or removes the status tile, and that is the whole write surface.
 
-**The adapter re-lays the strip to canonical order — status first — on any send that finds it wrong; a canonical strip is a strict no-op.** Slack and Buzz order reactions by first-added time and only the account that added a reaction can remove it, so the adapter holds every agent's account and moves each tile with its own token: remove every agent-held tile, re-add in canonical sequence, verify once. Only a human-held tile is immovable — never removed, never co-reacted, excluded from the order contract; re-laid tiles land after it, which for a human ✅ still reads status-first. Non-strip reactions are never touched, a shared tile renders once, and changed provenance replaces only the changed tile.
-
-**When a write fails the adapter journals the fault for scheduled review — never a post in the thread.** The journal and its digest are the monitor; a strip problem is cosmetic and must not cost the human a read. An unreported failure is how an agent believes it set a state it never set, so every fault and recovery is journaled.
+**A tile a human holds is never removed and never co-reacted**, and a human-held lifecycle tile owns the state outright — the adapter adds nothing beside it. Non-tile reactions are never touched.
 
 **✅ is the human's decision** — their word in the thread or their own ✅ on the root. The word triggers the close-out and the adapter renders the tile; never ask for the reaction when the word was given.
 
-Examples:
-- Max on Opus via Claude Code, working an ordinary turn → 🦊 `:h_cc:` `:m_opus:` (no status tile)
-- Max on GPT via Codex at high thinking, done → ✅ 🦊 `:h_codex:` `:m_gpt:` `:think_high:`
-- Liv on a native Llama fallback with thinking off, waiting on a go → ❓ 🦋 `:m_llama:` `:think_off:`
+**When a write fails the adapter journals the fault for scheduled review — never a post in the thread.** The journal and its digest are the monitor; a tile problem is cosmetic and must not cost the human a read. An unreported failure is how an agent believes it set a state it never set, so every fault and recovery is journaled.
 
-Carve-outs — channels that get no strip — live in the surface spec.
+**Cleanup is forward-only.** Roots from the retired provenance-strip era keep their old tiles until the thread sees another send, at which point the adapter removes its own legacy tiles; dormant threads stay as they are.
+
+Examples:
+- Ordinary working turn → root has no tile; the reply ends `:lobster:` `:m_opus:` `:h_cc:` `:think_off:`
+- Waiting on a go → root ❓; the asking post carries its own signature
+- Long run → root 🔄 from the kickoff note, swapped for the closing state when the turn stops
+
+Carve-outs — channels that get neither tile nor signature — live in the surface spec.
 
 ## Changelog
 
+- **2026-08-18** — RCR 2026-08-18-01: the root shrank to the status tile alone; provenance moved to the per-message run signature; identity tiles and combined readings retired; cleanup forward-only.
 - **2026-08-17** — RCR 2026-08-17-01/-02: status first, re-laid by a multi-account adapter; absence means active; 🔄 restricted to long runs via the kickoff note; faults journal-only.
 - **2026-08-15** — RCR 2026-08-15-01: adapter named the strip's writer everywhere, ✅'s two triggers explicit, `## 🗓️ Scheduled` and `## Run` added to the closing headers.
 - **2026-08-14** — Adapter got sole ownership of the strip, ✅ became the human's, re-lay failures route to a reviewed journal, the contract became right tiles in canonical order.
