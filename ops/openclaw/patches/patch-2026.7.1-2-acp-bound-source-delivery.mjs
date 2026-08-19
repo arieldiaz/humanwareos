@@ -18,7 +18,8 @@ const candidates = fs
   .filter((name) => /^dispatch-acp-.*\.js$/.test(name))
   .map((name) => path.join(distDir, name));
 
-const marker = "arielosStaticBindingPrefix";
+const marker = "arielosProjectedFinalGuidance";
+const staticMarker = "arielosStaticBindingPrefix";
 const legacyMarker = "arielosBoundChannelTurn";
 const sessionAnchor = `\tconst canonicalSessionKey = acpResolution.sessionKey;\n\tconst acpAgentId = resolveAgentIdFromSessionKey(canonicalSessionKey);`;
 const legacySessionReplacement = `\tconst canonicalSessionKey = acpResolution.sessionKey;\n\tconst acpAgentId = resolveAgentIdFromSessionKey(canonicalSessionKey);\n\tconst arielosBoundChannelTurn = params.sourceReplyDeliveryMode === "message_tool_only" && params.ctx.InboundEventKind === "user_request" && await hasBoundConversationForSession({\n\t\tcfg: params.cfg,\n\t\tsessionKey: canonicalSessionKey,\n\t\tchannelRaw: params.ctx.OriginatingChannel ?? params.ctx.Surface ?? params.ctx.Provider,\n\t\taccountIdRaw: params.ctx.AccountId\n\t});\n\tconst arielosAcpSourceReplyDeliveryMode = arielosBoundChannelTurn ? "automatic" : params.sourceReplyDeliveryMode;`;
@@ -27,6 +28,23 @@ const suppressAnchor = `\t\tsuppressUserDelivery: params.suppressUserDelivery,`;
 const suppressReplacement = `\t\tsuppressUserDelivery: arielosBoundChannelTurn ? false : params.suppressUserDelivery,`;
 const promptAnchor = `\t\t\t\tsourceReplyDeliveryMode: params.sourceReplyDeliveryMode`;
 const promptReplacement = `\t\t\t\tsourceReplyDeliveryMode: arielosAcpSourceReplyDeliveryMode`;
+const turnTextAnchor = `function resolveAcpTurnText(params) {\n\tif (params.sourceReplyDeliveryMode !== "message_tool_only") return params.promptText;`;
+const turnTextReplacement = `function resolveAcpTurnText(params) {\n\tif (params.arielosProjectedFinal) {\n\t\tconst arielosProjectedFinalGuidance = prefixSystemMessage([\n\t\t\t"Source channel delivery is automatic for this bound ACP turn.",\n\t\t\t"Return only the polished user-visible reply in your final assistant text.",\n\t\t\t"Do not call message(action=send) or any CLI delivery fallback.",\n\t\t\t"Do not include progress narration, delivery tests, or internal work notes.",\n\t\t\t"OpenClaw posts the final assistant text to the source channel after the turn completes."\n\t\t].join(" "));\n\t\treturn params.promptText ? \`\${arielosProjectedFinalGuidance}\\n\\n\${params.promptText}\` : arielosProjectedFinalGuidance;\n\t}\n\tif (params.sourceReplyDeliveryMode !== "message_tool_only") return params.promptText;`;
+const turnCallAnchor = `\t\t\ttext: resolveAcpTurnText({\n\t\t\t\tpromptText: turnPromptText,\n\t\t\t\tsourceReplyDeliveryMode: arielosAcpSourceReplyDeliveryMode\n\t\t\t}),`;
+const turnCallReplacement = `\t\t\ttext: resolveAcpTurnText({\n\t\t\t\tpromptText: turnPromptText,\n\t\t\t\tsourceReplyDeliveryMode: arielosAcpSourceReplyDeliveryMode,\n\t\t\t\tarielosProjectedFinal: arielosBoundChannelTurn\n\t\t\t}),`;
+
+function addProjectedFinalGuidance(source, file) {
+  for (const [before, after, label] of [
+    [turnTextAnchor, turnTextReplacement, "projected-final prompt guidance"],
+    [turnCallAnchor, turnCallReplacement, "projected-final prompt flag"],
+  ]) {
+    if (!source.includes(before)) {
+      throw new Error(`${label} anchor missing in ${file}; review the installed OpenClaw shape before patching.`);
+    }
+    source = source.replace(before, after);
+  }
+  return source;
+}
 
 let patched = 0;
 let alreadyPatched = 0;
@@ -37,11 +55,18 @@ for (const file of candidates) {
     alreadyPatched += 1;
     continue;
   }
+  if (source.includes(staticMarker)) {
+    source = addProjectedFinalGuidance(source, file);
+    fs.writeFileSync(file, source);
+    patched += 1;
+    continue;
+  }
   if (source.includes(legacyMarker)) {
     if (!source.includes(legacySessionReplacement)) {
       throw new Error(`legacy bound conversation decision shape changed in ${file}; review the installed OpenClaw shape before patching.`);
     }
     source = source.replace(legacySessionReplacement, sessionReplacement);
+    source = addProjectedFinalGuidance(source, file);
     fs.writeFileSync(file, source);
     patched += 1;
     continue;
@@ -56,6 +81,7 @@ for (const file of candidates) {
     }
     source = source.replace(before, after);
   }
+  source = addProjectedFinalGuidance(source, file);
   fs.writeFileSync(file, source);
   patched += 1;
 }
