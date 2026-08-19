@@ -8,14 +8,21 @@ import { fileURLToPath } from "node:url";
 
 const patchPath = fileURLToPath(new URL("./patch-2026.7.1-2-acp-bound-source-delivery.mjs", import.meta.url));
 
-const unpatchedFixture = `async function tryDispatchAcpReply(params) {
+const unpatchedFixture = `function resolveAcpTurnText(params) {
+\tif (params.sourceReplyDeliveryMode !== "message_tool_only") return params.promptText;
+\treturn params.promptText;
+}
+async function tryDispatchAcpReply(params) {
 \tconst canonicalSessionKey = acpResolution.sessionKey;
 \tconst acpAgentId = resolveAgentIdFromSessionKey(canonicalSessionKey);
 \tconst delivery = createAcpDispatchDeliveryCoordinator({
 \t\tsuppressUserDelivery: params.suppressUserDelivery,
 \t});
-\treturn resolveAcpTurnText({
+\treturn acpManager.runTurn({
+\t\t\ttext: resolveAcpTurnText({
+\t\t\t\tpromptText: turnPromptText,
 \t\t\t\tsourceReplyDeliveryMode: params.sourceReplyDeliveryMode
+\t\t\t}),
 \t});
 }`;
 
@@ -50,6 +57,10 @@ test("static ACP binding session keys bypass message-tool-only suppression", () 
   assert.match(patched, /canonicalSessionKey\.startsWith\(arielosStaticBindingPrefix\) \|\| await hasBoundConversationForSession/);
   assert.match(patched, /suppressUserDelivery: arielosBoundChannelTurn \? false : params\.suppressUserDelivery/);
   assert.match(patched, /sourceReplyDeliveryMode: arielosAcpSourceReplyDeliveryMode/);
+  assert.match(patched, /arielosProjectedFinal: arielosBoundChannelTurn/);
+  assert.match(patched, /Source channel delivery is automatic for this bound ACP turn/);
+  assert.match(patched, /Do not call message\(action=send\) or any CLI delivery fallback/);
+  assert.match(patched, /Do not include progress narration, delivery tests, or internal work notes/);
 });
 
 test("patch is idempotent", () => {
@@ -62,4 +73,14 @@ test("database-only legacy patch upgrades to static binding recognition", () => 
   const patched = runPatch(legacyFixture);
   assert.match(patched, /arielosStaticBindingPrefix/);
   assert.doesNotMatch(patched, /accountIdRaw: params\.ctx\.AccountId/);
+  assert.match(patched, /arielosProjectedFinalGuidance/);
+});
+
+test("current static-binding patch upgrades with the projected-final contract", () => {
+  const staticOnly = runPatch(unpatchedFixture)
+    .replace(/\tif \(params\.arielosProjectedFinal\) \{[\s\S]*?\n\t\}\n\tif \(params\.sourceReplyDeliveryMode/, "\tif (params.sourceReplyDeliveryMode")
+    .replace(",\n\t\t\t\tarielosProjectedFinal: arielosBoundChannelTurn", "");
+  const upgraded = runPatch(staticOnly);
+  assert.match(upgraded, /arielosProjectedFinalGuidance/);
+  assert.match(upgraded, /arielosProjectedFinal: arielosBoundChannelTurn/);
 });
