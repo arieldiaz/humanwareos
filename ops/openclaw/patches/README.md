@@ -76,6 +76,12 @@ all landed). The delivery-evidence flag it forwards is already computed
 mode-independently; the patch removes only the mode gate on the
 notification. Same rules: idempotent, fails closed, restart after applying.
 
+## 2026.7.1-2 ACP bound source delivery
+
+`patch-2026.7.1-2-acp-bound-source-delivery.mjs` restores visible replies for configured ACP channel bindings when the source conversation resolves to `message_tool_only`. External ACP harnesses do not receive OpenClaw's core `message` tool, so stock 2026.7.1-2 records the completed assistant text in the ACP transcript, suppresses its projected output, and dispatches zero Slack reply payloads. The user sees typing and then nothing.
+
+The patch changes only real user requests whose ACP session is already bound to the source conversation. Those turns use automatic ACP projection; other ACP sessions keep their existing source-delivery policy. The script is idempotent, fails closed when the installed bundle shape changes, and requires a gateway restart after application.
+
 ## 2026.7.1 prompt boilerplate override
 
 `patch-2026.7.1-prompt-boilerplate.mjs` rewrites the two per-turn prompt
