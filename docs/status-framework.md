@@ -29,7 +29,7 @@ There are four *phases*, and the phase where the ball is in the human's court ha
 
 ## One vocabulary, every surface
 
-**These are the same glyphs that close every chat message** — `## ❓ Clarify`, `## ✋ Act`, `## 🗓️ Scheduled`, or the close-out's `## Run`, which is ✅'s header — same meaning on the root tile and at the foot of the reply. This file owns the semantics; each surface spec owns rendering.
+**These are the same glyphs that close every chat message** — `## ❓ Clarify`, `## ✋ Act`, `## 🗓️ Scheduled`, or the close-out's `## Session Closed`, which is ✅'s header — same meaning on the root tile and at the foot of the reply. This file owns the semantics; each surface spec owns rendering.
 
 So a turn's closing header and the root-tile transition are one decision, not two, and they can never disagree: when a reply ends in `## ✋ Act`, the root tile becomes ✋ in the same turn. 🔄 is the only state that is never a header — it means the agent hasn't stopped yet.
 
@@ -90,7 +90,7 @@ Carve-outs — channels that get neither tile nor signature — live in the surf
 
 - **2026-08-18** — RCR 2026-08-18-01: the root shrank to the status tile alone; provenance moved to the per-message run signature; identity tiles and combined readings retired; cleanup forward-only.
 - **2026-08-17** — RCR 2026-08-17-01/-02: status first, re-laid by a multi-account adapter; absence means active; 🔄 restricted to long runs via the kickoff note; faults journal-only.
-- **2026-08-15** — RCR 2026-08-15-01: adapter named the strip's writer everywhere, ✅'s two triggers explicit, `## 🗓️ Scheduled` and `## Run` added to the closing headers.
+- **2026-08-15** — RCR 2026-08-15-01: adapter named the strip's writer everywhere, ✅'s two triggers explicit, and the scheduled and close-out headers added.
 - **2026-08-14** — Adapter got sole ownership of the strip, ✅ became the human's, re-lay failures route to a reviewed journal, the contract became right tiles in canonical order.
 - **2026-08-08** — Added thinking provenance after each model tile (`off`→`auto`), resolved from the active session, omitted when unknown.
 - **2026-07-23/28** — Strip moved to the thread root; "blocked" split into states naming what the human owes; `:no_entry_sign:`, ▶️, 👀, 📌, and the handshakes retired; states and closing headers became one vocabulary.

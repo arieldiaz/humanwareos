@@ -38,6 +38,6 @@ A structured reply has three H2 sections; short prose keeps only the last.
 
 ## Session close-out
 
-After the human approves closure: a one-line closed statement, then the detail as its own reply — next step, then `## Run` as four bullets: elapsed · turns · model; words and tokens in/out · context peak (% of window when known); API cached and uncached · `Actual: $0 on sub`; one efficiency observation. The instance's thread-stats tool generates these — never hand-write them. It ends `## Next step` + `## Run`, never Clarify or Act.
+After the human approves closure, send one final message: `## Session Closed`, then four measured bullets — elapsed · turns · model; words and tokens in/out · context peak (% of window when known); API cached and uncached · `Actual: $0 on sub`; one efficiency observation. The instance's thread-stats tool generates it — never hand-write the numbers. No separate announcement or next-step section.
 
 Each summary is saved as markdown at the instance-defined path — chat expires; the file is the record.
