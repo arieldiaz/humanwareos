@@ -12,15 +12,17 @@ import path from "node:path";
 // Keep every other ACP mode unchanged, including background and parent-stream
 // sessions where suppression is intentional.
 
-const distDir = "/opt/homebrew/lib/node_modules/openclaw/dist";
+const distDir = process.env.OPENCLAW_DIST_DIR ?? "/opt/homebrew/lib/node_modules/openclaw/dist";
 const candidates = fs
   .readdirSync(distDir)
   .filter((name) => /^dispatch-acp-.*\.js$/.test(name))
   .map((name) => path.join(distDir, name));
 
-const marker = "arielosBoundChannelTurn";
+const marker = "arielosStaticBindingPrefix";
+const legacyMarker = "arielosBoundChannelTurn";
 const sessionAnchor = `\tconst canonicalSessionKey = acpResolution.sessionKey;\n\tconst acpAgentId = resolveAgentIdFromSessionKey(canonicalSessionKey);`;
-const sessionReplacement = `\tconst canonicalSessionKey = acpResolution.sessionKey;\n\tconst acpAgentId = resolveAgentIdFromSessionKey(canonicalSessionKey);\n\tconst arielosBoundChannelTurn = params.sourceReplyDeliveryMode === "message_tool_only" && params.ctx.InboundEventKind === "user_request" && await hasBoundConversationForSession({\n\t\tcfg: params.cfg,\n\t\tsessionKey: canonicalSessionKey,\n\t\tchannelRaw: params.ctx.OriginatingChannel ?? params.ctx.Surface ?? params.ctx.Provider,\n\t\taccountIdRaw: params.ctx.AccountId\n\t});\n\tconst arielosAcpSourceReplyDeliveryMode = arielosBoundChannelTurn ? "automatic" : params.sourceReplyDeliveryMode;`;
+const legacySessionReplacement = `\tconst canonicalSessionKey = acpResolution.sessionKey;\n\tconst acpAgentId = resolveAgentIdFromSessionKey(canonicalSessionKey);\n\tconst arielosBoundChannelTurn = params.sourceReplyDeliveryMode === "message_tool_only" && params.ctx.InboundEventKind === "user_request" && await hasBoundConversationForSession({\n\t\tcfg: params.cfg,\n\t\tsessionKey: canonicalSessionKey,\n\t\tchannelRaw: params.ctx.OriginatingChannel ?? params.ctx.Surface ?? params.ctx.Provider,\n\t\taccountIdRaw: params.ctx.AccountId\n\t});\n\tconst arielosAcpSourceReplyDeliveryMode = arielosBoundChannelTurn ? "automatic" : params.sourceReplyDeliveryMode;`;
+const sessionReplacement = `\tconst canonicalSessionKey = acpResolution.sessionKey;\n\tconst acpAgentId = resolveAgentIdFromSessionKey(canonicalSessionKey);\n\tconst arielosBoundChannel = normalizeOptionalLowercaseString(params.ctx.OriginatingChannel ?? params.ctx.Surface ?? params.ctx.Provider) ?? "";\n\tconst arielosBoundAccountId = normalizeOptionalLowercaseString(params.ctx.AccountId) ?? normalizeOptionalLowercaseString(params.cfg.channels?.[arielosBoundChannel]?.defaultAccount) ?? "default";\n\tconst arielosStaticBindingPrefix = \`agent:\${acpAgentId}:acp:binding:\${arielosBoundChannel}:\${arielosBoundAccountId}:\`;\n\tconst arielosBoundChannelTurn = params.sourceReplyDeliveryMode === "message_tool_only" && params.ctx.InboundEventKind === "user_request" && (canonicalSessionKey.startsWith(arielosStaticBindingPrefix) || await hasBoundConversationForSession({\n\t\tcfg: params.cfg,\n\t\tsessionKey: canonicalSessionKey,\n\t\tchannelRaw: arielosBoundChannel,\n\t\taccountIdRaw: arielosBoundAccountId\n\t}));\n\tconst arielosAcpSourceReplyDeliveryMode = arielosBoundChannelTurn ? "automatic" : params.sourceReplyDeliveryMode;`;
 const suppressAnchor = `\t\tsuppressUserDelivery: params.suppressUserDelivery,`;
 const suppressReplacement = `\t\tsuppressUserDelivery: arielosBoundChannelTurn ? false : params.suppressUserDelivery,`;
 const promptAnchor = `\t\t\t\tsourceReplyDeliveryMode: params.sourceReplyDeliveryMode`;
@@ -33,6 +35,15 @@ for (const file of candidates) {
   if (!source.includes("async function tryDispatchAcpReply")) continue;
   if (source.includes(marker)) {
     alreadyPatched += 1;
+    continue;
+  }
+  if (source.includes(legacyMarker)) {
+    if (!source.includes(legacySessionReplacement)) {
+      throw new Error(`legacy bound conversation decision shape changed in ${file}; review the installed OpenClaw shape before patching.`);
+    }
+    source = source.replace(legacySessionReplacement, sessionReplacement);
+    fs.writeFileSync(file, source);
+    patched += 1;
     continue;
   }
   for (const [before, after, label] of [

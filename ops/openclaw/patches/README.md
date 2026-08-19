@@ -80,7 +80,7 @@ notification. Same rules: idempotent, fails closed, restart after applying.
 
 `patch-2026.7.1-2-acp-bound-source-delivery.mjs` restores visible replies for configured ACP channel bindings when the source conversation resolves to `message_tool_only`. External ACP harnesses do not receive OpenClaw's core `message` tool, so stock 2026.7.1-2 records the completed assistant text in the ACP transcript, suppresses its projected output, and dispatches zero Slack reply payloads. The user sees typing and then nothing.
 
-The patch changes only real user requests whose ACP session is already bound to the source conversation. Those turns use automatic ACP projection; other ACP sessions keep their existing source-delivery policy. The script is idempotent, fails closed when the installed bundle shape changes, and requires a gateway restart after application.
+The patch changes only real user requests whose ACP session is already bound to the source conversation. Static `bindings` entries are recognized from their canonical `agent:<id>:acp:binding:<channel>:<account>:...` session key; the runtime conversation-binding table can legitimately be empty for those routes. Dynamic conversation bindings remain supported through the table lookup. Those turns use automatic ACP projection; other ACP sessions keep their existing source-delivery policy. The script is idempotent, upgrades its first database-only patch shape, fails closed when the installed bundle shape changes, and requires a gateway restart after application.
 
 ## 2026.7.1 prompt boilerplate override
 
