@@ -10,8 +10,6 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 
 **Write standard Markdown** — `**bold**`, `## Heading`, `- item`, `[label](url)`. Never hand-write Slack mrkdwn (`*bold*`, `<url|label>`); it gets double-processed by any gateway that converts on the way out.
 
-**A gateway that injects a `response_format` block instructing Slack mrkdwn is wrong for this framework and loses.** It arrives per-turn, so it wins by proximity unless explicitly overridden — which is what this paragraph does. This spec is Layer 2; an injected runtime block is harness output. Symptom when it wins: pseudo-headers made of `*bold*` lines and no real header blocks.
-
 **Rich output degrades silently.** Where the gateway upgrades Markdown to Block Kit, `#`/`##` become real header blocks and `- ` becomes a native list — but that conversion falls back to flat mrkdwn (headings gone, lists rendered as literal `•`) when the send is multi-chunk, carries media, or exceeds the converter's block or character limits. A long structured reply therefore renders as junk. Content needing that much room belongs in a repo doc or a canvas.
 
 **Budget against 4,000 characters.** Gateways chunk well before a converter's own limit, and every degradation fires at once when they do — including a numbered list orphaned from the `## ` header it belonged to. Two deliberately-scoped messages beat one the gateway splits mid-list. Attach media in a separate message from a formatted one, or the formatting dies with it.
@@ -50,7 +48,7 @@ Slack renders a raw path as dead text and an upload as a permanent duplicate in 
 - **They ask for it inline → inline.** Their request beats both defaults.
 - **Lives in an external tool → link the object, never name it.** A Notion page, ticket, or doc referenced by bare title or id is not reachable. Give the URL. When such a page is mirrored into the repo, the copy carries `source_url` in its frontmatter so the original stays one click away.
 
-**A canvas is a UX affordance, not a record — the repo file is the record.** Thread canvases are ephemeral and belong to the thread that prompted them; when that thread's strip goes ✅, clean them up in the same turn. A standing canvas is kept only when the human has asked for that specific doc. A channel's native tab canvas is created on first render and edited in place after. Never edit a canvas by hand — the next render overwrites it.
+**A canvas is a UX affordance, not a record — the repo file is the record.** Thread canvases are ephemeral and belong to the thread that prompted them; the close tool deletes them when the thread closes, so a canvas outliving its thread is a fault to report, not a chore to remember. A standing canvas is kept only when the human has asked for that specific doc. A channel's native tab canvas is created on first render and edited in place after. Never edit a canvas by hand — the next render overwrites it. A canvas title names its subject, never its channel — the title is permanent and channels get renamed.
 
 ## Precedence
 
