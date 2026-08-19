@@ -31,7 +31,7 @@ There are four *phases*, and the phase where the ball is in the human's court ha
 
 **These are the same glyphs that close every chat message** — `## ❓ Clarify`, `## ✋ Act`, `## 🗓️ Scheduled`, or the close-out's `## Session Closed`, which is ✅'s header — same meaning on the root tile and at the foot of the reply. This file owns the semantics; each surface spec owns rendering.
 
-So a turn's closing header and the root-tile transition are one decision, not two, and they can never disagree: when a reply ends in `## ✋ Act`, the root tile becomes ✋ in the same turn. 🔄 is the only state that is never a header — it means the agent hasn't stopped yet.
+So a stopped phase's closing header and the root-tile transition are one decision, not two, and they can never disagree: when a reply ends in `## ✋ Act`, the root tile becomes ✋ in the same turn. 🔄 is the only state that is never a header — it means the agent hasn't stopped yet. In a multi-agent phase, individual Brainstorm contributions and interim Challenge turns are non-terminal and never write lifecycle state; the phase produces one human-facing transition when it stops.
 
 **The header is the recommendation.** Naming which state the turn ended in is the whole point: the human should know from the header alone whether they owe an answer or have to go do something — before reading a word under it.
 
@@ -88,6 +88,7 @@ Carve-outs — channels that get neither tile nor signature — live in the surf
 
 ## Changelog
 
+- **2026-08-19** — RCR 2026-08-19-04: multi-agent contributions became non-terminal; each collaboration phase now produces one lifecycle handoff when it stops.
 - **2026-08-18** — RCR 2026-08-18-01: the root shrank to the status tile alone; provenance moved to the per-message run signature; identity tiles and combined readings retired; cleanup forward-only.
 - **2026-08-17** — RCR 2026-08-17-01/-02: status first, re-laid by a multi-account adapter; absence means active; 🔄 restricted to long runs via the kickoff note; faults journal-only.
 - **2026-08-15** — RCR 2026-08-15-01: adapter named the strip's writer everywhere, ✅'s two triggers explicit, and the scheduled and close-out headers added.

@@ -8,7 +8,7 @@ Budget: 500 words.
 
 Headers and bullets when the human must act on several things or compare options; otherwise paragraphs. No consultant theater: extra headings, labeled paragraphs, actionless action sections, repeated conclusions. When in doubt, write prose and stop sooner.
 
-The closing turn header is always earned, even on a one-liner — except the goal post, whose header moves to the turn's last message.
+A stopped phase earns one closing header; the goal post's moves to the turn's last message. Brainstorm contributions and interim Challenge turns do not; the collaboration contract makes one Ariel-facing handoff.
 
 **A turn expected to exceed five minutes opens with a one-line kickoff note**, headerless — it signals 🔄 (`docs/status-framework.md`). Shorter turns send no interim messages.
 
