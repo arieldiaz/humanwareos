@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {spawnSync} from "node:child_process";
+import {mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {fileURLToPath} from "node:url";
 
 import {applyRuntimeProfiles} from "./render-openclaw-runtime-profiles.mjs";
 
@@ -45,4 +50,24 @@ test("rejects a disabled selected profile", () => {
   const invalid = structuredClone(catalog);
   invalid.profiles.cursor.enabled = false;
   assert.throws(() => applyRuntimeProfiles(source, invalid), /selected disabled profile cursor/);
+});
+
+test("runs through an immutable-runtime symlink path", () => {
+  const directory = mkdtempSync(join(tmpdir(), "runtime-profile-renderer-"));
+  try {
+    const script = fileURLToPath(new URL("./render-openclaw-runtime-profiles.mjs", import.meta.url));
+    const linkedScript = join(directory, "renderer.mjs");
+    const sourcePath = join(directory, "source.json");
+    const profilesPath = join(directory, "profiles.json");
+    const outputPath = join(directory, "rendered.json");
+    symlinkSync(script, linkedScript);
+    writeFileSync(sourcePath, JSON.stringify(source));
+    writeFileSync(profilesPath, JSON.stringify(catalog));
+
+    const result = spawnSync(process.execPath, [linkedScript, sourcePath, profilesPath, outputPath], {encoding: "utf8"});
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(readFileSync(outputPath, "utf8")).agents.list[0].runtime.type, "acp");
+  } finally {
+    rmSync(directory, {recursive: true, force: true});
+  }
 });
