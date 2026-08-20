@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "defaultProfile": "native-default",
+  "agents": {
+    "liv": {
+      "defaultProfile": "native-default",
+      "allowedProfiles": ["native-default", "cursor", "codex"]
+    },
+    "max": {
+      "defaultProfile": "native-default",
+      "allowedProfiles": ["native-default", "cursor", "codex"]
+    }
+  },
+  "profiles": {
+    "native-default": {
+      "runtime": "native",
+      "harness": "openclaw",
+      "model": "openai/gpt-5.6-sol",
+      "permissions": "standard",
+      "workspace": "isolated-on-write",
+      "dataScope": "tier-2"
+    },
+    "cursor": {
+      "runtime": "acp",
+      "harness": "cursor",
+      "model": "cursor-default",
+      "permissions": "standard",
+      "workspace": "required",
+      "dataScope": "tier-2"
+    },
+    "codex": {
+      "runtime": "acp",
+      "harness": "codex",
+      "model": "gpt-5.6-sol",
+      "permissions": "standard",
+      "workspace": "required",
+      "dataScope": "tier-2"
+    }
+  }
+}
