@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.lifeos.transcribe</string>
+  <key>Label</key><string>com.humanwareos.transcribe</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/you/life-os/ops/mini/transcribe-watch.sh</string>
+    <string>/Users/you/humanwareos/ops/mini/transcribe-watch.sh</string>
   </array>
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>
@@ -19,7 +19,7 @@
   <key>ProcessType</key><string>Background</string>
   <key>LowPriorityIO</key><true/>
   <key>Nice</key><integer>10</integer>
-  <key>StandardOutPath</key><string>/Users/you/Library/Logs/lifeos-transcribe.log</string>
-  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/lifeos-transcribe.log</string>
+  <key>StandardOutPath</key><string>/Users/you/Library/Logs/humanwareos-transcribe.log</string>
+  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/humanwareos-transcribe.log</string>
 </dict>
 </plist>

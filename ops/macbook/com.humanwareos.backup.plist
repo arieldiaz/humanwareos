@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.lifeos.backup</string>
+  <key>Label</key><string>com.humanwareos.backup</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/you/life-os/ops/macbook/backup-to-mini.sh</string>
+    <string>/Users/you/humanwareos/ops/macbook/backup-to-mini.sh</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>
@@ -19,7 +19,7 @@
   <key>ProcessType</key><string>Background</string>
   <key>LowPriorityIO</key><true/>
   <key>Nice</key><integer>10</integer>
-  <key>StandardOutPath</key><string>/Users/you/Library/Logs/lifeos-backup.log</string>
-  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/lifeos-backup.log</string>
+  <key>StandardOutPath</key><string>/Users/you/Library/Logs/humanwareos-backup.log</string>
+  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/humanwareos-backup.log</string>
 </dict>
 </plist>

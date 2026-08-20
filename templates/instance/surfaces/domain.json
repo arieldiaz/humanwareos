@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "domain",
+  "enabled": false,
+  "publicOrigin": "https://humanware.example",
+  "privateOrigin": "https://os.humanware.example",
+  "deployment": {
+    "adapter": "caddy-local",
+    "networkPolicy": "private"
+  },
+  "routes": [
+    {
+      "id": "status",
+      "visibility": "private",
+      "mount": "/status",
+      "source": "framework:status",
+      "data": "data:derived/status/current.json"
+    },
+    {
+      "id": "artifacts",
+      "visibility": "private",
+      "mount": "/artifacts",
+      "source": "framework:artifacts",
+      "data": "data:artifacts"
+    }
+  ]
+}

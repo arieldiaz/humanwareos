@@ -1,20 +1,23 @@
-# The stream lives OUTSIDE this repo entirely (see STREAM.md).
-# If raw stream files ever show up in here, something is wrong —
-# this pattern is a tripwire, not an invitation.
-stream/
+# The complete data plane lives outside this repository. These are tripwires.
+/stream/
+/memory/
+/sessions/
+/workspaces/
+/artifacts/
+/imports/
+/derived/
+/cache/
 
-# ── Obsidian ─────────────────────────────────────────────────
-# Track shared vault config if you want consistent settings
-# across machines; never track per-machine workspace state.
+# Per-machine reading-surface state.
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
 .obsidian/cache
 .obsidian/plugins/*/data.json
 
-# ── Machine-local pipeline config ────────────────────────────
+# Machine-local pipeline config.
 ops/stream-paths.env
 
-# ── Secrets ──────────────────────────────────────────────────
+# Secrets.
 # Real values live in the secrets manager (infra/secrets/runbook.md;
 # Doppler by default). .env files never get committed; .env.example
 # placeholders do.
@@ -22,7 +25,7 @@ ops/stream-paths.env
 .env.*
 !.env.example
 
-# ── macOS noise ──────────────────────────────────────────────
+# macOS noise.
 .DS_Store
 
 # Harness shim: Claude Code only auto-loads a file named CLAUDE.md; keep it local, canonical rules live in AGENTS.md

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # verify-agents: prove the per-project isolation and integration health of
-# the read-only service tokens in ~/.config/life-os/doppler.env.
+# the read-only service tokens in ~/.config/humanwareos/doppler.env.
 #
 # Per token: it must read its OWN project, and must FAIL to read every
 # other project (a Doppler service token is scoped to one project+config —
@@ -12,8 +12,8 @@
 # Run after any token or project change. It must always pass.
 set -uo pipefail
 
-PREFIX="${LIFEOS_SECRETS_PREFIX:-lifeos}"
-DOPPLER_ENV_FILE="$HOME/.config/life-os/doppler.env"
+PREFIX="${HUMANWARE_SECRETS_PREFIX:-humanware}"
+DOPPLER_ENV_FILE="${HUMANWARE_TOKEN_FILE:-$HOME/.config/humanwareos/doppler.env}"
 DOPPLER_BIN="$(command -v doppler || echo /opt/homebrew/bin/doppler)"
 
 if [ ! -x "$DOPPLER_BIN" ] || [ ! -f "$DOPPLER_ENV_FILE" ]; then

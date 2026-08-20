@@ -9,7 +9,7 @@ data lives in a durable structure you own and control.
 **Shape.**
 
 - **Capture surface ≠ system of record.** The chat channel is the front door.
-  The repo (or other owned store) is the home. Never let the archive depend on
+  The external data plane is the home. Never let the archive depend on
   the chat provider's retention.
 - **Copy out of ephemeral staging immediately.** OpenClaw stages inbound
   attachments into `media/inbound/openclaw-staged-*` — a per-turn working
@@ -29,6 +29,5 @@ data lives in a durable structure you own and control.
 1. Auto-archive every inbound voice note (transcribe + copy + confirm path).
 2. Month-end rollup on the 1st.
 
-**Instance detail:** implemented in `ariel-os` at `journal/` (see its README).
-This file is the reusable template; instance-specific paths and IDs stay in the
-instance repo.
+An instance maps this pattern into its data root, normally under `stream/` and
+`memory/`; provider IDs and local paths stay in private instance configuration.

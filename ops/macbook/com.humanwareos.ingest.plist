@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.lifeos.ingest</string>
+  <key>Label</key><string>com.humanwareos.ingest</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/you/life-os/ops/macbook/ingest-watch.sh</string>
+    <string>/Users/you/humanwareos/ops/macbook/ingest-watch.sh</string>
   </array>
   <key>StartInterval</key><integer>120</integer>
   <key>RunAtLoad</key><true/>
@@ -14,7 +14,7 @@
   <key>ProcessType</key><string>Background</string>
   <key>LowPriorityIO</key><true/>
   <key>Nice</key><integer>10</integer>
-  <key>StandardOutPath</key><string>/Users/you/Library/Logs/lifeos-ingest.log</string>
-  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/lifeos-ingest.log</string>
+  <key>StandardOutPath</key><string>/Users/you/Library/Logs/humanwareos-ingest.log</string>
+  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/humanwareos-ingest.log</string>
 </dict>
 </plist>

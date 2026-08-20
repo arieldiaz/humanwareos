@@ -24,8 +24,7 @@ fi
 # the canonical stream/journal data + anything ONLY on the mini. Tune via
 # BACKUP_MINI_PATHS in stream-paths.env.
 default_paths=(
-  "$HOME/ariel-os-data"
-  "$REPO_DIR/journal"
+  "$DATA_ROOT"
   "$HOME/.config" "$HOME/.claude"
   "$HOME/Library/LaunchAgents"
 )
