@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import {readFileSync, writeFileSync} from "node:fs";
+import {readFileSync, realpathSync, writeFileSync} from "node:fs";
 import {createRequire} from "node:module";
+import {fileURLToPath} from "node:url";
 
 function fail(message) {
   throw new Error(`runtime-profiles: ${message}`);
@@ -83,7 +84,7 @@ function loadJson5(path) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   const [sourcePath, profilesPath, outputPath] = process.argv.slice(2);
   if (!sourcePath || !profilesPath || !outputPath) {
     console.error("Usage: render-openclaw-runtime-profiles.mjs SOURCE PROFILES OUTPUT");
