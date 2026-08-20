@@ -18,7 +18,7 @@ defer_if_busy macbook-backup
 
 # Regenerate the "reinstall everything" manifests before the snapshot, so the
 # backup always carries a current rebuild recipe (see docs/macbook-setup.md).
-MANIFEST_DIR="${BACKUP_MANIFEST_DIR:-$HOME/.config/lifeos-backup}"
+MANIFEST_DIR="${BACKUP_MANIFEST_DIR:-$HOME/.config/humanwareos-backup}"
 mkdir -p "$MANIFEST_DIR"
 command -v brew >/dev/null 2>&1 && brew bundle dump --force --file "$MANIFEST_DIR/Brewfile" 2>/dev/null || true
 command -v code >/dev/null 2>&1 && code --list-extensions > "$MANIFEST_DIR/vscode-extensions.txt" 2>/dev/null || true

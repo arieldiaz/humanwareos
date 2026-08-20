@@ -23,7 +23,7 @@ Whatever manager you choose, the layer must give you:
    (`doppler run -- <cmd>`). Nothing fetches the manager per request.
 4. **A tiny bootstrap tier as mode-600 files outside git.** Something has
    to unlock the manager itself. Those few credentials live in files like
-   `~/.config/life-os/doppler.env`, permissions 600, never in the repo.
+   `~/.config/humanwareos/doppler.env`, permissions 600, never in the repo.
    Full-disk encryption covers them at rest.
 5. **Names only, everywhere else.** Key *names* may appear in code, docs,
    logs, and agent replies; *values* never. A value that leaks into a
@@ -60,9 +60,9 @@ One project per trust domain, configs `dev` and `prd`:
 
 | Project | Holds | Read by |
 |---------|-------|---------|
-| `lifeos-core` | Shared infra: model API keys, DNS tokens, PATs | The app/runtime |
-| `lifeos-agents` | Shared agent-facing services (single-app era) | The app/runtime |
-| `lifeos-liv`, `lifeos-max` | Per-agent credentials (per-agent Slack/Notion) | That agent only |
+| `humanwareos-core` | Shared infra: model API keys, DNS tokens, PATs | The app/runtime |
+| `humanwareos-agents` | Shared agent-facing services (single-app era) | The app/runtime |
+| `humanwareos-liv`, `humanwareos-max` | Per-agent credentials (per-agent Slack/Notion) | That agent only |
 
 If your Doppler workplace is shared with other projects, prefix these
 (`<you>os-core`, …) — set the prefix at the top of the scripts here.
@@ -74,7 +74,7 @@ Key naming: `SCREAMING_SNAKE`, prefixed by service (`SLACK_BOT_TOKEN`,
 
 - **Local dev:** `doppler run -- <cmd>` under a personal `doppler login`.
 - **Daemons (launchd):** a hydration wrapper reads the per-project
-  read-only service tokens from `~/.config/life-os/doppler.env`, exports
+  read-only service tokens from `~/.config/humanwareos/doppler.env`, exports
   the secrets, and execs the service.
 - **Agents:** each agent's runtime resolves keys with that agent's own
   token. Cross-agent reads must fail.
@@ -85,7 +85,7 @@ Key naming: `SCREAMING_SNAKE`, prefixed by service (`SLACK_BOT_TOKEN`,
 
 - `setup-doppler.sh` — idempotent: creates the projects and issues one
   read-only `prd` service token per consumer into
-  `~/.config/life-os/doppler.env` (mode 600). Needs `doppler login`.
+  `~/.config/humanwareos/doppler.env` (mode 600). Needs `doppler login`.
 - `verify-agents.sh` — the isolation smoke test: each token must read its
   own project and fail to read the others; optional per-agent Slack/Notion
   liveness checks. Run it after any token or project change. It must

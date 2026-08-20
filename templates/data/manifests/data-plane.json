@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "layout": "humanware-data-v1",
+  "appendOnly": ["stream", "memory/events", "sessions/events", "artifacts"],
+  "mutable": ["memory/current", "strategy", "workspaces"],
+  "rebuildable": ["memory/indexes", "derived", "cache"]
+}

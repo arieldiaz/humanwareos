@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "slack",
+  "adapter": "slack",
+  "enabled": false,
+  "accounts": {
+    "liv": {
+      "botToken": {"provider": "doppler", "id": "liv/SLACK_BOT_TOKEN"},
+      "appToken": {"provider": "doppler", "id": "liv/SLACK_APP_TOKEN"}
+    },
+    "max": {
+      "botToken": {"provider": "doppler", "id": "max/SLACK_BOT_TOKEN"},
+      "appToken": {"provider": "doppler", "id": "max/SLACK_APP_TOKEN"}
+    }
+  },
+  "routing": {
+    "mode": "mentions-and-direct",
+    "threadOwner": "openclaw"
+  }
+}

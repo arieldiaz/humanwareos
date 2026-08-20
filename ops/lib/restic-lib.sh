@@ -3,21 +3,29 @@
 # using the same repo resolution, password handling, flags, and retention —
 # so a job script is just "pick a repo + a path list", nothing else.
 #
-# Password handling: the repo passphrase is NEVER stored in a file. Each
-# machine keeps it in the macOS Keychain; RESTIC_PASSWORD_COMMAND reads it at
-# run time (works unattended under launchd). Set it once per machine with:
-#   security add-generic-password -a "$USER" -s lifeos-restic -w
-# (that prompts for the passphrase; it is stored, not echoed).
+# Password handling: unattended hosts use one external mode-600 bootstrap file.
+# This avoids login-keychain prompts after reboot. Set RESTIC_PASSWORD,
+# RESTIC_PASSWORD_COMMAND, or RESTIC_PASSWORD_FILE to override the default.
 #
 # Tunables (override in stream-paths.env):
-#   RESTIC_KEYCHAIN_SERVICE  Keychain service name (default "lifeos-restic")
+#   HUMANWARE_RESTIC_PASSWORD_FILE  default external password file
 #   RESTIC_BWLIMIT           upload cap in KiB/s for remote repos ("" uncaps)
 #   RESTIC_KEEP_DAILY/WEEKLY/MONTHLY  retention for forget --prune
 
-# Resolve the passphrase from the Keychain unless the caller already set
+# Resolve the passphrase from a protected bootstrap file unless the caller set
 # RESTIC_PASSWORD / RESTIC_PASSWORD_COMMAND / RESTIC_PASSWORD_FILE.
 if [ -z "${RESTIC_PASSWORD:-}" ] && [ -z "${RESTIC_PASSWORD_COMMAND:-}" ] && [ -z "${RESTIC_PASSWORD_FILE:-}" ]; then
-  export RESTIC_PASSWORD_COMMAND="security find-generic-password -a ${USER} -s ${RESTIC_KEYCHAIN_SERVICE:-lifeos-restic} -w"
+  RESTIC_PASSWORD_FILE="${HUMANWARE_RESTIC_PASSWORD_FILE:-$HOME/.config/humanwareos/restic-password}"
+  [ -f "$RESTIC_PASSWORD_FILE" ] || {
+    echo "restic: missing password file $RESTIC_PASSWORD_FILE" >&2
+    return 1
+  }
+  mode=$(stat -f '%Lp' "$RESTIC_PASSWORD_FILE")
+  [ "$mode" = 600 ] || [ "$mode" = 400 ] || {
+    echo "restic: password file must be mode 400 or 600: $RESTIC_PASSWORD_FILE" >&2
+    return 1
+  }
+  export RESTIC_PASSWORD_FILE
 fi
 
 # restic_run <repo> <backup-paths-array-name> <tag> [extra restic backup args...]

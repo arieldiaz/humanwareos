@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://humanwareos.com/schemas/domain-surface.schema.json",
+  "title": "Humanware OS domain surface",
+  "type": "object",
+  "required": ["schemaVersion", "id", "enabled", "publicOrigin", "privateOrigin", "deployment", "routes"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "id": {"type": "string"},
+    "enabled": {"type": "boolean"},
+    "publicOrigin": {"type": "string", "format": "uri"},
+    "privateOrigin": {"type": "string", "format": "uri"},
+    "deployment": {"type": "object"},
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "visibility", "mount", "source", "data"],
+        "properties": {
+          "id": {"type": "string"},
+          "visibility": {"enum": ["public", "private"]},
+          "mount": {"type": "string", "pattern": "^/"},
+          "source": {"type": "string"},
+          "data": {"type": "string"},
+          "health": {"type": "string"}
+        }
+      }
+    }
+  }
+}

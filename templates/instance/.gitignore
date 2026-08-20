@@ -1,0 +1,8 @@
+.DS_Store
+.humanware/
+runtime/
+*.local.json
+*.local.json5
+*.env
+!.env.example
+compatibility-patches/*.applied

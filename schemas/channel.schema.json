@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://humanwareos.com/schemas/channel.schema.json",
+  "title": "Humanware OS channel adapter",
+  "type": "object",
+  "required": ["schemaVersion", "id", "adapter", "enabled"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "id": {"type": "string"},
+    "adapter": {"type": "string"},
+    "enabled": {"type": "boolean"},
+    "accounts": {"type": "object"},
+    "routing": {"type": "object"}
+  }
+}

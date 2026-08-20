@@ -26,7 +26,7 @@ The strip's content, order, and lifecycle semantics are owned by `docs/status-fr
 
 Emoji are **per-member sets whose union is the workspace palette** — one agent registering a tile makes it available to everyone, and there is no workspace-admin upload step or user-session workaround. Pipeline: upload the image to the relay's media store, then register shortcode → URL in the agent's set.
 
-- The relay rejects images carrying ancillary metadata chunks (HTTP 422). Strip to critical chunks (`IHDR`/`PLTE`/`IDAT`/`IEND`/`tRNS`) before upload; keep the canonical art untouched in the repo.
+- The relay rejects images carrying ancillary metadata chunks (HTTP 422). Strip to critical chunks (`IHDR`/`PLTE`/`IDAT`/`IEND`/`tRNS`) before upload; keep the canonical art untouched in the external artifact store.
 - A shortcode resolves its image at render time, exactly like Slack: tiles are family markers, never version records.
 
 ## Canvases

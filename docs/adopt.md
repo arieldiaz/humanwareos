@@ -1,113 +1,75 @@
 # Adopting Humanware OS
 
-Humanware OS is a framework you run, not a library you import. The framework
-stays public and generic; your context goes in a **private instance** where
-`STRATEGY.md` gets filled in, `memory/` accumulates, and your machines' real
-config lives. The installer keeps the two repositories connected so framework
-updates stay a clean merge and contributions back stay deliberate.
+Humanware OS is a versioned framework consumed by a small private instance repository. Personal memory and work live in a separate data plane. The three systems do not share a Git history or change process.
 
-## Why clone → push, not the template button
+Budget: 1,200 words. Over it, consolidate.
 
-GitHub's "Use this template" button copies the files but **severs the history**:
-your new repo starts with no ancestor in common with Humanware OS. Without a
-shared merge-base, routine framework updates become conflict storms.
+## Reference layout
 
-A GitHub *fork* keeps the history but can't be made private while the source is public, so it can't hold your life either.
-
-The pattern that works is a **private mirror with a shared merge-base**: clone
-Humanware OS, push it to a fresh private repo, and keep the framework wired as
-the `upstream` remote.
-
-## Create your instance
-
-The installer can create the private GitHub repo, wire both remotes, and push
-the first branch:
-
-```
-curl -fsSL https://raw.githubusercontent.com/arieldiaz/Humanware-OS/main/install.sh | sh -s -- my-humanware --repo YOUR-GITHUB-USER/my-humanware
+```text
+~/github/humanware-os/       public framework checkout
+~/github/my-humanware/       private instance configuration
+~/humanware-data/            private data plane, not a source repository
+~/Library/Application Support/HumanwareOS/
+  runtime/<build-id>/        immutable generated runtime
+  current -> runtime/...     active build
 ```
 
-This requires Git and the authenticated
-[GitHub CLI](https://cli.github.com/). For a local-only instance, omit
-`--repo`:
+The instance pins a framework revision in `humanware.lock.json`. It does not merge framework history into its own repository. Generic framework files are referenced from the pinned checkout and copied only into generated runtime builds.
 
-```
-curl -fsSL https://raw.githubusercontent.com/arieldiaz/Humanware-OS/main/install.sh | sh -s -- my-humanware
-```
+## Create an instance
 
-You can also do the same wiring manually. Clone the framework, rename its
-remote to `upstream`, then add your empty private repo as `origin`:
+The installer clones or locates Humanware OS, initializes a new private instance from the instance template, creates the external data layout, and builds the first runtime:
 
-```
-git clone https://github.com/arieldiaz/Humanware-OS.git my-humanware
-cd my-humanware
-git remote rename origin upstream
-git remote add origin https://github.com/YOUR-GITHUB-USER/my-humanware.git
-git push -u origin main
+```sh
+curl -fsSL https://raw.githubusercontent.com/arieldiaz/humanwareos/main/install.sh | sh -s -- my-humanware --repo YOUR-GITHUB-USER/my-humanware
 ```
 
-Verify the wiring—`origin` should point at your private repo, `upstream` at
-Humanware OS:
+Creating a private GitHub repository is optional. Without `--repo`, the instance remains local until the human chooses a remote.
 
-```
-git remote -v
-```
+## Update the framework
 
-That's the whole setup. Day-to-day work happens on your instance's `main` and pushes to `origin`; `upstream` exists only for the two flows below.
+Framework adoption is a version bump, not a merge:
 
-## Pull framework improvements down
+1. Fetch Humanware OS in its own clean checkout.
+2. Review release notes and migrations.
+3. Change the instance lock to the selected revision in an instance worktree.
+4. Build a new runtime without activating it.
+5. Run instance, data-schema, adapter, domain, and end-to-end checks.
+6. Merge the instance lock change and atomically activate that build.
 
-Whenever Humanware OS improves:
+The deployed instance and framework checkouts remain clean. A failed upgrade leaves the previous runtime active.
 
-```
-git fetch upstream
-git merge upstream/main
-```
+## Send an improvement upstream
 
-Because the histories are shared, these are small, clean merges. Conflicts appear only in files you deliberately forked from the framework's version — a skill you rewrote, your AGENTS.md instance block — and those conflicts are informative: they're the framework and your fork of it disagreeing, which is worth the minute of attention.
+The stranger test decides ownership: if another installation would benefit, the change belongs in Humanware OS. Create the framework task from current Humanware OS `origin/main`, implement the generic fix, and verify it against an example instance. After the framework PR merges, update the private instance lock.
 
-## Send improvements back up
+Do not prototype a generic rule by copying a framework file into the instance. When urgent containment must ship before upstream review, place the smallest patch under the instance's declared compatibility-patch directory with:
 
-The flow is one-way by default: framework → instance by merge, instance → framework **only by deliberate extraction**. The test for what goes up: *would a stranger running their own instance want this?* A sharper skill, a better ground rule, a pipeline fix — yes, genericized. Anything with your name, your machines, or your life in it — never.
+- upstream issue or PR;
+- owner;
+- creation and expiration dates;
+- affected framework versions;
+- removal condition and test.
 
-Cut the contribution branch **from `upstream/main`, not from your instance's `main`** — otherwise the PR drags your entire private history behind it:
-
-```
-git fetch upstream
-git switch -c my-improvement upstream/main
-```
-
-Port the change onto the branch by hand, or `git cherry-pick` the instance commit and then scrub it. Genericizing means placeholder paths (`/Users/you`), placeholder hosts (`mini.local`, `your-domain.com`), no names, no real config values. Before pushing, read the full diff hunting for your username, email, hostnames, and real absolute paths:
-
-```
-git diff upstream/main...HEAD
-```
-
-Your private instance cannot be a PR source, so contributions travel through a
-public fork of Humanware OS:
-
-```
-gh repo fork arieldiaz/Humanware-OS --remote --remote-name fork
-git push fork my-improvement
-gh pr create --repo arieldiaz/Humanware-OS --head <YOUR-GITHUB-USER>:my-improvement
-```
-
-## `.example` files: the config seam
-
-The seam between framework and instance runs straight through configuration, and one convention keeps it clean: **every config file that holds machine-local paths or secrets exists twice — a tracked `.example` with placeholders, and a gitignored real copy.** The framework ships `ops/stream-paths.env.example` and `infra/secrets/.env.example`; your instance copies each to its real name and fills it in. The `.gitignore` already excludes the real copies. That's not tidiness — it's the tripwire that keeps your values out of a repo whose commits you'll someday cut public PRs from.
-
-The hygiene rules:
-
-- **The `.example` is the manual.** Its comments carry the documentation: what each value is, where it comes from, how to generate it, which machine it lives on. If a knob needs explaining, explain it there — not in a separate doc that will drift.
-- **Placeholders are loudly fake.** `you`, `/Users/you`, `mini.local`, `your-domain.com` — values nobody could mistake for real. Secret-shaped keys stay *empty* (`AUTH_SECRET=`) so a filled value screams in any diff.
-- **Never a real value "temporarily."** Git history is append-only in practice; a secret that touches a commit is a secret you rotate. This holds inside your private instance too — mistakes travel, and rotating is always more work than not leaking.
-- **Change the shape, change the `.example`.** When your instance adds or renames a config knob, update the `.example` in the same commit. If the knob is framework-shaped rather than personal, that `.example` edit is exactly the kind of thing to extract and PR upstream.
-- **New `.example` ⇒ new `.gitignore` line.** If you add a config file the existing ignore patterns don't cover, the ignore rule lands in the same commit as the `.example`. An `.example` whose real counterpart is trackable is a leak waiting for a `git add -A`.
+The instance validator fails expired or unreferenced compatibility patches.
 
 ## What lives where
 
-Framework (this repo, PR-able): skills, commands, agent *definitions*, AGENTS.md rules, the STREAM.md spec, `ops/` scripts with placeholders, `.example` files.
+Humanware OS contains reusable rules, specs, agent templates, skills, schemas, adapters, builders, generic services, frontend components, and tests.
 
-Instance (private, never upstream): a filled `STRATEGY.md`, `memory/` contents, `derived/`, the real config copies, and everything your agents know about you.
+The private instance contains the framework lock, agent overlays, runtime-profile selections, channel and account identifiers, secret references, domain routes, private integration configuration, branding, and truly private plugins.
 
-When in doubt, the stranger test decides.
+The data plane contains strategy, memory evidence and projections, sessions, working documents, artifacts, media, records, stream events, and derived indexes. Ordinary data writes do not use PRs.
+
+Generated runtime contains rendered instructions and configuration from the two source revisions. It contains no personal data or mutable state and is never edited by hand.
+
+## Configuration seam
+
+Machine and account configuration is typed instance data, not a copied `.example` file beside a live `.env`. Secret values live only in the configured secrets manager. Instance files reference a secret by provider and key identifier.
+
+Framework schemas define allowed fields and defaults. The private instance supplies values. A new generic configuration field changes its framework schema, template, validator, migration, and documentation together. A private value changes only the instance.
+
+## Data portability
+
+The data plane is not Git, but it is not opaque. Append-only events and artifact manifests use documented schemas. Current memory and strategy are plain readable projections. Large files are content-addressed. Search indexes are rebuildable. Encrypted snapshots and restore tests provide history without imposing code-review semantics on daily life.

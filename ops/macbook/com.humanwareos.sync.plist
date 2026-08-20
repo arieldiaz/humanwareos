@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.lifeos.sync</string>
+  <key>Label</key><string>com.humanwareos.sync</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/you/life-os/ops/macbook/sync-to-mini.sh</string>
+    <string>/Users/you/humanwareos/ops/macbook/sync-to-mini.sh</string>
   </array>
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>
@@ -14,7 +14,7 @@
   <key>ProcessType</key><string>Background</string>
   <key>LowPriorityIO</key><true/>
   <key>Nice</key><integer>10</integer>
-  <key>StandardOutPath</key><string>/Users/you/Library/Logs/lifeos-sync.log</string>
-  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/lifeos-sync.log</string>
+  <key>StandardOutPath</key><string>/Users/you/Library/Logs/humanwareos-sync.log</string>
+  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/humanwareos-sync.log</string>
 </dict>
 </plist>

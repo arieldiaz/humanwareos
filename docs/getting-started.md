@@ -1,264 +1,87 @@
 # Getting Started
 
-This guide takes Humanware OS from a fresh Mac to one verified conversation
-with a durable agent in Slack.
+This guide creates one Humanware OS installation and verifies a real conversation through a channel adapter. The finish line is an agent whose identity survives model, harness, interface, and host changes because those concerns are configured separately.
 
-The setup principle is simple: **configure the agent first, then let the agent
-drive the setup with you.** The agent should perform safe terminal work, edit
-configuration, run checks, and guide or automate UI steps. You handle only
-identity, consent, account ownership, and secret entry.
+## 1. Prepare the host and accounts
 
-## The finish line
+The reference host is an always-on Apple Silicon Mac. You need Git, `jq`, a supported model or subscription, a secrets manager, and a channel. GitHub CLI is recommended for the private instance. Slack plus OpenClaw is the supported first channel; neither is part of the core architecture.
 
-You are done with the core setup when:
+For the complete reference setup, add a Cloudflare-managed domain. Its public half can describe the system or publish selected artifacts. Its private half can expose status, usage, tokens, design review, and artifact modules from the local host. A later cloud deployment uses the same route manifest.
 
-1. One agent can work locally in the terminal from your private instance.
-2. OpenClaw runs as a background service on the host.
-3. A message in your Slack workspace reaches that agent.
-4. The reply lands in the same Slack thread.
-5. No secret value exists in the repo, shell history, or chat transcript.
+## 2. Create the three sources
 
-Cloudflare, a domain, the capture pipeline, and backups belong to the full
-setup, but they do not block this first conversation.
-
-## 1. Prepare the accounts and host
-
-### Required for the core setup
-
-- A Mac. An always-on Apple Silicon Mac mini is the preferred host; a MacBook
-  is fine for evaluation but sleeps and travels.
-- A model subscription or provider account supported by OpenClaw. Subscription
-  login is the easiest starting path when available; an API key is optional.
-- A free Slack workspace.
-- A free Doppler account with strong multi-factor authentication.
-- Git. A GitHub account and authenticated GitHub CLI are recommended so the
-  private instance is backed up and can receive framework updates.
-
-### Required for the full reference setup
-
-- A Cloudflare account.
-- A domain managed through Cloudflare.
-
-The domain supports stable artifact pages, dashboards, and other public URLs.
-Slack itself uses Socket Mode and does not need an inbound public URL.
-
-### Optional later
-
-- A second Mac for capture.
-- A NAS and offline or offsite backup.
-- Local transcription and local models.
-- Additional services such as calendars, email, Notion, or social tools.
-- Buzz, once the bundled path is stable enough for daily use.
-
-## 2. Create the private instance
-
-Install Git and the GitHub CLI if needed, authenticate `gh`, then run:
+Run the installer from a Humanware OS checkout:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/arieldiaz/Humanware-OS/main/install.sh | sh -s -- my-humanware --repo YOUR-GITHUB-USER/my-humanware
-cd my-humanware
+./install.sh /absolute/path/to/my-instance --repo OWNER/my-instance
 ```
 
-For a local-only evaluation, omit `--repo`:
+It creates or resolves these independent roots:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/arieldiaz/Humanware-OS/main/install.sh | sh -s -- my-humanware
-cd my-humanware
-```
+- a public Humanware OS checkout pinned by `humanware.lock.json`;
+- a private instance repository containing configuration only;
+- an external data plane containing stream, memory, strategy, sessions, workspaces, and artifacts;
+- a generated runtime root containing immutable builds and the active `current` symlink.
 
-Verify the repository wiring:
-
-```bash
-git remote -v
-```
-
-`origin` should be your private repository and `upstream` should be the public
-Humanware OS framework. See [Adopting Humanware OS](adopt.md) for the complete
-update and contribution model.
+The runtime is output rather than a fourth source. The installer validates the boundaries and prints the exact paths.
 
 ## 3. Configure the first agent
 
-Start with one agent. Two is a useful eventual division, not a setup
-requirement.
+Edit the private instance, not the framework. Start with one agent overlay under `agents/`, and keep it narrow: local role, private relationships, approved tone differences, and trust limits. Generic identity behavior belongs upstream in Humanware OS. Personal facts and evolving context belong in the data plane.
 
-Open the private instance in a coding agent that can read and edit local files.
-Use this prompt:
+Fill the first honest strategy at `<DATA_ROOT>/strategy/current.md` and the compact memory index at `<DATA_ROOT>/memory/current/index.md`. Do not commit either file.
 
-> Help me configure my first Humanware OS agent. Read AGENTS.md, STRATEGY.md,
-> memory/index.md, agents/README.md, and this Getting Started guide. Ask me one
-> question at a time about the agent's role and voice. Make the safe file and
-> terminal changes yourself. Never ask me to paste a secret into chat or write
-> one into the repo. Stop only for identity, consent, or credential actions I
-> must perform.
+The instance's `runtime/profiles.json` separates identity from execution. Give each equivalent agent the same allowed profiles unless a documented trust boundary requires a difference. The default profile should be native OpenClaw. Cursor, Codex, Pi, or other harnesses are task profiles with explicit permissions and isolated workspaces, not permanent identities.
 
-The agent should help you:
-
-1. Decide the agent's domain and boundaries.
-2. Create or adapt its definition in `agents/`.
-3. Fill the first honest version of `STRATEGY.md`.
-4. Keep personal facts in `memory/`, not in the reusable agent definition.
-5. Confirm that `AGENTS.md`, `STRATEGY.md`, and `memory/index.md` load at the
-   start of meaningful work.
-
-Commit this baseline before adding the runtime. It is the first durable version
-of the relationship.
-
-## 4. Install and onboard OpenClaw
-
-OpenClaw is the current runtime connecting the agent, model, tools, and Slack.
-Install the current stable release with the official installer:
+Validate the configuration and build a new runtime:
 
 ```bash
-curl -fsSL https://openclaw.ai/install.sh | bash
+/absolute/path/to/humanwareos/scripts/validate-instance.sh /absolute/path/to/humanwareos /absolute/path/to/my-instance
+/absolute/path/to/humanwareos/scripts/build-runtime.sh /absolute/path/to/humanwareos /absolute/path/to/my-instance --activate
 ```
 
-The installer may start onboarding automatically. If it does, use that flow;
-otherwise verify the install, then start onboarding yourself:
+## 4. Establish secrets without secret files
 
-```bash
-openclaw --version
-openclaw onboard --install-daemon
+Doppler is the reference provider. The instance stores provider and key identifiers only. A background service may keep one mode-600 bootstrap token outside Git and use it to hydrate its environment at launch. Never put real values in `.env`, JSON configuration, instructions, logs, memory, commits, or chat.
+
+Prove both access and isolation: each intended consumer can read the key names it needs, and cannot read another trust domain.
+
+## 5. Install the runtime controller
+
+OpenClaw is the current native runtime. Install the current stable release using its official instructions, then configure its workspace and instruction paths from the generated runtime's `current` link. Do not point a daemon at a feature worktree or mutable repository checkout.
+
+Verify provider login and local execution before adding a channel. The agent should be able to state its framework identity, private overlay, current strategy, selected execution profile, and data root from the assembled runtime.
+
+## 6. Add Slack as the first adapter
+
+Create one Slack app/account for each durable agent, use Socket Mode, and store credentials in the secrets provider. Set `channels/slack.json` to enabled only after credential probes pass. The adapter owns transport; OpenClaw owns thread routing; Humanware OS owns reply and lifecycle semantics.
+
+Restart the controller cleanly and verify the entire path:
+
+```text
+Slack inbound → adapter → OpenClaw → identity → execution profile → tool or data access → Slack thread reply
 ```
 
-Point the agent workspace at your private Humanware OS instance. Choose a model
-login supported by OpenClaw. Prefer subscription or device-code login where it
-fits your provider; do not create an API key merely because an older guide
-assumes one.
+A running process is not proof. Send a mention, require one harmless strategy read and one harmless local command, and confirm the reply lands in the same thread for every configured agent.
 
-Let the agent drive the terminal and explain each choice. You should take over
-only when a browser asks you to sign in, authorize a provider, or approve a
-security-sensitive permission.
+## 7. Add the domain surface
 
-Verify the runtime before adding Slack:
+Configure `surfaces/domain.json` in the instance. The framework supplies module contracts and the frontend shell. The instance supplies the public and private origins, enabled routes, data selectors, deployment adapter, and network policy.
 
-```bash
-openclaw models status
-openclaw doctor
-openclaw status
-```
+Verify public routes from the public internet and private routes from the approved private network. Status, usage, token, design, and artifact modules must render degraded states when an upstream source is unavailable; one failing module must not take down the shell.
 
-Then start a local terminal conversation:
+## 8. Make reboot readiness a release gate
 
-```bash
-openclaw chat
-```
+Every daemon reads the immutable runtime through `current`, waits for network and DNS readiness, receives credentials at launch, writes logs outside source repos, and has a bounded restart policy. Disable interactive desktop dependencies and unrelated login items on a headless host.
 
-Ask the agent to name its role, summarize the current strategy, and identify
-the next setup step. If it cannot answer from your files, fix the workspace and
-context loading before adding another system.
+Test a real reboot. Acceptance requires SSH, the runtime controller, each enabled channel account, the domain surface, and its upstream health checks to recover without logging into a GUI, unlocking a keychain by hand, restoring an application session, or editing a checkout.
 
-## 5. Establish the secrets layer
+## 9. Operate without drift
 
-Doppler is the reference secrets manager. Secret values live there and only
-there. Read [The secrets layer](../infra/secrets/runbook.md) before creating
-projects or service tokens.
+Framework change: isolated Humanware worktree → pull request → CI → squash-merge → update the instance lock.
 
-The agent may install the Doppler CLI, run login, create project structure, and
-verify access. You perform the account login and enter secret values directly
-into Doppler's protected prompt or web UI. Never paste a value into the agent
-conversation.
+Instance change: isolated instance worktree → pull request → CI → squash-merge → build and activate a new runtime.
 
-At minimum, create a project for the runtime and one trust domain for the
-agent. Use scoped, read-only service tokens for background consumers. Keep only
-the tiny bootstrap credential outside Doppler in a mode-600 file outside the
-repo, as described by the secrets contract.
+Data change: append an event or version a workspace object → update a current projection when useful. No pull request is required.
 
-Verification must prove both sides:
-
-- The intended runtime can read the names it needs.
-- One agent or consumer cannot read another trust domain.
-
-## 6. Create the Slack app
-
-Start with one Slack app for the first agent. The agent should walk you through
-the current OpenClaw Slack guide and drive browser automation where available.
-You remain responsible for creating the app under your Slack identity,
-reviewing scopes, installing it to the workspace, and approving permissions.
-
-Use Slack Socket Mode. It creates an outbound connection from the Mac, so this
-stage does not require Cloudflare, a domain, a tunnel, or an open inbound port.
-
-Store the Slack credential values directly in Doppler. Refer to them elsewhere
-only by their environment-variable names. Do not paste them into chat or save
-them in a `.env` file.
-
-After the app is installed, add the Slack channel/account through OpenClaw's
-guided channel configuration:
-
-```bash
-openclaw channels add
-openclaw channels status
-openclaw doctor
-```
-
-Restart the gateway cleanly after channel configuration:
-
-```bash
-openclaw gateway restart
-openclaw status
-```
-
-## 7. Verify the real handoff
-
-Create a Slack channel for the system, invite the agent app, and send a direct
-mention in a new thread.
-
-Ask the agent to:
-
-1. State its role.
-2. Read one harmless fact from `STRATEGY.md`.
-3. Run a harmless local command such as reporting the current repository path.
-4. Reply in the same Slack thread.
-
-Do not call the setup complete because a process is running. Verify the entire
-handoff: Slack inbound → OpenClaw → model → workspace/tool → Slack outbound.
-
-If it fails, collect evidence in this order:
-
-```bash
-openclaw channels status
-openclaw models status
-openclaw doctor
-openclaw logs
-```
-
-Diagnose the layer named by the evidence. A Slack-visible error may originate
-in provider auth, agent routing, or gateway delivery rather than Slack itself.
-
-## 8. Add the full system in layers
-
-Once the core loop is reliable, let the agent drive one layer at a time:
-
-1. Cloudflare and the domain for artifact and dashboard URLs.
-2. Backup and restore for the private instance and runtime state.
-3. Local capture, transcription, and the append-only stream.
-4. Additional agents with separate roles and credentials.
-5. Calendars, email, publishing, and other tools.
-6. Buzz evaluation or migration when its bundled path is reliable.
-
-Each layer gets a verification that cannot lie. Do not add more integrations
-to compensate for an unreliable core conversation.
-
-## Agent/human setup boundary
-
-The agent should normally do:
-
-- Inspect the host and repository.
-- Install command-line dependencies.
-- Edit non-secret configuration and agent files.
-- Run setup, health, and verification commands.
-- Open the correct account pages and explain requested permissions.
-- Drive browser or desktop UI when the host grants that capability.
-- Record durable, non-secret setup decisions in the private instance.
-
-The human must normally do:
-
-- Choose the agent's remit and approve consequential tradeoffs.
-- Create and own accounts.
-- Sign in and complete multi-factor authentication.
-- Approve OAuth grants, app installs, and requested scopes.
-- Enter or rotate secret values directly in Doppler.
-- Approve OS permissions that grant control of the machine.
-
-The goal is not zero human involvement. It is zero unnecessary setup labor and
-an explicit boundary around identity, consent, and secrets.
+Rollback changes only the runtime `current` symlink to a previously verified build. It never rewrites source or deletes data.

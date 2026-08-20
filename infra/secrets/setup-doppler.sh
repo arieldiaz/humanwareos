@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # setup-doppler: create the Doppler projects and per-project read-only
-# service tokens for a life-os instance (see runbook.md).
+# service tokens for a humanwareos instance (see runbook.md).
 #
 # Run as YOU — needs a personal CLI session (`doppler login`), because
 # project/token management is a human-tier operation; the runtime only
@@ -8,11 +8,11 @@
 #
 # Projects: $PREFIX-core, $PREFIX-agents, $PREFIX-liv, $PREFIX-max.
 # Change PREFIX if your Doppler workplace is shared with other projects.
-# Doppler creates dev/stg/prd configs by default; life-os uses dev + prd
+# Doppler creates dev/stg/prd configs by default; humanwareos uses dev + prd
 # and leaves stg unused.
 #
 # Service tokens (one per consumer, config prd, access read) land in
-# ~/.config/life-os/doppler.env (mode 600, outside the repo — this file is
+# ~/.config/humanwareos/doppler.env (mode 600, outside the repo — this file is
 # the bootstrap tier, see runbook.md § contract point 4):
 #   DOPPLER_TOKEN_CORE, DOPPLER_TOKEN_AGENTS  — the app/runtime
 #   DOPPLER_TOKEN_LIV                         — liv only
@@ -24,8 +24,8 @@
 # values — names and counts only.
 set -euo pipefail
 
-PREFIX="${LIFEOS_SECRETS_PREFIX:-lifeos}"
-TOKEN_FILE="$HOME/.config/life-os/doppler.env"
+PREFIX="${HUMANWARE_SECRETS_PREFIX:-humanware}"
+TOKEN_FILE="${HUMANWARE_TOKEN_FILE:-$HOME/.config/humanwareos/doppler.env}"
 TOKEN_NAME="launchd"
 
 PROJECTS="$PREFIX-core $PREFIX-agents $PREFIX-liv $PREFIX-max"
