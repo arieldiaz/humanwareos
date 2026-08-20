@@ -55,12 +55,13 @@ mkdir -p "$RUNTIME_ROOT/runtime"
 BUILD_DIR=$(mktemp -d "$RUNTIME_ROOT/runtime/.build-$BUILD_ID.XXXXXX")
 trap 'rm -rf "$BUILD_DIR"' EXIT HUP INT TERM
 
-mkdir -p "$BUILD_DIR/instructions" "$BUILD_DIR/config" "$BUILD_DIR/framework" "$BUILD_DIR/surface"
+mkdir -p "$BUILD_DIR/instructions" "$BUILD_DIR/config" "$BUILD_DIR/framework/scripts" "$BUILD_DIR/surface"
 cp "$FRAMEWORK_DIR/AGENTS.md" "$BUILD_DIR/instructions/AGENTS.md"
 cp -R "$FRAMEWORK_DIR/docs" "$BUILD_DIR/instructions/docs"
 cp -R "$FRAMEWORK_DIR/agents" "$BUILD_DIR/instructions/agents"
 cp -R "$FRAMEWORK_DIR/skills" "$BUILD_DIR/instructions/skills"
 cp -R "$FRAMEWORK_DIR/commands" "$BUILD_DIR/instructions/commands"
+cp "$FRAMEWORK_DIR/scripts/render-openclaw-runtime-profiles.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-runtime-profiles.mjs"
 cp "$INSTANCE_DIR/AGENTS-instance.md" "$BUILD_DIR/instructions/AGENTS-instance.md"
 cp -R "$INSTANCE_DIR/agents" "$BUILD_DIR/instructions/agent-overlays"
 if [ -d "$INSTANCE_DIR/docs" ]; then
