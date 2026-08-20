@@ -22,6 +22,13 @@ fi
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 JQ=${JQ:-/usr/bin/jq}
+NODE_BIN=${NODE_BIN:-}
+if [ -z "$NODE_BIN" ]; then
+  NODE_BIN=$(command -v node 2>/dev/null) || {
+    printf '%s\n' "build-runtime: node is required" >&2
+    exit 2
+  }
+fi
 "$SCRIPT_DIR/validate-instance.sh" "$FRAMEWORK_DIR" "$INSTANCE_DIR"
 
 RUNTIME_ROOT=$($JQ -r '.paths.runtimeRoot' "$INSTANCE_DIR/humanware.instance.json")
@@ -62,6 +69,8 @@ cp -R "$FRAMEWORK_DIR/agents" "$BUILD_DIR/instructions/agents"
 cp -R "$FRAMEWORK_DIR/skills" "$BUILD_DIR/instructions/skills"
 cp -R "$FRAMEWORK_DIR/commands" "$BUILD_DIR/instructions/commands"
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-runtime-profiles.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-runtime-profiles.mjs"
+cp "$FRAMEWORK_DIR/scripts/render-openclaw-agent-context.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-agent-context.mjs"
+cp "$FRAMEWORK_DIR/scripts/materialize-openclaw-workspaces.mjs" "$BUILD_DIR/framework/scripts/materialize-openclaw-workspaces.mjs"
 cp "$INSTANCE_DIR/AGENTS-instance.md" "$BUILD_DIR/instructions/AGENTS-instance.md"
 cp -R "$INSTANCE_DIR/agents" "$BUILD_DIR/instructions/agent-overlays"
 if [ -d "$INSTANCE_DIR/docs" ]; then
@@ -83,6 +92,8 @@ fi
 if [ -d "$INSTANCE_DIR/ops" ]; then
   cp -R "$INSTANCE_DIR/ops" "$BUILD_DIR/config/ops"
 fi
+
+"$NODE_BIN" "$FRAMEWORK_DIR/scripts/render-openclaw-agent-context.mjs" "$BUILD_DIR"
 
 cat > "$BUILD_DIR/manifest.json" <<EOF
 {

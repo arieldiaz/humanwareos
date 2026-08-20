@@ -50,6 +50,8 @@ Prove both access and isolation: each intended consumer can read the key names i
 
 OpenClaw is the current native runtime. Install the current stable release using its official instructions, then configure its workspace and instruction paths from the generated runtime's `current` link. Do not point a daemon at a feature worktree or mutable repository checkout.
 
+For each OpenClaw agent, render the harness-required context files into the immutable runtime and materialize stable workspace links with `scripts/materialize-openclaw-workspaces.mjs`. The same bridge links `MEMORY.md` and `STRATEGY.md` to their scoped data-plane projections; it archives replaced bootstrap files and supports transactional restore.
+
 Verify provider login and local execution before adding a channel. The agent should be able to state its framework identity, private overlay, current strategy, selected execution profile, and data root from the assembled runtime.
 
 ## 6. Add Slack as the first adapter
