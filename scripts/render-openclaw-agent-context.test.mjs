@@ -22,6 +22,8 @@ test("renders framework, instance, identity, and data-plane references", () => {
   assert.match(rendered["SOUL.md"], /\/data\/memory\/current/);
   assert.match(rendered["IDENTITY.md"], /Name: Max/);
   assert.match(rendered["IDENTITY.md"], /Emoji: fox_face/);
+  assert.match(rendered["MEMORY.md"], /\/data\/memory\/current/);
+  assert.match(rendered["STRATEGY.md"], /\/data\/strategy\/current\.md/);
 });
 
 test("renders every declared agent into the runtime bundle", () => {
@@ -37,6 +39,7 @@ test("renders every declared agent into the runtime bundle", () => {
     writeFileSync(join(root, "instructions", "agent-overlays", "max.md"), "Overlay");
     renderRuntimeContexts(root);
     assert.match(readFileSync(join(root, "instructions", "openclaw", "max", "SOUL.md"), "utf8"), /Overlay/);
+    assert.match(readFileSync(join(root, "instructions", "openclaw", "max", "MEMORY.md"), "utf8"), /data-plane bridge/);
   } finally {
     rmSync(root, {recursive: true, force: true});
   }

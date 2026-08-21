@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import {existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync} from "node:fs";
+import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync} from "node:fs";
+import {createHash} from "node:crypto";
 import {fileURLToPath} from "node:url";
-import {basename, dirname, join, resolve} from "node:path";
+import {basename, dirname, join} from "node:path";
 
-const CONTEXT_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md"];
+const CONTEXT_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md", "STRATEGY.md"];
 
 function fail(message) {
   throw new Error(`openclaw-workspaces: ${message}`);
@@ -26,13 +27,20 @@ function pathExists(path) {
   }
 }
 
-function targetMatches(path, target) {
-  return lstatSync(path).isSymbolicLink() && resolve(dirname(path), readlinkSync(path)) === resolve(target);
+function contentHash(content) {
+  return createHash("sha256").update(content).digest("hex");
 }
 
-function removeExpectedLink(path, target) {
+function projectionMatches(path, expectedHash) {
+  if (!pathExists(path)) return false;
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.isSymbolicLink()) return false;
+  return contentHash(readFileSync(path)) === expectedHash;
+}
+
+function removeExpectedProjection(path, expectedHash) {
   if (!pathExists(path)) return;
-  if (!targetMatches(path, target)) fail(`refusing to remove unexpected path ${path}`);
+  if (!projectionMatches(path, expectedHash)) fail(`refusing to remove modified projection ${path}`);
   rmSync(path);
 }
 
@@ -46,14 +54,16 @@ function rollback(actions) {
       }
       continue;
     }
-    if (action.target) removeExpectedLink(action.path, action.target);
+    if (action.expectedHash) removeExpectedProjection(action.path, action.expectedHash);
     if (action.backup && pathExists(action.backup)) renameSync(action.backup, action.path);
   }
 }
 
-function installLink(path, target, backup, actions) {
-  if (pathExists(path) && targetMatches(path, target)) {
-    actions.push({kind: "link", path, target, unchanged: true});
+function installProjection(path, source, backup, actions) {
+  const content = readFileSync(source);
+  const expectedHash = contentHash(content);
+  if (projectionMatches(path, expectedHash)) {
+    actions.push({kind: "projection", path, source, expectedHash, unchanged: true});
     return;
   }
   let saved;
@@ -63,9 +73,9 @@ function installLink(path, target, backup, actions) {
     saved = backup;
   }
   const temporary = join(dirname(path), `.${basename(path)}.humanware-${process.pid}`);
-  symlinkSync(target, temporary);
+  writeFileSync(temporary, content, {mode: 0o600});
   renameSync(temporary, path);
-  actions.push({kind: "link", path, target, backup: saved});
+  actions.push({kind: "projection", path, source, expectedHash, backup: saved});
 }
 
 export function applyWorkspaceContext({runtimeDir, configPath, backupDir}) {
@@ -97,10 +107,8 @@ export function applyWorkspaceContext({runtimeDir, configPath, backupDir}) {
         actions.push({kind: "directory", path: workspace});
       }
       for (const filename of CONTEXT_FILES) {
-        installLink(join(workspace, filename), join(runtimeDir, "instructions", "openclaw", id, filename), join(backupDir, "saved", id, filename), actions);
+        installProjection(join(workspace, filename), join(runtimeDir, "instructions", "openclaw", id, filename), join(backupDir, "saved", id, filename), actions);
       }
-      installLink(join(workspace, "MEMORY.md"), join(instance.paths.dataRoot, "memory", "current", "index.md"), join(backupDir, "saved", id, "MEMORY.md"), actions);
-      installLink(join(workspace, "STRATEGY.md"), join(instance.paths.dataRoot, "strategy", "current.md"), join(backupDir, "saved", id, "STRATEGY.md"), actions);
       const bootstrap = join(workspace, "BOOTSTRAP.md");
       if (pathExists(bootstrap)) {
         const backup = join(backupDir, "saved", id, "BOOTSTRAP.md");

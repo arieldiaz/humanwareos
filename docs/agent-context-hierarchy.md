@@ -76,7 +76,7 @@ runtime/<build-id>/
 └── adapters/
 ```
 
-The runtime references current memory and strategy through the data service or instance-declared paths. It does not copy personal data into the build. Service definitions and harness shims point at the stable `runtime/current` bundle.
+The runtime references current memory and strategy through the data service or instance-declared paths. It does not copy personal data into the build. Service definitions point at the stable `runtime/current` bundle; when a harness rejects instruction symlinks, the adapter materializes verified regular-file projections from that bundle and checks them for drift.
 
 ## Harness independence
 
