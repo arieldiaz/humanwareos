@@ -15,7 +15,23 @@
         "required": ["defaultProfile", "allowedProfiles"],
         "properties": {
           "defaultProfile": {"type": "string", "minLength": 1},
-          "allowedProfiles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+          "escalationProfile": {"type": "string", "minLength": 1},
+          "allowedProfiles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "persistentBindings": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "object",
+              "required": ["channel", "accountId", "peerKind", "peerId"],
+              "properties": {
+                "channel": {"type": "string", "minLength": 1},
+                "accountId": {"type": "string", "minLength": 1},
+                "peerKind": {"type": "string", "minLength": 1},
+                "peerId": {"type": "string", "minLength": 1}
+              },
+              "additionalProperties": false
+            }
+          }
         },
         "additionalProperties": false
       }
@@ -35,6 +51,9 @@
           "dataScope": {"type": "string"},
           "backend": {"type": "string"},
           "mode": {"enum": ["persistent", "oneshot"]},
+          "reasoning": {"enum": ["off", "minimal", "low", "medium", "high", "xhigh", "adaptive", "max", "ultra"]},
+          "fastMode": {"oneOf": [{"enum": ["auto"]}, {"type": "boolean"}]},
+          "responseTargetSeconds": {"type": "integer", "minimum": 1, "maximum": 300},
           "enabled": {"type": "boolean"}
         },
         "additionalProperties": false
