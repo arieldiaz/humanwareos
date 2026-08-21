@@ -1,0 +1,24 @@
+{
+  "name": "humanwareos-buzz-community",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/index.test.mjs",
+    "check": "npm test && node scripts/preflight.mjs && wrangler deploy --dry-run --outdir dist",
+    "probe:providers": "node scripts/probe-providers.mjs",
+    "repair:onboarding": "node scripts/repair-onboarding.mjs",
+    "verify:onboarding": "node scripts/verify-onboarding.mjs",
+    "restart:relay": "node scripts/restart-relay.mjs",
+    "provision:r2": "node scripts/provision-r2.mjs",
+    "sync:secrets": "node scripts/sync-secrets.mjs",
+    "deploy": "node scripts/deploy.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/containers": "0.3.7",
+    "wrangler": "4.120.1"
+  },
+  "dependencies": {
+    "pg": "8.16.3",
+    "redis": "5.8.2"
+  }
+}
