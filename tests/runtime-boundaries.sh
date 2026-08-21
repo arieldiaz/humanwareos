@@ -29,6 +29,7 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 
 [ -L "$RUNTIME/current" ]
 [ -f "$RUNTIME/current/manifest.json" ]
+[ -x "$RUNTIME/current/framework/scripts/runtime-cutover-lease.sh" ]
 [ -f "$DATA/manifests/data-plane.json" ]
 [ -d "$DATA/imports" ]
 /usr/bin/jq -e '.mutableStateIncluded == false and .dataRoot == $root' --arg root "$DATA" "$RUNTIME/current/manifest.json" >/dev/null
