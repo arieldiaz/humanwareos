@@ -34,11 +34,15 @@ Profiles are supported pairs, not an imaginary unrestricted model-by-harness mat
 
 The reference defaults both agents to native OpenClaw for ordinary conversation. Native execution has the fewest process and delivery boundaries. Pi is a candidate first-party default after its adapter, packaging, permissions, and state paths are reproducible. Cursor and Codex are approved task harnesses for coding, review, and other specialized work.
 
+A profile declares its reasoning and fast-mode defaults. The ordinary interactive profile should target a useful first response within 20 seconds and use medium-or-lower reasoning unless the model has a provider-specific equivalent. Coding, research, architecture, high-stakes work, and explicit requests for depth use a separate escalation profile. Fast mode changes latency, not permissions or privacy scope.
+
 ## Dispatch and switching
+
+Each identity has one default profile, one optional escalation profile, and an allowlist. An adapter may bind approved conversations to the default ACP profile only through concrete conversation identifiers; an account-wide or wildcard binding is not equivalent. A native route remains the fallback for new or unclassified conversations. Instance policy must exclude conversations whose privacy tier is outside the external harness profile.
 
 OpenClaw remains owner of the conversation when it delegates a task to an external harness. The task receives an isolated worktree and a structured handoff containing objective, conversation root, agent identity, decisions, source references, branch, changed files, tests, and unresolved questions.
 
-Short work runs as a child task and returns results to the owning identity. A long coding conversation may explicitly bind the thread to a persistent ACP session. Permanent channel-wide ACP bindings are exceptional because they couple delivery, permissions, model choice, and startup behavior to one harness.
+Short work runs inline and returns results to the owning identity. Work expected to exceed the interactive target is acknowledged promptly, then runs as a durable child task with the escalation profile. A long coding conversation may explicitly bind the thread to a persistent ACP session. Permanent channel-wide ACP bindings are exceptional because they couple delivery, permissions, model choice, and startup behavior to one harness.
 
 Switching profiles creates a handoff event; it does not pretend two harness session stores are one transcript. The visible response signature records the effective agent, model, harness, reasoning, and runtime for that message.
 
@@ -52,8 +56,8 @@ The control plane verifies the profile's data and tool scopes before dispatch. S
 
 Every execution path returns one canonical final response to the control plane. The adapter owns surface publication and appends provenance after confirmed delivery. An external harness does not independently call a Slack or Buzz send tool unless the profile explicitly declares that transport and prevents duplicate delivery.
 
-Mid-turn progress is structured telemetry. Adapters may render bounded progress when the surface supports it; internal narration and hidden harness finals never silently replace the final response.
+Mid-turn progress is structured telemetry in the session ledger. The session console may render status, selected profile, checkpoints, tool summaries, artifacts, and elapsed time. Conversation adapters render only a bounded acknowledgement, a question that genuinely blocks work, and the final summary; internal narration and hidden harness finals never silently replace the final response.
 
 ## Health
 
-Health is measured per boundary: adapter connection, control-plane stability, identity routing, profile availability, model authentication, workspace access, tool policy, and delivery. One optional harness or channel may be degraded without marking the agent core unavailable. A canary names the selected identity and profile so a healthy Liv-on-native check cannot mask a broken Liv-on-Cursor route.
+Health is measured per boundary: adapter connection, control-plane stability, identity routing, profile availability, headless model authentication, workspace access, tool policy, and delivery. One optional harness or channel may be degraded without marking the agent core unavailable. A canary names the selected identity and profile, effective reasoning and fast mode, first-response latency, and delivered provenance so a healthy native check cannot mask a broken ACP route.

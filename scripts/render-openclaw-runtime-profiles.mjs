@@ -13,12 +13,44 @@ function requireObject(value, label) {
   return value;
 }
 
+function profileDefaults(profile) {
+  return {
+    ...(profile.reasoning ? {thinkingDefault: String(profile.reasoning)} : {}),
+    ...(profile.fastMode !== undefined ? {fastModeDefault: profile.fastMode} : {}),
+  };
+}
+
+function bindingKey(binding) {
+  const match = binding?.match ?? {};
+  const peer = match?.peer ?? {};
+  return [binding?.agentId, match.channel, match.accountId, peer.kind, peer.id].map((value) => String(value ?? "")).join("\0");
+}
+
+function setHarnessModel(source, harness, model, selectedHarnessModels) {
+  const prior = selectedHarnessModels.get(harness);
+  if (prior && prior !== model) fail(`ACP harness ${harness} selected with conflicting models ${prior} and ${model}`);
+  selectedHarnessModels.set(harness, model);
+  const agent = source?.plugins?.entries?.acpx?.config?.agents?.[harness];
+  if (!agent || typeof agent !== "object" || Array.isArray(agent)) fail(`ACP harness ${harness} is not configured in plugins.entries.acpx.config.agents`);
+  const args = Array.isArray(agent.args) ? [...agent.args] : [];
+  const modelIndex = args.indexOf("--model");
+  if (modelIndex >= 0) {
+    if (modelIndex + 1 >= args.length) fail(`ACP harness ${harness} has --model without a value`);
+    args[modelIndex + 1] = model;
+  } else {
+    args.unshift("--model", model);
+  }
+  agent.args = args;
+}
+
 export function applyRuntimeProfiles(sourceConfig, catalog) {
   const source = structuredClone(requireObject(sourceConfig, "source config"));
   const profiles = requireObject(catalog?.profiles, "profiles");
   const agentPolicies = requireObject(catalog?.agents, "agents");
   const agents = source?.agents?.list;
   if (!Array.isArray(agents) || agents.length === 0) fail("source config agents.list must be a non-empty array");
+  const generatedBindings = [];
+  const selectedHarnessModels = new Map();
 
   source.agents.list = agents.map((agent) => {
     const id = String(agent?.id ?? "").trim();
@@ -31,6 +63,13 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
     }
     const profile = requireObject(profiles[profileId], `profile ${profileId}`);
     if (profile.enabled === false) fail(`agent ${id} selected disabled profile ${profileId}`);
+    const escalationProfileId = String(policy.escalationProfile ?? "").trim();
+    if (escalationProfileId) {
+      if (!policy.allowedProfiles.includes(escalationProfileId)) fail(`agent ${id} cannot escalate to profile ${escalationProfileId}`);
+      const escalationProfile = requireObject(profiles[escalationProfileId], `profile ${escalationProfileId}`);
+      if (escalationProfile.enabled === false) fail(`agent ${id} escalation profile ${escalationProfileId} is disabled`);
+    }
+    const defaults = profileDefaults(profile);
 
     if (profile.runtime === "native") {
       const model = String(profile.model ?? "").trim();
@@ -39,6 +78,7 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
       return {
         ...agent,
         model: {...priorModel, primary: model},
+        ...defaults,
         runtime: {type: "embedded"},
       };
     }
@@ -48,8 +88,24 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
       if (!harness) fail(`ACP profile ${profileId} must name a harness`);
       const cwd = String(agent.workspace ?? "").trim();
       if (profile.workspace === "required" && !cwd) fail(`ACP profile ${profileId} requires a workspace for agent ${id}`);
+      const model = String(profile.model ?? "").trim();
+      if (!model) fail(`ACP profile ${profileId} must name a model`);
+      setHarnessModel(source, harness, model, selectedHarnessModels);
+      for (const binding of policy.persistentBindings ?? []) {
+        const channel = String(binding?.channel ?? "").trim();
+        const accountId = String(binding?.accountId ?? "").trim();
+        const peerKind = String(binding?.peerKind ?? "").trim();
+        const peerId = String(binding?.peerId ?? "").trim();
+        if (!channel || !accountId || !peerKind || !peerId) fail(`agent ${id} has an incomplete persistent binding`);
+        generatedBindings.push({
+          type: "acp",
+          agentId: id,
+          match: {channel, accountId, peer: {kind: peerKind, id: peerId}},
+        });
+      }
       return {
         ...agent,
+        ...defaults,
         runtime: {
           type: "acp",
           acp: {
@@ -64,6 +120,16 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
 
     fail(`profile ${profileId} has unsupported runtime ${String(profile.runtime)}`);
   });
+
+  const generatedKeys = new Set(generatedBindings.map(bindingKey));
+  if (generatedKeys.size !== generatedBindings.length) fail("persistent bindings must be unique");
+  const sourceBindings = Array.isArray(source.bindings) ? source.bindings : [];
+  for (const binding of sourceBindings) {
+    if (binding?.type === "acp" && generatedKeys.has(bindingKey(binding))) {
+      fail(`source config duplicates generated ACP binding for agent ${String(binding.agentId ?? "")}`);
+    }
+  }
+  source.bindings = [...generatedBindings, ...sourceBindings];
 
   return source;
 }
