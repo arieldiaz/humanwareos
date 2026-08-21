@@ -51,6 +51,12 @@ Imports preserve an external corpus exactly as received, including its original 
 
 Channels are inputs to the session ledger, not durable memory. A canonical conversation event records channel adapter, external thread identifier, agent identity, selected execution profile, timestamps, attachments, and delivery result. A channel export may preserve the surface transcript, but memory promotion is a separate deliberate operation.
 
+The canonical ledger is append-only JSONL under `sessions/events/` and conforms to `schemas/session-event.schema.json`. Stable event identifiers make adapters idempotent. Harness-specific raw traces remain Tier 0 evidence; normalized events retain a bounded source reference so an operator can inspect that evidence locally without copying it into every projection.
+
+The private domain is the operational home for sessions. Its derived view may show objective, owner, channel, model, harness, status, elapsed time, usage, actions, bounded outputs, errors, retries, files, reviews, and deployments. Chat surfaces should receive concise checkpoints and completion summaries, not the full execution stream.
+
+Trace levels are `normal` (deliberate checkpoints and outcomes), `verbose` (sanitized tool activity and provider-visible reasoning summaries), and `forensic` (normalized event types and raw-evidence references). Hidden token-by-token model chain-of-thought is neither a portable interface nor durable memory. If a provider deliberately exposes a reasoning summary, record it as provider-visible evidence; never label synthesized rationale as raw reasoning.
+
 ## Privacy and access
 
 The data plane enforces scopes at retrieval time:

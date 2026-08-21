@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://humanwareos.com/schemas/session-event.schema.json",
+  "title": "Humanware OS normalized session event",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "ts",
+    "logicalSessionId",
+    "source",
+    "kind",
+    "level",
+    "summary",
+    "details"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "id": {"type": "string", "minLength": 1},
+    "ts": {"type": "string", "format": "date-time"},
+    "logicalSessionId": {"type": "string", "minLength": 1},
+    "runtimeSessionId": {"type": ["string", "null"]},
+    "runId": {"type": ["string", "null"]},
+    "turnId": {"type": ["string", "null"]},
+    "agent": {"type": ["string", "null"]},
+    "source": {"type": "string", "minLength": 1},
+    "provider": {"type": ["string", "null"]},
+    "model": {"type": ["string", "null"]},
+    "kind": {"type": "string", "minLength": 1},
+    "level": {"enum": ["normal", "verbose", "forensic"]},
+    "summary": {"type": "string"},
+    "details": {"type": "object"},
+    "rawRef": {
+      "type": "object",
+      "required": ["file"],
+      "properties": {
+        "file": {"type": "string"},
+        "seq": {"type": ["integer", "null"]}
+      }
+    }
+  }
+}
