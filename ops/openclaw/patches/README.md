@@ -10,6 +10,10 @@ Instance-owned declarative configuration lives one level up:
 - `models.patch.json5` — model aliases and default fallbacks.
 - `runtime.patch.json5` — local media preprocessing and ACP harness policy.
 
+## 2026.7.1 Slack current-conversation ACP binding
+
+`patch-2026.7.1-slack-current-conversation-binding.mjs` enables the generic OpenClaw current-conversation binding service for the external Slack plugin. Slack already provides an exact thread conversation id and thread-aware reply routing, but `@openclaw/slack` 2026.7.1 omits `supportsCurrentConversationBinding`; `/acp spawn cursor --bind here` and equivalent agent-driven ACP profile switches therefore fail before the binding service runs. The patch adds only that version-scoped capability declaration, is idempotent, and fails closed when the plugin version or bundle shape changes.
+
 ## 2026.7.1 thinking provenance on model hooks
 
 `patch-2026.7.1-model-call-thinking.mjs` makes the run's resolved thinking
