@@ -1,6 +1,6 @@
 # Status framework
 
-The shared status taxonomy for Humanware OS and any instance built on it. Every item is in exactly one lifecycle state. The surface adapter signals it with a single status tile on the human's thread root; who ran what, on which model, is read from the posts themselves.
+The shared status taxonomy for Humanware OS and any instance built on it. A status records a real handoff or scheduled/closed outcome, not the mere end of an agent message. The surface adapter signals it with a single status tile on the human's thread root; who ran what, on which model, is read from the posts themselves.
 
 Budget: 1,800 words. Over it, consolidate — do not extend. Counted in words because these files are not hard-wrapped.
 
@@ -10,7 +10,9 @@ There are four *phases*, and the phase where the ball is in the human's court ha
 
 **On the agent**
 
-- 🔄 `:arrows_counterclockwise:` **in-process** — long-running work only, and ephemeral. **No status tile at all also means on the agent:** an ordinary turn moves straight from one stopped state to the next and never cycles through 🔄. The tile appears only when a turn is expected to run five minutes or more, laid from the kickoff note that opens such a turn (reply-shape.md), and comes off with the turn's closing header.
+- 🔄 `:arrows_counterclockwise:` **in-process** — long-running work only, and ephemeral. The tile appears only when a turn is expected to run five minutes or more, laid from the kickoff note that opens such a turn (reply-shape.md), and comes off when the run stops.
+
+**No status tile** means no human handoff is pending. The conversation remains open: the agent may have answered, completed a reversible action, or still own follow-through. Absence is intentionally not a fifth state and never requires a closing header.
 
 **On the human** — the agent has stopped and cannot proceed without them.
 
@@ -29,9 +31,9 @@ There are four *phases*, and the phase where the ball is in the human's court ha
 
 ## One vocabulary, every surface
 
-**These are the same glyphs that close every chat message** — `## ❓ Clarify`, `## ✋ Act`, `## 🗓️ Scheduled`, or the close-out's `## Session Closed`, which is ✅'s header — same meaning on the root tile and at the foot of the reply. This file owns the semantics; each surface spec owns rendering.
+**These are the same glyphs that close a chat message when it creates a lifecycle transition** — `## ❓ Clarify`, `## ✋ Act`, `## 🗓️ Scheduled`, or the close-out's `## Session Closed`, which is ✅'s header — same meaning on the root tile and at the foot of the reply. This file owns the semantics; each surface spec owns rendering. A message with no real transition has no lifecycle header and creates no tile.
 
-So a stopped phase's closing header and the root-tile transition are one decision, not two, and they can never disagree: when a reply ends in `## ✋ Act`, the root tile becomes ✋ in the same turn. 🔄 is the only state that is never a header — it means the agent hasn't stopped yet. In a multi-agent phase, individual Brainstorm contributions and interim Challenge turns are non-terminal and never write lifecycle state; the phase produces one human-facing transition when it stops.
+So a real handoff's closing header and root-tile transition are one decision, not two, and they can never disagree: when a reply ends in `## ✋ Act`, the root tile becomes ✋ in the same turn. 🔄 is the only state that is never a header — it means the agent has not stopped yet. In a multi-agent phase, individual Brainstorm contributions and interim Challenge turns are non-terminal and never write lifecycle state; the phase produces one human-facing transition only when the human actually owes something.
 
 **The header is the recommendation.** Naming which state the turn ended in is the whole point: the human should know from the header alone whether they owe an answer or have to go do something — before reading a word under it.
 
@@ -41,11 +43,11 @@ So a stopped phase's closing header and the root-tile transition are one decisio
 
 **Only one header per message.** If part of the work needs their hands and part needs a decision, that is Act, and the question rides along in the body.
 
-**A "go" is a question, not a state of its own.** When you have a plan and want the green light, that is a Clarify question whose recommended answer you already wrote: say what you intend to do, and that you will do it unless they say otherwise. It never gets its own header, because from their side a go and an answer are the same action — reading one line and replying.
+**A “go” is a question, not a state of its own.** Ask for one only when the work is irreversible, outward-facing, costly, or outside existing authority. An explicit request already supplies authority for reversible in-scope work; do it instead of asking again. When a true go is required, write the recommendation before the question. It never gets its own header, because from the human's side a go and an answer are the same action.
 
-**Clarify has a budget: batch it, and cap it at three.** Clarify is the cheapest turn for you and the most expensive for them. Every ambiguity goes in one message, never a drip across turns. If you cannot get under three questions, the right move is usually to act on the confident majority and flag the rest as reversible assumptions. Work they have not read yet is never a one-word go: a first draft or a new analysis is a real question, because nobody can green-light what they have not evaluated.
+**Clarify has a budget: one blocking question by default, three only when they are inseparable.** Clarify is the cheapest turn for you and the most expensive for them. Act on the confident majority and flag reversible assumptions. Never manufacture a choice from an unexplained or model-invented label. A question generated only because a format expects one is invalid.
 
-**When the work is done, ask them to close the thread** — "Recommend closing this. Say the word and I'll mark it done." That is a Clarify, and it is the only ask in the message.
+**Completion does not create an ask.** Report the result and stop. Recommend closing only when the human is explicitly managing thread lifecycle or their confirmation changes durable state; do not turn every finished task into another Clarify.
 
 Any Clarify may draw a question back instead of a "go." That is expected and needs no invitation. This is a two-actor handoff: the state always makes clear which actor owns the next move.
 
@@ -55,7 +57,7 @@ Agent identity is not a root tile: the reply's author is the agent. When more th
 
 ## The root status tile
 
-The human's root message carries **exactly one adapter-held tile: the thread's lifecycle status** — zero or one. One state for the thread, not per agent: nothing while on the agent; one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` when a turn stops, matching the closing header; 🔄 while a long turn runs. Nothing else goes on the root: model, harness, and thinking change mid-thread, and the author is already on every reply, so a root copy of provenance is wrong by construction.
+The human's root message carries **at most one adapter-held tile: the thread's lifecycle status**. One state for the thread, not per agent: nothing when no human handoff is pending; one of `:question:`, `:raised_hand:`, `:calendar:`, or `:white_check_mark:` for a real transition matching the closing header; 🔄 while a long turn runs. Nothing else goes on the root: model, harness, and thinking change mid-thread, and the author is already on every reply, so a root copy of provenance is wrong by construction.
 
 ### The per-message run signature
 
@@ -69,7 +71,7 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 
 ### Transitions
 
-**The tile is written by the surface adapter; agents never write reactions themselves.** The agent ends its turn in the right state — that is what the closing header is — and the adapter derives the tile from it. With one tile there is no order contract and nothing to re-lay: the adapter sets, swaps, or removes the status tile, and that is the whole write surface.
+**The tile is written by the surface adapter; agents never write reactions themselves.** When the agent creates a lifecycle transition, its closing header declares that state and the adapter derives the tile. An ordinary headerless result clears any prior agent-held transient tile but does not invent a human-held state. With one tile there is no order contract and nothing to re-lay: the adapter sets, swaps, or removes the status tile, and that is the whole write surface.
 
 **A tile a human holds is never removed and never co-reacted**, and a human-held lifecycle tile owns the state outright — the adapter adds nothing beside it. Non-tile reactions are never touched.
 
@@ -80,7 +82,7 @@ Which glyph maps to which model or harness is a runtime lookup owned by the inst
 **Cleanup is forward-only.** Roots from the retired provenance-strip era keep their old tiles until the thread sees another send, at which point the adapter removes its own legacy tiles; dormant threads stay as they are.
 
 Examples:
-- Ordinary working turn → root has no tile; the reply ends `:lobster:` `:m_opus:` `:h_cc:` `:think_off:`
+- Ordinary answer or completed reversible action → root has no lifecycle tile; the reply ends naturally before the adapter's run signature
 - Waiting on a go → root ❓; the asking post carries its own signature
 - Long run → root 🔄 from the kickoff note, swapped for the closing state when the turn stops
 
@@ -88,6 +90,7 @@ Carve-outs — channels that get neither tile nor signature — live in the surf
 
 ## Changelog
 
+- **2026-08-22** — Lifecycle headers became transition-only: ordinary results end naturally, completion creates no automatic close request, and Clarify cannot be manufactured by reply shape.
 - **2026-08-19** — RCR 2026-08-19-04: multi-agent contributions became non-terminal; each collaboration phase now produces one lifecycle handoff when it stops.
 - **2026-08-18** — RCR 2026-08-18-01: the root shrank to the status tile alone; provenance moved to the per-message run signature; identity tiles and combined readings retired; cleanup forward-only.
 - **2026-08-17** — RCR 2026-08-17-01/-02: status first, re-laid by a multi-account adapter; absence means active; 🔄 restricted to long runs via the kickoff note; faults journal-only.

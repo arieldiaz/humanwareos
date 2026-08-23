@@ -4,40 +4,36 @@ How agent conversations and replies are structured, on any surface. Surface mech
 
 Budget: 500 words.
 
-## Replies should be succinct and accurate
+## Default
 
-Headers and bullets when the human must act on several things or compare options; otherwise paragraphs. No consultant theater: extra headings, labeled paragraphs, actionless action sections, repeated conclusions. When in doubt, write prose and stop sooner.
+Lead with the result. Use headers and bullets only when the human must compare or act on several things; otherwise write short prose. No consultant theater, repeated conclusions, forced CTA, or actionless action section.
 
-A stopped phase earns one closing header; the goal post's moves to the turn's last message. Brainstorm contributions and interim Challenge turns do not; the collaboration contract makes one Ariel-facing handoff.
+Write complete, plain English. Brevity never justifies fragments, unexplained shorthand, or invented labels. Use the human's terms. When a harmless detail is missing, make one reversible assumption, state it briefly when it matters, and continue.
 
-**A turn expected to exceed five minutes opens with a one-line kickoff note**, headerless — it signals 🔄 (`docs/status-framework.md`). Shorter turns send no interim messages.
+If the request is reasonably actionable, act. Ask only when an ambiguity blocks useful work or materially changes an irreversible outcome. An explicit “do it” settles a prior go; do not ask again. Never request conversational permission for a reversible in-scope write already requested. If an enforcement layer requires approval, state the exact actor, capability, scope, and consequence under `docs/permission-model.md`; “allow that write” is invalid.
+
+A lifecycle closing header appears only when the human genuinely owes an answer or action, the work is scheduled, or the human has closed it. An ordinary result ends naturally. Never invent a question, choice, standing offer, or close request to satisfy a shape.
+
+**A turn expected to exceed five minutes opens with one headerless kickoff line** to signal 🔄 (`docs/status-framework.md`). Shorter turns send no interim message.
 
 ## Conversation topology
 
-**Only the human creates roots**; sub-agent and multi-model work goes into the existing thread. Exception: an approved **spin-out**, whose root you create and work that turn.
+**Only the human creates roots**; sub-agent and multi-model work stays in the existing thread. An approved spin-out is the exception and must be worked that turn.
 
-**The first agent post in a work thread is one short `Goal:` line**, detail in replies that turn. One independently closeable item, one root; a root without worked replies is only an announcement. Scheduled and agent-initiated posts follow the same shape — short root, body threaded, run ending silently; automatic final-text delivery is for one-line notices, and structured-capable jobs carry this instruction in their payload.
+**The first agent post in a work thread is one short `Goal:` line**, with detail in replies that turn. One independently closeable item, one root; a root without worked replies is only an announcement. Scheduled and agent-initiated posts use the same shape.
 
-An explicit @mention always gets a response — a reaction alone when acknowledgment is enough; guest and trigger rules may narrow this.
+An explicit @mention always gets a response — a reaction alone when acknowledgment is enough; guest and trigger rules may narrow this. A mention or question without a new request resumes the immediately preceding unresolved request instead of discarding context or asking what to do again.
 
-## Three sections to each reply
+## Structure when useful
 
-A structured reply has three H2 sections; short prose keeps only the last.
+A structured reply uses only what it needs:
 
-1. `## TLDR` — one to three plain sentences sufficient for the decision.
-2. `## Background` — brief context; no critical fact lives only here.
-3. `## ❓ Clarify` or `## ✋ Act` — minimal numbered steps: Act only work needing the human's hands, Clarify only questions blocking progress. A parking turn ends `## 🗓️ Scheduled`; a close-out, the shape below. Semantics: `docs/status-framework.md`.
+1. `## TLDR` — one to three sentences sufficient for the decision.
+2. `## Background` — brief optional context; no critical fact lives only here.
+3. A lifecycle closing section only for a real handoff: `## ❓ Clarify`, `## ✋ Act`, `## 🗓️ Scheduled`, or the close-out below.
 
-## Shape by situation
-
-- **Bugs, incidents, postmortems** → what happened, cause, recommendation, whether the human must act. Detail lives in the commit or worklog.
-- **Teaching** → answer first, keep the context that teaches, skimmable.
-- **Exploring / thinking aloud** → prose without forced resolution; the closing header carries one light standing offer.
-- **Long prose** → descriptive `###` headings after about three paragraphs. Bold labels are not headings.
-- Never a loose closing paragraph, forced CTA, or internal action phrased as their instruction.
+Short prose normally has no heading. Bugs and incidents lead with what happened and the current state. Teaching answers first. Exploration uses prose without forced resolution. Long prose gains descriptive `###` headings after about three paragraphs. Brainstorm contributions and interim Challenge turns never write lifecycle state; collaboration produces one Ariel-facing handoff only when one exists.
 
 ## Session close-out
 
-After the human approves closure, send one final message: `## Session Closed`, then four measured bullets — elapsed · turns · model; words and tokens in/out · context peak (% of window when known); API cached and uncached · `Actual: $0 on sub`; one efficiency observation. The instance's thread-stats tool generates it — never hand-write the numbers. No separate announcement or next-step section.
-
-Each summary is saved as markdown at the instance-defined path — chat expires; the file is the record.
+After the human approves closure, send `## Session Closed` plus the measured output generated by the instance's thread-stats tool; never hand-write its numbers. Save the summary at the instance-defined path because chat expires.
