@@ -33,7 +33,7 @@ function fixture() {
   return { root, coreDist, slackDist, coreFile, slackFile };
 }
 
-test("restores the shared reply contract in Slack prompt hints", () => {
+test("keeps Slack prompt hints transport-only", () => {
   const { root, coreDist, slackDist, coreFile, slackFile } = fixture();
   try {
     const env = { ...process.env, OPENCLAW_CORE_DIST: coreDist, OPENCLAW_SLACK_DIST: slackDist };
@@ -45,8 +45,7 @@ test("restores the shared reply contract in Slack prompt hints", () => {
     assert.match(core, /Follow the operator's reply-style rules/);
     assert.doesNotMatch(core, /mostly lurk/);
     assert.match(slack, /text_markup: "markdown"/);
-    assert.match(slack, /## TLDR, optional ## Background/);
-    assert.match(slack, /lifecycle closing section only for a real handoff/);
+    assert.doesNotMatch(slack, /reply contract/);
     const second = JSON.parse(execFileSync(process.execPath, [patchPath], { env, encoding: "utf8" }));
     assert.equal(second.core, "already patched");
     assert.equal(second.slack, "unchanged");
