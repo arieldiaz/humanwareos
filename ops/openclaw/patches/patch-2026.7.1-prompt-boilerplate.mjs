@@ -17,7 +17,7 @@ import path from "node:path";
 //      twice to "Be extremely selective". The instance's rules are stricter
 //      on unprompted speech (registry-listed channels only, added value is
 //      not a licence) and *require* document structure (## sections, closing
-//      header) — and an explicit mention must always get a response.
+//      structure — and an explicit mention must always get a response.
 //
 // Plugin hooks cannot fix this: before_prompt_build can append or blindly
 // replace the whole system prompt, but never sees the assembled text, so
@@ -116,7 +116,6 @@ const result = { core: "unchanged", slack: "unchanged" };
     '\t\t\t\ttext_markup: "markdown",',
     "\t\t\t\trules: [",
     '\t\t\t\t\t"Write standard Markdown (**bold**, ## headings, - lists, [label](url)); the gateway renders it for Slack.",',
-    '\t\t\t\t\t"For structured replies, use the existing reply contract: ## TLDR, optional ## Background, then a lifecycle closing section only for a real handoff.",',
     '\t\t\t\t\t"Never hand-write Slack mrkdwn (*bold*, <url|label>).",',
     '\t\t\t\t\t"No pipe tables; tabular data goes in a fenced code block."',
     "\t\t\t\t]",
@@ -127,10 +126,8 @@ const result = { core: "unchanged", slack: "unchanged" };
     source = source.slice(0, start) + hintsAfter + source.slice(end + 3);
     fs.writeFileSync(file, source);
     result.slack = "patched";
-  } else if (block.includes('"markdown"') && !block.includes("For structured replies, use the existing reply contract")) {
-    const anchor = '\t\t\t\t\t"Write standard Markdown (**bold**, ## headings, - lists, [label](url)); the gateway renders it for Slack.",';
-    if (!block.includes(anchor)) throw new Error("Markdown formatting rule has an unexpected shape; review the installed version.");
-    const updatedBlock = block.replace(anchor, `${anchor}\n\t\t\t\t\t"For structured replies, use the existing reply contract: ## TLDR, optional ## Background, then a lifecycle closing section only for a real handoff.",`);
+  } else if (block.includes('"markdown"') && block.includes("For structured replies, use the existing reply contract")) {
+    const updatedBlock = block.replace(/^\s*"For structured replies, use the existing reply contract:[^\n]*\n/m, "");
     source = source.slice(0, start) + updatedBlock + source.slice(end + 3);
     fs.writeFileSync(file, source);
     result.slack = "patched";
