@@ -26,10 +26,10 @@ import path from "node:path";
 // Idempotent, fails closed if the bundle shape changed. Restart the gateway
 // after applying.
 
-const coreDist = "/opt/homebrew/lib/node_modules/openclaw/dist";
+const coreDist = process.env.OPENCLAW_CORE_DIST ?? "/opt/homebrew/lib/node_modules/openclaw/dist";
 const slackDist = path.join(
-  process.env.HOME ?? "",
-  ".openclaw/npm/projects/openclaw-slack-b25c10c1bd__openclaw-generation__g-0c72fcf9148ba807/node_modules/@openclaw/slack/dist",
+  process.env.OPENCLAW_SLACK_DIST ?? process.env.HOME ?? "",
+  process.env.OPENCLAW_SLACK_DIST ? "" : ".openclaw/npm/projects/openclaw-slack-b25c10c1bd__openclaw-generation__g-0c72fcf9148ba807/node_modules/@openclaw/slack/dist",
 );
 
 const findOne = (dir, pattern, label) => {
@@ -116,6 +116,7 @@ const result = { core: "unchanged", slack: "unchanged" };
     '\t\t\t\ttext_markup: "markdown",',
     "\t\t\t\trules: [",
     '\t\t\t\t\t"Write standard Markdown (**bold**, ## headings, - lists, [label](url)); the gateway renders it for Slack.",',
+    '\t\t\t\t\t"For structured replies, use the existing reply contract: ## TLDR, optional ## Background, then a lifecycle closing section only for a real handoff.",',
     '\t\t\t\t\t"Never hand-write Slack mrkdwn (*bold*, <url|label>).",',
     '\t\t\t\t\t"No pipe tables; tabular data goes in a fenced code block."',
     "\t\t\t\t]",
@@ -124,6 +125,13 @@ const result = { core: "unchanged", slack: "unchanged" };
 
   if (block.includes('"slack_mrkdwn"')) {
     source = source.slice(0, start) + hintsAfter + source.slice(end + 3);
+    fs.writeFileSync(file, source);
+    result.slack = "patched";
+  } else if (block.includes('"markdown"') && !block.includes("For structured replies, use the existing reply contract")) {
+    const anchor = '\t\t\t\t\t"Write standard Markdown (**bold**, ## headings, - lists, [label](url)); the gateway renders it for Slack.",';
+    if (!block.includes(anchor)) throw new Error("Markdown formatting rule has an unexpected shape; review the installed version.");
+    const updatedBlock = block.replace(anchor, `${anchor}\n\t\t\t\t\t"For structured replies, use the existing reply contract: ## TLDR, optional ## Background, then a lifecycle closing section only for a real handoff.",`);
+    source = source.slice(0, start) + updatedBlock + source.slice(end + 3);
     fs.writeFileSync(file, source);
     result.slack = "patched";
   } else if (!block.includes('"markdown"')) {
