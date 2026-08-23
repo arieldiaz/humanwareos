@@ -40,6 +40,12 @@ HumanwareOS asks in one consistent shape:
 
 The name states the owner, the verb states the capability, and the reason states the user-visible feature. Product names, feature names, and reasons remain stable across chat, the security inventory, setup documentation, and the operating system where the platform permits it.
 
+## Conversation authority
+
+An explicit request authorizes reversible work inside the selected execution profile's declared workspace and data scope. That authority travels with the task; the agent does not ask again before creating or updating the requested working document or artifact. The enforcement layer still blocks paths and capabilities outside the profile.
+
+Irreversible, outward-facing, costly, elevated, or newly private access requires a real decision under the format above. If a harness produces a technical approval request, the control plane either resolves it from existing profile authority or presents the exact actor, capability, scope, and consequence. The agent never paraphrases it as “allow that write,” invents an approval after failure, or treats conversational permission as a substitute for an enforceable grant.
+
 ## Surfaces and privacy
 
 An instance's private security surface is the canonical human-readable inventory. It shows one row per Actor × Capability, the current decision, reason, scope, evidence, and review date. Raw operating-system rows remain available behind each record for diagnosis. New or changed grants appear in a recurring security diff and any unexplained grant is a finding, not a silent count.
@@ -53,4 +59,3 @@ Public HumanwareOS documentation explains the model and examples but never expos
 3. Package persistent privileged features as narrowly scoped, signed components. Do not merely rename or copy a runtime binary: identity must survive upgrades and be verifiable by code signature.
 4. Reset the old runtime-scoped grants, request only the capabilities each component needs, and verify the user-visible operating-system names.
 5. Capture every relevant permissions pane after restart and compare it with the canonical inventory.
-
