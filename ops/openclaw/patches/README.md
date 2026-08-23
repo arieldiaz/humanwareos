@@ -10,6 +10,10 @@ Instance-owned declarative configuration lives one level up:
 - `models.patch.json5` — model aliases and default fallbacks.
 - `runtime.patch.json5` — local media preprocessing and ACP harness policy.
 
+## 2026.7.1 session model + thinking switch
+
+`patch-2026.7.1-session-status-thinking.mjs` extends the native `session_status` control with the session store's existing `thinkingLevel` field. A single call can therefore set both `model` and `thinking`, and either accepts `default` to clear its override. This fixes mid-thread switches such as Sol + high without routing a native conversation through ACP. The patch also updates the tool's mutation classification and model-facing description. It is version-scoped, idempotent, and fails closed when the installed bundle changes.
+
 ## 2026.7.1 Slack current-conversation ACP binding
 
 `patch-2026.7.1-slack-current-conversation-binding.mjs` enables the generic OpenClaw current-conversation binding service for the external Slack plugin. Slack already provides an exact thread conversation id and thread-aware reply routing, but `@openclaw/slack` 2026.7.1 omits `supportsCurrentConversationBinding`; `/acp spawn cursor --bind here` and equivalent agent-driven ACP profile switches therefore fail before the binding service runs. The patch also gives typed Slack ACP bindings one narrow account-default form: `match.peer.id="*"` materializes the owning agent's configured ACP runtime for each concrete Slack thread or conversation. Exact configured bindings retain higher precedence, while an explicit `channels.modelByChannel.slack` entry retains the native privacy route. Finally, an explicit mention containing no letters or numbers becomes a deterministic nudge to resume the thread's outstanding request instead of an empty zero-reply dispatch. This makes execution-profile routing and thread wake behavior truthful without collapsing every thread into one harness session or bypassing local-only channel policy. The patch is idempotent and fails closed when the plugin version or bundle shape changes.
