@@ -15,6 +15,12 @@ import path from "node:path";
 // configured ACP runtime for each concrete Slack thread or conversation".
 // Exact configured bindings still win. The generic binding database remains
 // the owner of persistence and ACP remains the owner of harness dispatch.
+//
+// Slack also admits explicit mention-only turns, but after mention removal
+// those turns have no actionable body and every runtime returns zero visible
+// payloads. Treat an explicit mention with no letters or numbers as a nudge to
+// resume the outstanding thread request. This preserves ordinary messages and
+// gives both native and ACP agents the same deterministic wake behavior.
 
 const projectsRoot = process.env.OPENCLAW_NPM_PROJECTS_DIR ?? path.join(os.homedir(), ".openclaw", "npm", "projects");
 const explicitRoot = process.env.OPENCLAW_SLACK_PLUGIN_ROOT;
@@ -36,6 +42,9 @@ const wildcardMatchReplacement = `\tif (!bindingConversationId || !conversationI
 const wildcardRouteMarker = "arielosSlackDefaultAcpConversationId";
 const wildcardRouteAnchor = `\t\tconst configuredRoute = resolveConfiguredBindingRoute({\n\t\t\tcfg: ctx.cfg,\n\t\t\troute,\n\t\t\tconversation: {\n\t\t\t\tchannel: "slack",\n\t\t\t\taccountId: account.accountId,\n\t\t\t\tconversationId: baseConversationId\n\t\t\t}\n\t\t});`;
 const wildcardRouteReplacement = `\t\tconst arielosSlackDefaultAcpConversationId = routedThreadId ?? baseConversationId;\n\t\tconst arielosSlackDefaultAcpModelOverride = ctx.cfg.channels?.modelByChannel?.slack?.[baseConversationId];\n\t\tconst configuredRoute = arielosSlackDefaultAcpModelOverride ? { bindingResolution: null, route } : resolveConfiguredBindingRoute({\n\t\t\tcfg: ctx.cfg,\n\t\t\troute,\n\t\t\tconversation: {\n\t\t\t\tchannel: "slack",\n\t\t\t\taccountId: account.accountId,\n\t\t\t\tconversationId: arielosSlackDefaultAcpConversationId,\n\t\t\t\tparentConversationId: routedThreadId ? baseConversationId : void 0\n\t\t\t}\n\t\t});`;
+const mentionNudgeMarker = "arielosSlackMentionOnlyNudge";
+const mentionNudgeAnchor = `\tconst { rawBody, effectiveDirectMedia } = resolvedMessageContent;`;
+const mentionNudgeReplacement = `\tconst { rawBody: arielosSlackResolvedRawBody, effectiveDirectMedia } = resolvedMessageContent;\n\tconst arielosSlackMentionOnlyNudge = effectiveWasMentioned && !/[\\p{L}\\p{N}]/u.test(stripSlackMentionsForCommandDetection(arielosSlackResolvedRawBody));\n\tconst rawBody = arielosSlackMentionOnlyNudge ? "The user explicitly pinged you without adding a new request. Treat this as a nudge: review the immediately preceding unresolved user request in this Slack thread, continue the work now, and reply with the next useful result or one concise blocker. Do not merely ask what they need unless the thread contains no unresolved request." : arielosSlackResolvedRawBody;`;
 
 let patched = 0;
 let alreadyPatched = 0;
@@ -43,6 +52,9 @@ let candidates = 0;
 let wildcardPatched = 0;
 let wildcardAlreadyPatched = 0;
 let wildcardCandidates = 0;
+let mentionNudgePatched = 0;
+let mentionNudgeAlreadyPatched = 0;
+let mentionNudgeCandidates = 0;
 
 for (const root of roots) {
   const packageJson = path.join(root, "package.json");
@@ -83,17 +95,26 @@ for (const root of roots) {
     wildcardCandidates += 1;
     if (source.includes(wildcardRouteMarker)) {
       wildcardAlreadyPatched += 1;
-      continue;
-    }
-    if (!source.includes(wildcardRouteAnchor)) {
+    } else if (!source.includes(wildcardRouteAnchor)) {
       throw new Error(`Slack ACP wildcard route anchor missing in ${file}; review the installed plugin shape before patching.`);
+    } else {
+      source = source.replace(wildcardRouteAnchor, wildcardRouteReplacement);
+      wildcardPatched += 1;
     }
-    source = source.replace(wildcardRouteAnchor, wildcardRouteReplacement);
+    mentionNudgeCandidates += 1;
+    if (source.includes(mentionNudgeMarker)) {
+      mentionNudgeAlreadyPatched += 1;
+    } else if (!source.includes(mentionNudgeAnchor)) {
+      throw new Error(`Slack mention-only nudge anchor missing in ${file}; review the installed plugin shape before patching.`);
+    } else {
+      source = source.replace(mentionNudgeAnchor, mentionNudgeReplacement);
+      mentionNudgePatched += 1;
+    }
     fs.writeFileSync(file, source);
-    wildcardPatched += 1;
   }
 }
 
 if (candidates === 0) throw new Error("No OpenClaw Slack channel plugin bundle found; refresh the plugin registry before applying this patch.");
 if (wildcardCandidates < 2) throw new Error("OpenClaw Slack wildcard ACP patch requires both channel and pipeline bundles.");
-console.log(JSON.stringify({ patched, alreadyPatched, candidates, wildcardPatched, wildcardAlreadyPatched, wildcardCandidates, roots: roots.length }));
+if (mentionNudgeCandidates === 0) throw new Error("OpenClaw Slack mention-only nudge patch requires a pipeline bundle.");
+console.log(JSON.stringify({ patched, alreadyPatched, candidates, wildcardPatched, wildcardAlreadyPatched, wildcardCandidates, mentionNudgePatched, mentionNudgeAlreadyPatched, mentionNudgeCandidates, roots: roots.length }));
