@@ -41,7 +41,7 @@ Working documents are mutable and owned by a project or conversation. They use a
 
 ## Artifacts and derived data
 
-An artifact revision is immutable. Editing an artifact creates a new revision linked with `supersedes`. Framework code owns renderers, shells, schemas, and publication behavior; the data plane owns rendered content, source material, and manifests.
+An artifact revision is immutable. Editing an artifact creates a new revision linked with `supersedes`. Framework code owns renderers, shells, schemas, and publication behavior; the data plane owns rendered content, source material, and manifests. Agents stage artifact candidates in a task-owned workspace and promote them only through the instance's artifact service. That service is the single writer for the addressed revision, registry, project indexes, and integrity checks; instructions must not tell an agent to copy a candidate directly into the artifact store or update discovery files by hand.
 
 Derived files are reproducible and may be overwritten or discarded. Every durable derived item records the source event identifiers, model or tool, schema version, and creation time so it can be rebuilt honestly.
 
