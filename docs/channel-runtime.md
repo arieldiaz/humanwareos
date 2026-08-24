@@ -46,6 +46,8 @@ Short work runs inline and returns results to the owning identity. Work expected
 
 Switching profiles creates a handoff event; it does not pretend two harness session stores are one transcript. The visible response signature records the effective agent, model, harness, reasoning, and runtime for that message.
 
+A direct human request to change model, harness, reasoning, or fast mode is control-plane input, not conversational advice. Apply and verify the requested switch before content work or other tool use in that turn, then continue under the effective profile. If the switch is unavailable, state the exact constraint before continuing. Never acknowledge the switch while leaving the old profile active, and never defer an explicit switch behind the work it was meant to govern.
+
 ## Permissions
 
 Permissions belong to profiles, not personalities. Reference levels are read-only, standard-write inside an isolated worktree, and explicitly elevated. Flags equivalent to force, trust, approve-all, or unsandboxed execution cannot be a hidden permanent default for one identity.
