@@ -31,9 +31,9 @@ The text after a colon is the shortest useful next step. `No action needed.` and
 
 **Completion does not create an ask.** Report the result with `No action needed.` The closed status is reserved for the human's confirmed thread close and the measured close-out, not for a draft, commit, subtask, or ordinary finished turn.
 
-## One value, two renderings
+## One value, three renderings
 
-The outbound adapter normalizes the final Status section into a closed internal enum before delivery. It renders the canonical footer from that value and uses the same value to set, swap, or clear the root tile. There is no second prose lifecycle parser and no headerless fallback to working.
+The outbound adapter normalizes the final Status section into a closed internal enum before delivery. It renders the canonical footer from that value, uses the same value to set, swap, or clear the root tile, and records that same value on the session ledger. The menu and session console are views of the ledger, not a second inventory. There is no second prose lifecycle parser and no headerless fallback to working.
 
 The human's root message carries at most one adapter-held lifecycle tile. Model, harness, thinking, and agent identity never belong on the root. Provenance lives on each agent post because it may change mid-thread.
 
@@ -73,5 +73,6 @@ Status or signature write failures are journaled for scheduled review, never pos
 
 ## Changelog
 
+- **2026-08-24** — The same outbound status also writes the session ledger; the menu is a view of that ledger.
 - **2026-08-23** — Replaced competing closing headers and prose inference with one explicit outbound status value that renders both the mandatory Status footer and root tile.
 - **2026-08-18** — RCR 2026-08-18-01 moved provenance from the root to per-message run signatures and reduced the root to one lifecycle tile.

@@ -49,7 +49,7 @@ Imports preserve an external corpus exactly as received, including its original 
 
 ## Sessions
 
-Channels are inputs to the session ledger, not durable memory. A canonical conversation event records channel adapter, external thread identifier, agent identity, selected execution profile, timestamps, attachments, and delivery result. A channel export may preserve the surface transcript, but memory promotion is a separate deliberate operation.
+Channels are inputs to the session ledger, not durable memory. A canonical conversation event records channel adapter, external thread identifier, agent identity, selected execution profile, timestamps, attachments, delivery result, and the same outbound status that rendered the Status footer and root tile. A channel export may preserve the surface transcript, but memory promotion is a separate deliberate operation.
 
 The canonical ledger is append-only JSONL under `sessions/events/` and conforms to `schemas/session-event.schema.json`. Stable event identifiers make adapters idempotent. Harness-specific raw traces remain Tier 0 evidence; normalized events retain a bounded source reference so an operator can inspect that evidence locally without copying it into every projection.
 
