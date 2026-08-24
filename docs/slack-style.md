@@ -22,9 +22,9 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 
 - `## Heading` for sections. Bold is a label, not a heading. Never a single `*` — that is italic.
 - **Never type a raw `~`.** Write "about". A bare tilde pairs with the next one anywhere later — including inside backticks, striking the code marks with it — and backslash is not an escape, it renders literally. Backticked tildes are safe only when no bare one exists in the message.
-- No blank-line spacers around headings; header blocks carry their own padding.
+- Use one blank line between a heading and its content, as standard Markdown requires. Do not add extra spacer lines.
 - Lists use `- `, never a literal `•`. One bullet is one uninterrupted list item — a hard line break or manual indent inside it kills the hanging indent. Numbers are reserved for steps performed in order; everything else is a bullet.
-- **No emoji in headings.** Every visible agent post ends with `## Status`; the canonical line below it names the next owner without decorative glyphs.
+- **No decorative emoji in headings.** The exact lifecycle headings from `docs/status-framework.md` are the only exception because their glyph is semantic state.
 - **Tables: fenced code block, space-aligned, ≤60 chars.** Slack has no table primitive; a pipe table renders as literal `|` junk. Use one when comparing 3+ options across several attributes. Over about 6×5, use a canvas.
 - **Specialized vocabulary:** `**term** (short plain definition)` at first use in a thread, then append the entry to the instance's glossary. Never silently swap in a simpler word. Do not re-define a term already glossed in the same thread.
 - Diagrams ship as a viewable HTML artifact plus editable source.
@@ -52,4 +52,4 @@ Slack renders a raw path as dead text and an upload as a permanent duplicate in 
 
 ## Precedence
 
-Fixed rules, then channel overrides, then the human's in-thread instruction (which applies to the whole thread going forward), then shape guidance. Brevity never suppresses Status, and shape never creates a human handoff.
+Fixed rules, then channel overrides, then the human's in-thread instruction (which applies to the whole thread going forward), then shape guidance. Brevity never suppresses a real handoff, and shape never creates one.

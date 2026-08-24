@@ -6,7 +6,7 @@ Budget: 700 words. Over it, consolidate — do not extend.
 
 ## What the human sees
 
-**Write standard GitHub-flavored Markdown and nothing else.** Buzz renders it natively: real headings, hanging-indent lists, pipe tables, fenced code with syntax highlighting. Every Slack mechanic built around mrkdwn conversion — hand-written `*bold*`, the no-pipe-tables rule, the 4,000-character chunk budget, blank-line rules around headings — does not exist here and must not be ported by reflex.
+**Write standard GitHub-flavored Markdown and nothing else.** Buzz renders it natively: real headings, hanging-indent lists, pipe tables, fenced code with syntax highlighting. Every Slack mechanic built around mrkdwn conversion — hand-written `*bold*`, the no-pipe-tables rule, and the 4,000-character chunk budget — does not exist here and must not be ported by reflex.
 
 **Delivery is the harness's job.** The final assistant message of a turn is published automatically. The message CLI is for side effects only — an extra top-level post, a broadcast the human explicitly asked for — never a duplicate of the ordinary reply.
 
