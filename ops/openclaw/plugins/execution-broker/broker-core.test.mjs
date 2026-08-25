@@ -37,6 +37,12 @@ test("uses thread profile before the agent default", () => {
   assert.equal(plan.source, "thread");
 });
 
+test("a retired persisted profile upgrades to the current agent default", () => {
+  const plan = resolveExecutionPlan({input: "continue", catalog, agentId: "liv", channelId: "slack", persistedProfile: "cursor-ask-retired"});
+  assert.equal(plan.profileId, "cursor-low");
+  assert.equal(plan.source, "agent");
+});
+
 test("changes thinking within the persisted harness without a model turn", () => {
   const plan = resolveExecutionPlan({input: "use high thinking: compare both", catalog, agentId: "liv", channelId: "slack", persistedProfile: "cursor-low"});
   assert.equal(plan.profileId, "cursor-high");

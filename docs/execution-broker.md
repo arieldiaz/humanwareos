@@ -40,6 +40,8 @@ Resolution precedence is:
 4. agent default;
 5. catalog default.
 
+A persisted thread profile is reused only while it remains enabled and allowlisted for that identity. If an instance retires a profile, the next ordinary turn upgrades to the current channel, agent, or system default instead of failing the thread or silently continuing the retired runtime.
+
 An explicit but invalid directive fails visibly. It never falls through to another profile. A profile change appends a handoff event before the new runtime starts. The original harness transcript remains evidence; the normalized request ledger and current decisions cross the boundary.
 
 ## Profile model
