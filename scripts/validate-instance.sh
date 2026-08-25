@@ -12,7 +12,10 @@ usage() {
 
 FRAMEWORK_DIR=$(CDPATH= cd -- "$1" && pwd)
 INSTANCE_DIR=$(CDPATH= cd -- "$2" && pwd)
-JQ=${JQ:-/usr/bin/jq}
+JQ=${JQ:-}
+if [ -z "$JQ" ]; then
+  JQ=$(command -v jq 2>/dev/null || true)
+fi
 
 [ -x "$JQ" ] || {
   printf '%s\n' "validate-instance: jq is required" >&2
