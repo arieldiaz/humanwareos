@@ -32,8 +32,10 @@ export function buildCursorCliBackends(command) {
       nativeToolMode: "always-on",
       config: {
         ...common,
-        args: ["--trust", "--auto-review", "--sandbox", "enabled", "--print", "--output-format", "stream-json"],
-        resumeArgs: ["--trust", "--auto-review", "--sandbox", "enabled", "--print", "--output-format", "stream-json", "--resume", "{sessionId}"]
+        // Keep this explicit. Cursor's CLI default is vendor-controlled, while
+        // a Humanware workspace profile promises an agentic tool surface.
+        args: ["--trust", "--mode", "agent", "--auto-review", "--sandbox", "enabled", "--print", "--output-format", "stream-json"],
+        resumeArgs: ["--trust", "--mode", "agent", "--auto-review", "--sandbox", "enabled", "--print", "--output-format", "stream-json", "--resume", "{sessionId}"]
       }
     }
   ];

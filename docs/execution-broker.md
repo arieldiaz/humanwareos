@@ -54,7 +54,7 @@ An execution profile binds:
 
 `general` is appropriate for questions, health, planning, research, and ordinary tool work. It does not imply a coding harness. `task` is a bounded command-style run. `workspace` owns a resumable vendor session and may use native coding tools. Cursor CLI and Codex app-server are independent runtimes behind the same profile interface. ACP is reserved for an explicitly ACP-native persistent workspace; it is not a channel-wide default.
 
-Cursor CLI profiles use a registered CLI backend. The read-only `cursor-ask` backend runs `cursor-agent --mode ask --print --output-format stream-json`; the workspace backend uses the same authenticated CLI with sandbox and review policy. Cursor session ids are stored by OpenClaw and resumed per canonical conversation.
+Cursor CLI profiles use a registered CLI backend. The optional read-only `cursor-ask` backend runs `cursor-agent --mode ask --print --output-format stream-json`; the workspace backend explicitly runs `cursor-agent --mode agent` with sandbox and review policy. An instance may disallow Ask profiles on an agentic channel without changing the response style for ordinary questions. Cursor session ids are stored by OpenClaw and resumed per canonical conversation.
 
 Codex profiles use the official OpenClaw Codex plugin and model-scoped `agentRuntime.id = "codex"`. OpenClaw remains the channel, policy, tool, and delivery owner while Codex app-server owns its native thread and compaction.
 
