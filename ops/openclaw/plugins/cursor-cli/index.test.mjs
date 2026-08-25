@@ -10,6 +10,8 @@ test("registers parallel ask and workspace backends against the secret-safe wrap
   assert.equal(backends[0].config.serialize, false);
   assert.deepEqual(backends[0].config.sessionIdFields, ["session_id"]);
   assert.ok(backends[0].config.args.includes("ask"));
+  assert.deepEqual(backends[1].config.args.slice(0, 4), ["--trust", "--mode", "agent", "--auto-review"]);
+  assert.ok(backends[1].config.resumeArgs.includes("agent"));
   assert.ok(backends[1].config.args.includes("--auto-review"));
   assert.ok(backends[1].config.args.includes("enabled"));
 });
