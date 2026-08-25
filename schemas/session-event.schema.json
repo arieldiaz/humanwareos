@@ -6,6 +6,7 @@
   "required": [
     "schemaVersion",
     "id",
+    "traceId",
     "ts",
     "logicalSessionId",
     "source",
@@ -15,8 +16,9 @@
     "details"
   ],
   "properties": {
-    "schemaVersion": {"const": 1},
+    "schemaVersion": {"const": 2},
     "id": {"type": "string", "minLength": 1},
+    "traceId": {"type": "string", "minLength": 1},
     "ts": {"type": "string", "format": "date-time"},
     "logicalSessionId": {"type": "string", "minLength": 1},
     "runtimeSessionId": {"type": ["string", "null"]},
@@ -26,16 +28,33 @@
     "source": {"type": "string", "minLength": 1},
     "provider": {"type": ["string", "null"]},
     "model": {"type": ["string", "null"]},
+    "profileId": {"type": ["string", "null"]},
+    "harness": {"type": ["string", "null"]},
     "kind": {"type": "string", "minLength": 1},
     "level": {"enum": ["normal", "verbose", "forensic"]},
     "summary": {"type": "string"},
     "details": {"type": "object"},
-    "rawRef": {
+    "sourceRef": {
       "type": "object",
-      "required": ["file"],
       "properties": {
         "file": {"type": "string"},
-        "seq": {"type": ["integer", "null"]}
+        "seq": {"type": ["integer", "null"]},
+        "sessionKey": {"type": ["string", "null"]},
+        "runId": {"type": ["string", "null"]},
+        "messageId": {"type": ["string", "null"]}
+      }
+    },
+    "coverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "status"],
+        "properties": {
+          "id": {"type": "integer", "minimum": 1},
+          "text": {"type": "string", "minLength": 1},
+          "status": {"enum": ["addressed", "deferred", "blocked"]}
+        },
+        "additionalProperties": false
       }
     }
   }

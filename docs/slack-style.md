@@ -37,7 +37,7 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 
 Enforced by the agent, because gateways generally have no per-channel knob. Do not "fix" that by widening an account-level setting — state the blast radius before touching any account-wide channel config.
 
-**Sensitive channels** are pinned to local models. Style is unchanged; the routing is the constraint.
+**Sensitive channels** have explicit data scopes and fail closed when no approved profile can satisfy them. Style is unchanged; the routing and disclosure boundary are the constraint.
 
 ## Showing them a file
 

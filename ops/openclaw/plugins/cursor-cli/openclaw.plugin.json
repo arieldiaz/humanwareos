@@ -1,0 +1,14 @@
+{
+  "id": "cursor-cli",
+  "name": "Cursor CLI Backends",
+  "description": "Cursor/Grok read-only and workspace CLI backends",
+  "cliBackends": ["cursor-ask", "cursor-agent"],
+  "setup": {"cliBackends": ["cursor-ask", "cursor-agent"], "requiresRuntime": false},
+  "activation": {"onStartup": true},
+  "configSchema": {
+    "type": "object",
+    "required": ["command"],
+    "properties": {"command": {"type": "string", "minLength": 1}},
+    "additionalProperties": false
+  }
+}

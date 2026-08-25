@@ -9,4 +9,4 @@ This file contains private instance facts and approved narrowings only. Generic 
 - Runtime root: `__RUNTIME_ROOT__`
 - Worktree root: `__WORKTREE_ROOT__`
 
-Load the current strategy from `__DATA_ROOT__/strategy/current.md` and the memory index from `__DATA_ROOT__/memory/current/index.md` before non-trivial work.
+Load the current strategy from `__DATA_ROOT__/current/strategy.md` and the memory index from `__DATA_ROOT__/current/memory/index.md` before non-trivial work.

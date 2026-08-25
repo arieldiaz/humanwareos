@@ -29,9 +29,9 @@ The runtime is output rather than a fourth source. The installer validates the b
 
 Edit the private instance, not the framework. Start with one agent overlay under `agents/`, and keep it narrow: local role, private relationships, approved tone differences, and trust limits. Generic identity behavior belongs upstream in Humanware OS. Personal facts and evolving context belong in the data plane.
 
-Fill the first honest strategy at `<DATA_ROOT>/strategy/current.md` and the compact memory index at `<DATA_ROOT>/memory/current/index.md`. Do not commit either file.
+Fill the first honest strategy at `<DATA_ROOT>/current/strategy.md` and the compact memory index at `<DATA_ROOT>/current/memory/index.md`. Do not commit either file.
 
-The instance's `runtime/profiles.json` separates identity from execution. Give each equivalent agent the same allowed profiles unless a documented trust boundary requires a difference. The default profile should be native OpenClaw. Cursor, Codex, Pi, or other harnesses are task profiles with explicit permissions and isolated workspaces, not permanent identities.
+The instance's `runtime/profiles.json` separates identity from execution. Give each equivalent agent the same allowed profiles unless a documented trust boundary requires a difference. The deterministic broker resolves the profile before inference. A direct provider may be the general default; Cursor CLI, Codex app-server, ACP, OpenCode, and Pi are supported profiles rather than permanent identities.
 
 Validate the configuration and build a new runtime:
 

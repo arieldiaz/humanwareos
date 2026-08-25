@@ -52,7 +52,7 @@ A direct human request to change model, harness, reasoning, or fast mode is cont
 
 Permissions belong to profiles, not personalities. Reference levels are read-only, standard-write inside an isolated worktree, and explicitly elevated. Flags equivalent to force, trust, approve-all, or unsandboxed execution cannot be a hidden permanent default for one identity.
 
-The control plane verifies the profile's data and tool scopes before dispatch. Selecting a coding harness does not grant raw stream access. Selecting a local model does not grant production mutation.
+The control plane verifies the profile's data and tool scopes before dispatch. Selecting a coding harness does not grant raw evidence access, and selecting any model does not grant production mutation.
 
 ## Delivery
 

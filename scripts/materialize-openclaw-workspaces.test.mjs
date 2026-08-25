@@ -11,17 +11,16 @@ test("materializes regular managed projections, archives starter files, and rest
   try {
     const runtime = join(root, "runtime", "current");
     const data = join(root, "data");
-    const workspace = join(data, "workspaces", "agents", "max");
-    const backup = join(data, "backups", "cutover");
+    const workspace = join(data, "working", "agents", "max");
+    const backup = join(data, "operations", "backups", "cutover");
     mkdirSync(join(runtime, "config"), {recursive: true});
     mkdirSync(join(runtime, "instructions", "openclaw", "max"), {recursive: true});
-    mkdirSync(join(data, "memory", "current"), {recursive: true});
-    mkdirSync(join(data, "strategy"), {recursive: true});
+    mkdirSync(join(data, "current", "memory"), {recursive: true});
     mkdirSync(workspace, {recursive: true});
     for (const filename of ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md", "STRATEGY.md"]) writeFileSync(join(runtime, "instructions", "openclaw", "max", filename), filename);
     writeFileSync(join(runtime, "config", "instance.json"), JSON.stringify({paths: {dataRoot: data}}));
-    writeFileSync(join(data, "memory", "current", "index.md"), "memory");
-    writeFileSync(join(data, "strategy", "current.md"), "strategy");
+    writeFileSync(join(data, "current", "memory", "index.md"), "memory");
+    writeFileSync(join(data, "current", "strategy.md"), "strategy");
     writeFileSync(join(workspace, "IDENTITY.md"), "starter identity");
     symlinkSync(join(data, "memory", "current", "index.md"), join(workspace, "MEMORY.md"));
     writeFileSync(join(workspace, "BOOTSTRAP.md"), "starter bootstrap");

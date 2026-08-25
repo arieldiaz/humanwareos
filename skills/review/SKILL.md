@@ -39,4 +39,4 @@ For the **weekly review**: same lenses, but the "work" is the week and the plan 
 
 ## Exit criteria
 
-A written gap-analysis (a paragraph is fine for small work) in `derived/` or the project, the counterweight's challenge attached for significant work, and explicit candidates handed to `/compound` — or an explicit "nothing durable here."
+A written gap-analysis (a paragraph is fine for small work) in `generated/` or the project, the counterweight's challenge attached for significant work, and explicit candidates handed to `/compound` — or an explicit "nothing durable here."

@@ -21,7 +21,13 @@ elif [ "$#" -eq 3 ]; then
 fi
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-JQ=${JQ:-/usr/bin/jq}
+JQ=${JQ:-}
+if [ -z "$JQ" ]; then
+  JQ=$(command -v jq 2>/dev/null) || {
+    printf '%s\n' "build-runtime: jq is required" >&2
+    exit 2
+  }
+fi
 NODE_BIN=${NODE_BIN:-}
 if [ -z "$NODE_BIN" ]; then
   NODE_BIN=$(command -v node 2>/dev/null) || {
@@ -62,7 +68,7 @@ mkdir -p "$RUNTIME_ROOT/runtime"
 BUILD_DIR=$(mktemp -d "$RUNTIME_ROOT/runtime/.build-$BUILD_ID.XXXXXX")
 trap 'rm -rf "$BUILD_DIR"' EXIT HUP INT TERM
 
-mkdir -p "$BUILD_DIR/instructions" "$BUILD_DIR/config" "$BUILD_DIR/framework/scripts" "$BUILD_DIR/surface"
+mkdir -p "$BUILD_DIR/instructions" "$BUILD_DIR/config" "$BUILD_DIR/framework/scripts" "$BUILD_DIR/framework/ops/openclaw/plugins" "$BUILD_DIR/surface"
 cp "$FRAMEWORK_DIR/AGENTS.md" "$BUILD_DIR/instructions/AGENTS.md"
 cp -R "$FRAMEWORK_DIR/docs" "$BUILD_DIR/instructions/docs"
 cp -R "$FRAMEWORK_DIR/agents" "$BUILD_DIR/instructions/agents"
@@ -71,7 +77,9 @@ cp -R "$FRAMEWORK_DIR/commands" "$BUILD_DIR/instructions/commands"
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-runtime-profiles.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-runtime-profiles.mjs"
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-agent-context.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-agent-context.mjs"
 cp "$FRAMEWORK_DIR/scripts/materialize-openclaw-workspaces.mjs" "$BUILD_DIR/framework/scripts/materialize-openclaw-workspaces.mjs"
+cp "$FRAMEWORK_DIR/scripts/migrate-data-layout-v2.sh" "$BUILD_DIR/framework/scripts/migrate-data-layout-v2.sh"
 cp "$FRAMEWORK_DIR/scripts/runtime-cutover-lease.sh" "$BUILD_DIR/framework/scripts/runtime-cutover-lease.sh"
+cp -R "$FRAMEWORK_DIR/ops/openclaw/plugins/." "$BUILD_DIR/framework/ops/openclaw/plugins/"
 cp "$INSTANCE_DIR/AGENTS-instance.md" "$BUILD_DIR/instructions/AGENTS-instance.md"
 cp -R "$INSTANCE_DIR/agents" "$BUILD_DIR/instructions/agent-overlays"
 if [ -d "$INSTANCE_DIR/docs" ]; then

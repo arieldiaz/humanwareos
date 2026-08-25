@@ -2,7 +2,7 @@
 # Sync: spool → mini canonical store, verified, then DELETE from MacBook.
 # Runs every 5 min via launchd. If the mini is unreachable (off network),
 # the spool simply accumulates until it isn't — nothing is lost.
-# If MINI_DATA_ROOT is set, also pulls derived/ text (transcripts) back from
+# If MINI_DATA_ROOT is set, also pulls generated/ text (transcripts) back from
 # the mini — same direction of trust: the MacBook initiates everything.
 set -euo pipefail
 OPS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,10 +37,10 @@ if [ -d "$STREAM_LOCAL" ] && find "$STREAM_LOCAL" -type f ! -name ".DS_Store" | 
   echo "$(date '+%F %T') sync complete; spool cleared"
 fi
 
-# pull derived text back from the mini. Safe to mirror: derived/ is
+# pull generated text back from the mini. Safe to mirror: generated/ is
 # disposable and the mini's copy is canonical (README.md stays git's).
 if [ -n "${MINI_DATA_ROOT:-}" ]; then
   rsync -a --delete --exclude ".DS_Store" --exclude "README.md" \
-    "$MINI_USER@$MINI_HOST:$MINI_DATA_ROOT/derived/" "$DATA_ROOT/derived/"
-  echo "$(date '+%F %T') derived/ pulled from mini"
+    "$MINI_USER@$MINI_HOST:$MINI_DATA_ROOT/generated/" "$DATA_ROOT/generated/"
+  echo "$(date '+%F %T') generated/ pulled from mini"
 fi

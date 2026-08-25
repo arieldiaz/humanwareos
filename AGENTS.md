@@ -13,7 +13,7 @@ Your behavior is assembled from four layers. **Each layer may only narrow the on
 1. **Global rules** — this file. How every agent behaves everywhere.
 2. **Domain specs** — `docs/*.md`. One subject each, stated once, in depth. This file points at them; it never summarizes them, because a summary is a second copy and second copies drift.
 3. **Identity** — `agents/<name>.md`, plus the thin runtime files a harness loads by name.
-4. **Memory projection** — `$HUMANWARE_DATA_ROOT/memory/current/`. The compact non-normative view of what was learned.
+4. **Memory projection** — `$HUMANWARE_DATA_ROOT/current/memory/`. The compact non-normative view of what was learned.
 
 **Save facts freely; never save a rule.** Memory is for non-normative facts: project state, why a decision was made, what is parked, where something lives. Write those without asking. But if what you learned is a *rule about your own behavior*, it does not go in memory — propose a diff to Layer 1 or the relevant Layer 2 spec and wait for approval. Rules stored as memory are how contradictions get created, because they are written unilaterally and never reviewed.
 
@@ -53,10 +53,10 @@ An instance pins a Humanware OS revision and supplies typed overlays rather than
 4. **Verification is proportional, not ritual.** High stakes (irreversible, public, financial, relational) → verify hard, get evidence. Low stakes → ship it. No TDD dogma; write tests where they earn their keep.
 5. **Questions go inline, one at a time.** Plain conversational questions in the chat. No popup/form question widgets — ever.
 6. **Prose over ceremony.** Outputs are readable paragraphs, not checkbox theater. Bullets only when structure genuinely helps. Default to Simplified Technical English where it improves clarity: use short sentences, active voice, and one stable term for each idea; cut clutter. Pair that precision with Zinsser's four qualities—clarity, simplicity, brevity, and humanity—so the result still sounds warm and written by a person.
-7. **Derived data is disposable.** Regenerate `$HUMANWARE_DATA_ROOT/derived/` freely. Record source event identifiers, model or tool, schema, and date so future rederivation knows what it replaces.
-8. **Current memory is curated, not accumulated.** Append evidence under `$HUMANWARE_DATA_ROOT/memory/events/`, then merge it into the smallest useful projection under `memory/current/`. A memory system that only grows becomes noise.
+7. **Generated data is disposable.** Regenerate `$HUMANWARE_DATA_ROOT/generated/` freely. Record source event identifiers, model or tool, schema, and date so future rederivation knows what it replaces.
+8. **Current memory is curated, not accumulated.** Append evidence under `$HUMANWARE_DATA_ROOT/evidence/memory/events/`, then merge it into the smallest useful projection under `current/memory/`. A memory system that only grows becomes noise.
 9. **This framework edits itself.** If a compounded lesson is about the process, propose an edit to the relevant skill file. Skills are drafts, permanently.
-10. **Privacy tiers are hard rules.** Tier 0 raw stream data stays on the trusted local network and is derived by local models unless the human explicitly supplies one item to another context. Tier 1 derived material is local by default and shared deliberately. Tier 2 current memory and strategy are available only to approved identities and tasks. Public artifacts contain only explicitly published revisions. A cloud coding harness does not gain raw-data access because it can edit source.
+10. **Privacy tiers are hard rules.** Tier 0 raw stream data stays on the trusted local network unless the human explicitly approves a bounded item for a named execution profile. If no approved private execution route exists, fail closed instead of silently selecting a local or cloud model. Tier 1 generated material is local by default and shared deliberately. Tier 2 current memory and strategy are available only to approved identities and tasks. Public artifacts contain only explicitly published revisions. A cloud coding harness does not gain raw-data access because it can edit source.
 11. **Many agents work here — behave like it.** Assume other AI sessions touch the framework, instance, and data plane. Re-read the current memory projection and any file you are about to edit at time of use. Source changes use isolated worktrees; data writes use project or thread ownership. Never restructure directories or mass-edit files without explicit human sign-off in the current session.
 12. **Links are standard markdown, never `[[wikilinks]]`.** This vault is read in Obsidian and by agents alike; every link must work in both. Relative paths from repo root.
 13. **Sessions run as an agent when one fits.** If the human addresses Liv or Max, load the framework identity template plus the private instance overlay and stay in role. Agent definitions stay template-clean; personal facts compound into the data plane, never into `agents/*.md`.
@@ -83,12 +83,12 @@ An instance pins a Humanware OS revision and supplies typed overlays rather than
 
 | It is... | It goes to... |
 |----------|---------------|
-| Raw input or event | `$HUMANWARE_DATA_ROOT/stream/` as append-only evidence |
-| A learned fact, decision, or correction | `$HUMANWARE_DATA_ROOT/memory/events/` with provenance |
-| Current memory or strategy | The compact projection under `$HUMANWARE_DATA_ROOT/memory/current/` or `strategy/` |
-| A working document | `$HUMANWARE_DATA_ROOT/workspaces/<project-or-thread>/` with automatic versions |
+| Raw input or event | `$HUMANWARE_DATA_ROOT/evidence/stream/` as append-only evidence |
+| A learned fact, decision, or correction | `$HUMANWARE_DATA_ROOT/evidence/memory/events/` with provenance |
+| Current memory or strategy | The compact projection under `$HUMANWARE_DATA_ROOT/current/` |
+| A working document | `$HUMANWARE_DATA_ROOT/working/<project-or-thread>/` with automatic versions |
 | A published or reviewable artifact | An immutable revision under `$HUMANWARE_DATA_ROOT/artifacts/` |
-| A transcript, summary, index, or render | `$HUMANWARE_DATA_ROOT/derived/`, reproducible from named sources |
+| A transcript, summary, index, or render | `$HUMANWARE_DATA_ROOT/generated/`, reproducible from named sources |
 | A reusable behavioral or software change | Humanware OS through review |
 | A private configuration or approved policy change | The private instance through review |
 | A secret (API key, token, credential) | The instance's secrets manager (`infra/secrets/runbook.md`; Doppler by default) — never a file in this repo |

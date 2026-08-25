@@ -94,8 +94,8 @@ export function applyWorkspaceContext({runtimeDir, configPath, backupDir}) {
       const target = join(runtimeDir, "instructions", "openclaw", id, filename);
       if (!existsSync(target)) fail(`missing rendered context ${target}`);
     }
-    if (!existsSync(join(instance.paths.dataRoot, "memory", "current", "index.md"))) fail("current memory index is missing");
-    if (!existsSync(join(instance.paths.dataRoot, "strategy", "current.md"))) fail("current strategy is missing");
+    if (!existsSync(join(instance.paths.dataRoot, "current", "memory", "index.md"))) fail("current memory index is missing");
+    if (!existsSync(join(instance.paths.dataRoot, "current", "strategy.md"))) fail("current strategy is missing");
   }
 
   try {

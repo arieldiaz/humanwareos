@@ -12,7 +12,10 @@ usage() {
 
 FRAMEWORK_DIR=$(CDPATH= cd -- "$1" && pwd)
 INSTANCE_DIR=$(CDPATH= cd -- "$2" && pwd)
-JQ=${JQ:-/usr/bin/jq}
+JQ=${JQ:-}
+if [ -z "$JQ" ]; then
+  JQ=$(command -v jq 2>/dev/null || true)
+fi
 
 [ -x "$JQ" ] || {
   printf '%s\n' "validate-instance: jq is required" >&2
@@ -54,11 +57,13 @@ for external_path in "$DATA_ROOT" "$RUNTIME_ROOT" "$WORKTREE_ROOT"; do
 done
 
 "$JQ" -e '
-  .schemaVersion == 1 and
+  .schemaVersion == 2 and
   (.defaultProfile | type == "string") and
   (.profiles[.defaultProfile] != null) and
   (.agents | type == "object") and
-  ([.agents[] | .allowedProfiles[]] | all(. as $id | $id != null))
+  ([.agents[] | .allowedProfiles[]] | all(. as $id | $id != null)) and
+  ([.profiles[] | .executionMode] | all(. == "general" or . == "task" or . == "workspace")) and
+  ([.profiles[] | .runtime] | all(. == "native" or . == "cli" or . == "acp" or . == "app-server"))
 ' "$INSTANCE_DIR/runtime/profiles.json" >/dev/null || {
   printf '%s\n' "validate-instance: invalid runtime/profiles.json" >&2
   exit 1
@@ -82,7 +87,7 @@ for profile_file in "$INSTANCE_DIR"/channels/*.json "$INSTANCE_DIR"/surfaces/*.j
 done
 
 if git -C "$INSTANCE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  forbidden=$(git -C "$INSTANCE_DIR" ls-files | /usr/bin/awk '/^(memory|sessions|workspaces|artifacts|stream|derived|cache)\// { print }')
+  forbidden=$(git -C "$INSTANCE_DIR" ls-files | /usr/bin/awk '/^(evidence|current|working|artifacts|generated|operations|memory|sessions|workspaces|stream|derived|cache)\// { print }')
   [ -z "$forbidden" ] || {
     printf '%s\n%s\n' "validate-instance: data-plane content is tracked in the instance:" "$forbidden" >&2
     exit 1

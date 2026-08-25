@@ -5,7 +5,7 @@
   "type": "object",
   "required": ["schemaVersion", "defaultProfile", "agents", "profiles"],
   "properties": {
-    "schemaVersion": {"const": 1},
+    "schemaVersion": {"const": 2},
     "defaultProfile": {"type": "string"},
     "agents": {
       "type": "object",
@@ -17,21 +17,7 @@
           "defaultProfile": {"type": "string", "minLength": 1},
           "escalationProfile": {"type": "string", "minLength": 1},
           "allowedProfiles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-          "persistentBindings": {
-            "type": "array",
-            "uniqueItems": true,
-            "items": {
-              "type": "object",
-              "required": ["channel", "accountId", "peerKind", "peerId"],
-              "properties": {
-                "channel": {"type": "string", "minLength": 1},
-                "accountId": {"type": "string", "minLength": 1},
-                "peerKind": {"type": "string", "minLength": 1},
-                "peerId": {"type": "string", "minLength": 1}
-              },
-              "additionalProperties": false
-            }
-          }
+          "channelDefaults": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}}
         },
         "additionalProperties": false
       }
@@ -41,11 +27,14 @@
       "minProperties": 1,
       "additionalProperties": {
         "type": "object",
-        "required": ["runtime", "harness", "model", "permissions", "workspace", "dataScope"],
+        "required": ["executionMode", "runtime", "harness", "model", "permissions", "workspace", "dataScope"],
         "properties": {
-          "runtime": {"enum": ["native", "acp"]},
+          "executionMode": {"enum": ["general", "task", "workspace"]},
+          "runtime": {"enum": ["native", "cli", "acp", "app-server"]},
           "harness": {"type": "string"},
+          "family": {"type": "string", "minLength": 1},
           "model": {"type": "string"},
+          "aliases": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
           "permissions": {"enum": ["read-only", "standard", "elevated"]},
           "workspace": {"enum": ["none", "isolated-on-write", "required"]},
           "dataScope": {"type": "string"},

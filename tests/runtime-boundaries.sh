@@ -2,6 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+JQ=$(command -v jq)
 TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/humanware-runtime-test.XXXXXX")
 trap 'rm -rf "$TEST_ROOT"' EXIT HUP INT TERM
 
@@ -30,9 +31,9 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -L "$RUNTIME/current" ]
 [ -f "$RUNTIME/current/manifest.json" ]
 [ -x "$RUNTIME/current/framework/scripts/runtime-cutover-lease.sh" ]
-[ -f "$DATA/manifests/data-plane.json" ]
-[ -d "$DATA/imports" ]
-/usr/bin/jq -e '.mutableStateIncluded == false and .dataRoot == $root' --arg root "$DATA" "$RUNTIME/current/manifest.json" >/dev/null
+[ -f "$DATA/artifacts/manifests/data-plane.json" ]
+[ -d "$DATA/evidence/imports" ]
+"$JQ" -e '.mutableStateIncluded == false and .dataRoot == $root' --arg root "$DATA" "$RUNTIME/current/manifest.json" >/dev/null
 "$FRAMEWORK/scripts/validate-instance.sh" "$FRAMEWORK" "$INSTANCE" >/dev/null
 
 mkdir -p "$INSTANCE/memory"

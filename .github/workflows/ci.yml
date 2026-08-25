@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Node contracts
+        run: node --test $(find . -name '*.test.mjs' -o -name '*.test.js' | sort)
+      - name: Shell contracts
+        run: |
+          set -euo pipefail
+          for test_script in tests/*.sh; do
+            bash "$test_script"
+          done
+      - name: Validate JSON
+        run: |
+          set -euo pipefail
+          for json_file in schemas/*.json templates/data/manifests/*.json templates/instance/runtime/*.json; do
+            jq -e . "$json_file" >/dev/null
+          done

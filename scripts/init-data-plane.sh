@@ -21,31 +21,46 @@ esac
 
 umask 077
 for path in \
-  stream \
-  memory/events \
-  memory/current \
-  memory/indexes \
-  strategy/events \
-  sessions/events \
-  workspaces \
-  artifacts \
-  imports \
-  blobs \
-  manifests \
-  derived \
-  inbox \
-  cache; do
+  evidence/stream \
+  evidence/memory/events \
+  evidence/strategy/events \
+  evidence/sessions/events \
+  evidence/sessions/raw \
+  evidence/imports \
+  evidence/provenance \
+  evidence/legacy \
+  current/memory \
+  working/agents \
+  working/sessions \
+  working/projects \
+  working/inbox \
+  artifacts/revisions \
+  artifacts/blobs \
+  artifacts/manifests \
+  artifacts/archives \
+  generated/sessions \
+  generated/transcripts \
+  generated/reports \
+  generated/indexes \
+  generated/review-projections \
+  operations/cache \
+  operations/backups \
+  operations/migrations \
+  operations/cutovers \
+  operations/locks \
+  operations/diagnostics \
+  operations/restore-tests; do
   mkdir -p "$DATA_ROOT/$path"
 done
 
-if [ ! -f "$DATA_ROOT/strategy/current.md" ]; then
-  install -m 600 "$FRAMEWORK_DIR/templates/data/strategy/current.md" "$DATA_ROOT/strategy/current.md"
+if [ ! -f "$DATA_ROOT/current/strategy.md" ]; then
+  install -m 600 "$FRAMEWORK_DIR/templates/data/current/strategy.md" "$DATA_ROOT/current/strategy.md"
 fi
-if [ ! -f "$DATA_ROOT/memory/current/index.md" ]; then
-  install -m 600 "$FRAMEWORK_DIR/templates/data/memory/current/index.md" "$DATA_ROOT/memory/current/index.md"
+if [ ! -f "$DATA_ROOT/current/memory/index.md" ]; then
+  install -m 600 "$FRAMEWORK_DIR/templates/data/current/memory/index.md" "$DATA_ROOT/current/memory/index.md"
 fi
-if [ ! -f "$DATA_ROOT/manifests/data-plane.json" ]; then
-  install -m 600 "$FRAMEWORK_DIR/templates/data/manifests/data-plane.json" "$DATA_ROOT/manifests/data-plane.json"
+if [ ! -f "$DATA_ROOT/artifacts/manifests/data-plane.json" ]; then
+  install -m 600 "$FRAMEWORK_DIR/templates/data/manifests/data-plane.json" "$DATA_ROOT/artifacts/manifests/data-plane.json"
 fi
 
 printf 'data-plane: ready at %s\n' "$DATA_ROOT"
