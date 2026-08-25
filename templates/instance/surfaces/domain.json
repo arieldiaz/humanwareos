@@ -14,7 +14,7 @@
       "visibility": "private",
       "mount": "/status",
       "source": "framework:status",
-      "data": "data:derived/status/current.json"
+      "data": "data:generated/status/current.json"
     },
     {
       "id": "artifacts",

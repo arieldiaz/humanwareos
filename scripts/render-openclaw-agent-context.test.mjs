@@ -19,12 +19,12 @@ test("renders framework, instance, identity, and data-plane references", () => {
   assert.match(rendered["AGENTS.md"], /Framework rules/);
   assert.match(rendered["AGENTS.md"], /Owner: Ariel/);
   assert.match(rendered["SOUL.md"], /Own Ariel Works/);
-  assert.match(rendered["SOUL.md"], /\/data\/memory\/current/);
+  assert.match(rendered["SOUL.md"], /\/data\/current\/memory/);
   assert.match(rendered["SOUL.md"], /Before every Slack reply, read .*reply-shape\.md.*status-framework\.md.*slack-style\.md/);
   assert.match(rendered["IDENTITY.md"], /Name: Max/);
   assert.match(rendered["IDENTITY.md"], /Emoji: fox_face/);
-  assert.match(rendered["MEMORY.md"], /\/data\/memory\/current/);
-  assert.match(rendered["STRATEGY.md"], /\/data\/strategy\/current\.md/);
+  assert.match(rendered["MEMORY.md"], /\/data\/current\/memory/);
+  assert.match(rendered["STRATEGY.md"], /\/data\/current\/strategy\.md/);
 });
 
 test("renders every declared agent into the runtime bundle", () => {

@@ -15,12 +15,12 @@ Starting any non-trivial piece of work; something in the stream pulls at you; a 
 
 ## Process
 
-1. **Load context:** read `STRATEGY.md` and `memory/index.md`. Follow index lines into specific lessons if relevant. Check `derived/` and `stream/` for related history.
+1. **Load context:** read `STRATEGY.md` and `MEMORY.md`. Follow their canonical pointers into `current/` when relevant. Check `generated/` and `evidence/stream/` for related history only within the approved data scope.
 2. **State the situation in one paragraph,** plainly. If you can't, that's the finding — orient on why.
 3. **Interrogate gently.** Ask the human what's actually going on — inline, conversational, ONE question at a time, and stop when marginal questions stop changing the picture (usually 2–4). Never a form, never a popup.
 4. **Surface tensions:** where does this conflict with "What matters now" or "Explicitly not doing" in STRATEGY.md? Where has memory seen this shape before?
 5. **Name the frames.** Offer 2–3 distinct ways to see the situation, with what each implies. Recommend one and say why.
-6. **Write it down** if it's substantial: a short orientation note in `derived/` (provenance header pointing at the relevant stream events).
+6. **Write it down** if it's substantial: a short orientation note in `generated/` (provenance header pointing at the relevant evidence events).
 
 ## Rationalizations
 

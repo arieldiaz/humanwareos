@@ -42,7 +42,7 @@ The generated runtime assembles references and rendered copies from those source
 
 Memory and source code have different write models. Code and policy need review, coherent diffs, and deployment. Memory needs frequent fact capture, provenance, correction, compaction, selective access, and retention. Combining them makes ordinary learning dirty the software checkout and tempts unreviewed facts to become rules.
 
-Memory evidence is append-only under `$HUMANWARE_DATA_ROOT/memory/events/`. Current memory is a mutable projection under `memory/current/`. A projection may merge or supersede facts because the evidence remains available. Harness-native memory stores are rebuildable caches over that projection.
+Memory evidence is append-only under `$HUMANWARE_DATA_ROOT/evidence/memory/events/`. Current memory is a mutable projection under `current/memory/`. A projection may merge or supersede facts because the evidence remains available. Harness-native memory stores are rebuildable caches over that projection.
 
 ## Rule promotion
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Transcribe (runs ON THE MINI): pick up new audio/video in the canonical
 # store, run open-source Whisper with timestamps, write markdown transcripts
-# into the external data plane's derived/ with provenance headers.
+# into the external data plane's generated/ with provenance headers.
 # Done-ness = transcript exists; no marker files pollute the stream.
 set -euo pipefail
 OPS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,7 +12,7 @@ source "$OPS_DIR/lib/gate.sh"
 defer_if_busy transcribe
 
 EXT_PATTERN='^(m4a|wav|mp3|aiff|aif|flac|mov|mp4|m4v|mkv|webm|ogg|opus)$'
-OUT_ROOT="$DATA_ROOT/derived/transcripts"
+OUT_ROOT="$DATA_ROOT/generated/transcripts"
 
 find "$STREAM_CANONICAL" -type f -mmin +2 ! -name ".*" -print0 |
 while IFS= read -r -d '' f; do

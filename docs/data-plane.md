@@ -8,22 +8,15 @@ Budget: 1,200 words. Over it, consolidate.
 
 ```text
 data-root/
-├── stream/          append-only raw events and captures
-├── memory/
-│   ├── events/      append-only facts, decisions, corrections, provenance
-│   ├── current/     compact mutable projections loaded by agents
-│   └── indexes/     rebuildable search and vector indexes
-├── strategy/        current strategy plus immutable revision events
-├── sessions/        conversation events, handoffs, and completion records
-├── workspaces/      mutable project and thread-owned working documents
-├── artifacts/       immutable published or reviewable revisions
-├── imports/         immutable external corpora and migration snapshots
-├── blobs/           content-addressed large files
-├── manifests/       relationships, provenance, schemas, and retention
-├── derived/         reproducible transcripts, summaries, renders, reports
-├── inbox/           captured material awaiting classification
-└── cache/           disposable runtime cache
+├── evidence/        immutable facts: stream, sessions, memory/strategy events, imports, provenance, legacy
+├── current/         compact mutable memory and strategy projections loaded by agents
+├── working/         agent, session, and project workspaces plus the classification inbox
+├── artifacts/       immutable revisions, blobs, manifests, and archives
+├── generated/       rebuildable transcripts, session views, reports, indexes, and review projections
+└── operations/      cache, backups, migrations, cutovers, locks, diagnostics, and restore evidence
 ```
+
+These six parents express storage semantics. They are separate from privacy tiers: an item can be Tier 0 and generated, or Tier 2 and current. They are also separate from the four context layers: framework and identity context live in source/runtime, while approved current projections enter Layer 4.
 
 The instance declares `dataRoot`; framework code never hardcodes a username or machine path.
 
@@ -31,7 +24,7 @@ The instance declares `dataRoot`; framework code never hardcodes a username or m
 
 Raw stream events are immutable. A correction is a new event that references and supersedes the earlier event.
 
-Memory evidence follows the same rule. An agent appends a learned fact or decision with its source and confidence. `memory/current` is a curated projection over those events. It may merge, replace, or omit stale facts because its history remains recoverable from events. This keeps daily context small without rewriting evidence.
+Memory evidence follows the same rule. An agent appends a learned fact or decision with its source and confidence under `evidence/memory/events`. `current/memory` is a curated projection over those events. It may merge, replace, or omit stale facts because its history remains recoverable from events. This keeps daily context small without rewriting evidence.
 
 Strategy uses the same shape: agents load one current document, while changes append a dated decision event that preserves why the projection changed.
 
@@ -53,7 +46,7 @@ Imports preserve an external corpus exactly as received, including its original 
 
 Channels are inputs to the session ledger, not durable memory. A canonical conversation event records channel adapter, external thread identifier, agent identity, selected execution profile, timestamps, attachments, delivery result, and the same outbound status that rendered the Status footer and root tile. A channel export may preserve the surface transcript, but memory promotion is a separate deliberate operation.
 
-The canonical ledger is append-only JSONL under `sessions/events/` and conforms to `schemas/session-event.schema.json`. Stable event identifiers make adapters idempotent. Harness-specific raw traces remain Tier 0 evidence; normalized events retain a bounded source reference so an operator can inspect that evidence locally without copying it into every projection.
+The canonical ledger is append-only JSONL under `evidence/sessions/events/` and conforms to `schemas/session-event.schema.json`. Stable event identifiers make adapters idempotent. Harness-specific raw traces remain Tier 0 evidence under `evidence/sessions/raw`; normalized events retain a bounded source reference so an operator can inspect that evidence locally without copying it into every projection. Human-readable session Markdown is generated under `generated/sessions` and is never the canonical record.
 
 The private domain is the operational home for sessions. Its derived view may show objective, owner, channel, model, harness, status, elapsed time, usage, actions, bounded outputs, errors, retries, files, reviews, and deployments. Chat surfaces should receive concise checkpoints and completion summaries, not the full execution stream.
 
@@ -64,7 +57,7 @@ Trace levels are `normal` (deliberate checkpoints and outcomes), `verbose` (sani
 The data plane enforces scopes at retrieval time:
 
 - Tier 0 raw events stay on the trusted local network unless a human explicitly supplies an item to another context.
-- Tier 1 derived material is local by default and shared deliberately.
+- Tier 1 generated material is local by default and shared deliberately.
 - Tier 2 current memory and strategy are available only to approved agent identities and tasks.
 - Public artifacts contain only explicitly published revisions.
 
@@ -74,6 +67,6 @@ Secrets are not data-plane content. They remain in the instance secrets manager 
 
 ## Durability
 
-The canonical data root lives on the primary host. It has encrypted versioned backup to a second device, a NAS snapshot path, and an offline or offsite copy. Append-only stores use no-delete replication. Mutable workspaces and projections use versioned snapshots. Restore tests sample every class: event, memory projection, working document, artifact, blob, and index rebuild.
+The canonical data root lives behind an atomically replaceable instance pointer on the primary host. It has encrypted versioned backup to a second device, a NAS snapshot path, and an offline or offsite copy. Append-only stores use no-delete replication. Mutable workspaces and projections use versioned snapshots. Restore tests sample every class: event, memory projection, working document, artifact, blob, and index rebuild.
 
 Source-code deployment never deletes or rewrites data. A schema migration writes a new version or projection, verifies it, then changes the instance's active schema reference. Rollback preserves all newer events and reselects the earlier compatible projection.

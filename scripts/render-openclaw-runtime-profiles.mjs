@@ -20,12 +20,6 @@ function profileDefaults(profile) {
   };
 }
 
-function bindingKey(binding) {
-  const match = binding?.match ?? {};
-  const peer = match?.peer ?? {};
-  return [binding?.agentId, match.channel, match.accountId, peer.kind, peer.id].map((value) => String(value ?? "")).join("\0");
-}
-
 function setHarnessModel(source, harness, model, selectedHarnessModels) {
   const prior = selectedHarnessModels.get(harness);
   if (prior && prior !== model) fail(`ACP harness ${harness} selected with conflicting models ${prior} and ${model}`);
@@ -43,13 +37,19 @@ function setHarnessModel(source, harness, model, selectedHarnessModels) {
   agent.args = args;
 }
 
+function runtimeId(profile) {
+  if (profile.runtime === "native") return "openclaw";
+  if (profile.runtime === "cli") return String(profile.backend ?? profile.harness ?? "").trim();
+  if (profile.runtime === "app-server") return String(profile.backend ?? profile.harness ?? "").trim();
+  return "";
+}
+
 export function applyRuntimeProfiles(sourceConfig, catalog) {
   const source = structuredClone(requireObject(sourceConfig, "source config"));
   const profiles = requireObject(catalog?.profiles, "profiles");
   const agentPolicies = requireObject(catalog?.agents, "agents");
   const agents = source?.agents?.list;
   if (!Array.isArray(agents) || agents.length === 0) fail("source config agents.list must be a non-empty array");
-  const generatedBindings = [];
   const selectedHarnessModels = new Map();
 
   source.agents.list = agents.map((agent) => {
@@ -70,14 +70,34 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
       if (escalationProfile.enabled === false) fail(`agent ${id} escalation profile ${escalationProfileId} is disabled`);
     }
     const defaults = profileDefaults(profile);
+    const modelPolicies = agent.models && typeof agent.models === "object" && !Array.isArray(agent.models)
+      ? structuredClone(agent.models)
+      : {};
+    for (const allowedProfileId of policy.allowedProfiles) {
+      const allowedProfile = requireObject(profiles[allowedProfileId], `profile ${allowedProfileId}`);
+      if (allowedProfile.enabled === false) continue;
+      const model = String(allowedProfile.model ?? "").trim();
+      if (!model.includes("/")) fail(`profile ${allowedProfileId} must use a provider/model reference`);
+      const selectedRuntime = runtimeId(allowedProfile);
+      if (!selectedRuntime && allowedProfile.runtime !== "acp") fail(`profile ${allowedProfileId} has no registered runtime id`);
+      if (selectedRuntime) {
+        const prior = modelPolicies[model] ?? {};
+        const priorRuntime = prior?.agentRuntime?.id;
+        if (priorRuntime && priorRuntime !== selectedRuntime) {
+          fail(`model ${model} maps to conflicting runtimes ${priorRuntime} and ${selectedRuntime}`);
+        }
+        modelPolicies[model] = {...prior, agentRuntime: {id: selectedRuntime}};
+      }
+    }
 
-    if (profile.runtime === "native") {
+    if (["native", "cli", "app-server"].includes(profile.runtime)) {
       const model = String(profile.model ?? "").trim();
-      if (!model.includes("/")) fail(`native profile ${profileId} must use a provider/model reference`);
+      if (!model.includes("/")) fail(`profile ${profileId} must use a provider/model reference`);
       const priorModel = agent.model && typeof agent.model === "object" && !Array.isArray(agent.model) ? agent.model : {};
       return {
         ...agent,
         model: {...priorModel, primary: model},
+        models: modelPolicies,
         ...defaults,
         runtime: {type: "embedded"},
       };
@@ -91,20 +111,9 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
       const model = String(profile.model ?? "").trim();
       if (!model) fail(`ACP profile ${profileId} must name a model`);
       setHarnessModel(source, harness, model, selectedHarnessModels);
-      for (const binding of policy.persistentBindings ?? []) {
-        const channel = String(binding?.channel ?? "").trim();
-        const accountId = String(binding?.accountId ?? "").trim();
-        const peerKind = String(binding?.peerKind ?? "").trim();
-        const peerId = String(binding?.peerId ?? "").trim();
-        if (!channel || !accountId || !peerKind || !peerId) fail(`agent ${id} has an incomplete persistent binding`);
-        generatedBindings.push({
-          type: "acp",
-          agentId: id,
-          match: {channel, accountId, peer: {kind: peerKind, id: peerId}},
-        });
-      }
       return {
         ...agent,
+        models: modelPolicies,
         ...defaults,
         runtime: {
           type: "acp",
@@ -121,15 +130,11 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
     fail(`profile ${profileId} has unsupported runtime ${String(profile.runtime)}`);
   });
 
-  const generatedKeys = new Set(generatedBindings.map(bindingKey));
-  if (generatedKeys.size !== generatedBindings.length) fail("persistent bindings must be unique");
   const sourceBindings = Array.isArray(source.bindings) ? source.bindings : [];
   for (const binding of sourceBindings) {
-    if (binding?.type === "acp" && generatedKeys.has(bindingKey(binding))) {
-      fail(`source config duplicates generated ACP binding for agent ${String(binding.agentId ?? "")}`);
-    }
+    if (binding?.type === "acp" && binding?.match?.peer?.id === "*") fail("wildcard ACP bindings are prohibited; select ACP explicitly through the broker");
   }
-  source.bindings = [...generatedBindings, ...sourceBindings];
+  source.bindings = sourceBindings;
 
   return source;
 }

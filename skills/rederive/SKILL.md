@@ -17,8 +17,8 @@ Model capabilities jumped; a derived artifact seems wrong or thin; you have a ne
 
 1. **Identify sources from the stream, not from old derivations.** Old derived files tell you *what exists* (via provenance headers); the stream is what you actually read. Never derive from a derivation unless the raw source is genuinely gone.
 2. **State the derivation question explicitly.** "Transcribe" and "what was the emotional temperature of this call" are different derivations of the same event. New questions are the main reason this skill exists — be ambitious with them.
-3. **Route by tier.** Anything that reads raw stream data runs on the **local models** (Qwen on the mini) — cloud models only touch a raw item with explicit per-item human approval. Rederivations that read only existing `derived/` text may use cloud models freely.
-4. **Generate into `derived/`** with a full provenance header: sources, date, model/tool (note local vs cloud), derivation question. Overwrite the stale version or version it — deriver's choice; nothing here is precious.
+3. **Route by tier.** Raw evidence never selects an execution provider implicitly. A cloud profile may receive a bounded raw item only with explicit per-item human approval; otherwise stop visibly when no approved private route exists. Rederivations that read only approved `generated/` text may use an allowed profile.
+4. **Generate into `generated/`** with a full provenance header: sources, date, model/tool, derivation question, and data-scope decision. Overwrite the stale version or version it — deriver's choice; nothing here is precious.
 5. **Diff against the old derivation when one exists.** Material differences are interesting twice: the new understanding itself, and what the gap says about what else derived-and-old might be wrong. Big gaps are worth a line in the stream ("re-transcription of X changed the record materially").
 6. **Never touch the stream.** Rederivation reads history; it does not improve it. If a source event turns out to be mislabeled, the correction is a new event.
 
@@ -32,4 +32,4 @@ Model capabilities jumped; a derived artifact seems wrong or thin; you have a ne
 
 ## Exit criteria
 
-New derivations in `derived/` with complete provenance, meaningful diffs noted, stream untouched.
+New derivations in `generated/` with complete provenance, meaningful diffs noted, evidence untouched.

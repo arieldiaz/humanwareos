@@ -55,7 +55,7 @@ The instance declares routes as data:
   "visibility": "private",
   "mount": "/stats",
   "source": "framework:stats",
-  "data": "data:derived/stats/current.json",
+  "data": "data:generated/stats/current.json",
   "health": "/health/stats"
 }
 ```

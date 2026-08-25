@@ -27,23 +27,21 @@ const source = {
 };
 
 const catalog = {
+  schemaVersion: 2,
   defaultProfile: "native",
   agents: {
     liv: {
       defaultProfile: "cursor",
       escalationProfile: "cursor-deep",
       allowedProfiles: ["native", "cursor", "cursor-deep"],
-      persistentBindings: [
-        {channel: "slack", accountId: "liv", peerKind: "channel", peerId: "C123"},
-      ],
     },
     max: {defaultProfile: "native", escalationProfile: "native-deep", allowedProfiles: ["native", "native-deep", "cursor"]},
   },
   profiles: {
-    native: {runtime: "native", harness: "openclaw", model: "openai/gpt-5.6-sol", reasoning: "medium", fastMode: true},
-    "native-deep": {runtime: "native", harness: "openclaw", model: "openai/gpt-5.6-sol", reasoning: "high", fastMode: false},
-    cursor: {runtime: "acp", harness: "cursor", model: "grok-4.6[effort=medium,fast=true]", workspace: "required", reasoning: "medium", fastMode: true},
-    "cursor-deep": {runtime: "acp", harness: "cursor-deep", model: "grok-4.6[effort=high,fast=true]", workspace: "required", reasoning: "high", fastMode: true},
+    native: {executionMode: "general", runtime: "native", harness: "openclaw", model: "openai/gpt-5.6-sol", reasoning: "medium", fastMode: true},
+    "native-deep": {executionMode: "general", runtime: "native", harness: "openclaw", model: "openai/gpt-5.6-sol", reasoning: "high", fastMode: false},
+    cursor: {executionMode: "workspace", runtime: "acp", harness: "cursor", model: "cursor/grok-medium", workspace: "required", reasoning: "medium", fastMode: true},
+    "cursor-deep": {executionMode: "workspace", runtime: "acp", harness: "cursor-deep", model: "cursor/grok-high", workspace: "required", reasoning: "high", fastMode: true},
   },
 };
 
@@ -60,9 +58,9 @@ test("renders each agent's selected profile into effective OpenClaw config", () 
   assert.equal(rendered.agents.list[1].thinkingDefault, "medium");
   assert.equal(rendered.agents.list[1].fastModeDefault, true);
   assert.equal(rendered.agents.list[0].model.primary, "openai/old");
-  assert.deepEqual(rendered.plugins.entries.acpx.config.agents.cursor.args, ["--trust", "--model", "grok-4.6[effort=medium,fast=true]", "acp"]);
-  assert.deepEqual(rendered.bindings[0], {type: "acp", agentId: "liv", match: {channel: "slack", accountId: "liv", peer: {kind: "channel", id: "C123"}}});
-  assert.equal(rendered.bindings[1].type, "route");
+  assert.deepEqual(rendered.plugins.entries.acpx.config.agents.cursor.args, ["--trust", "--model", "cursor/grok-medium", "acp"]);
+  assert.equal(rendered.bindings[0].type, "route");
+  assert.deepEqual(rendered.agents.list[1].models["openai/gpt-5.6-sol"].agentRuntime, {id: "openclaw"});
 });
 
 test("rejects a profile outside the agent allowlist", () => {
@@ -83,10 +81,10 @@ test("rejects an escalation profile outside the agent allowlist", () => {
   assert.throws(() => applyRuntimeProfiles(source, invalid), /cannot escalate to profile cursor-deep/);
 });
 
-test("rejects duplicate generated and source ACP bindings", () => {
+test("rejects wildcard ACP bindings", () => {
   const invalidSource = structuredClone(source);
-  invalidSource.bindings.unshift({type: "acp", agentId: "liv", match: {channel: "slack", accountId: "liv", peer: {kind: "channel", id: "C123"}}});
-  assert.throws(() => applyRuntimeProfiles(invalidSource, catalog), /duplicates generated ACP binding/);
+  invalidSource.bindings.unshift({type: "acp", agentId: "liv", match: {channel: "slack", accountId: "liv", peer: {kind: "channel", id: "*"}}});
+  assert.throws(() => applyRuntimeProfiles(invalidSource, catalog), /wildcard ACP bindings are prohibited/);
 });
 
 test("runs through an immutable-runtime symlink path", () => {
