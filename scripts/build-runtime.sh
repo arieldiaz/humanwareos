@@ -21,7 +21,13 @@ elif [ "$#" -eq 3 ]; then
 fi
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-JQ=${JQ:-/usr/bin/jq}
+JQ=${JQ:-}
+if [ -z "$JQ" ]; then
+  JQ=$(command -v jq 2>/dev/null) || {
+    printf '%s\n' "build-runtime: jq is required" >&2
+    exit 2
+  }
+fi
 NODE_BIN=${NODE_BIN:-}
 if [ -z "$NODE_BIN" ]; then
   NODE_BIN=$(command -v node 2>/dev/null) || {
