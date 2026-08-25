@@ -93,7 +93,7 @@ export function resolveExecutionPlan({input, catalog, agentId, channelId, conver
     profileId = exactProfile(envelope.prefix, catalog) ?? inferProfile(envelope.prefix, catalog, allowed, persistedProfile ?? policy.defaultProfile ?? catalog.defaultProfile);
     if (!profileId) throw new Error(`unsupported execution directive: ${envelope.prefix}`);
     source = "explicit";
-  } else if (persistedProfile) {
+  } else if (persistedProfile && allowed.includes(persistedProfile) && catalog.profiles?.[persistedProfile]?.enabled !== false) {
     profileId = persistedProfile;
     source = "thread";
   } else if (conversationId && policy.channelDefaults?.[`${channelId}:${conversationId}`]) {
