@@ -10,6 +10,13 @@ import {applyRuntimeProfiles} from "./render-openclaw-runtime-profiles.mjs";
 
 const source = {
   agents: {
+    defaults: {
+      models: {
+        "openai/gpt-5.6-sol": {alias: "sol"},
+        "openai/old": {alias: "retired"},
+        "local/fallback": {alias: "local"},
+      },
+    },
     list: [
       {id: "liv", workspace: "/data/liv", model: {primary: "openai/old", fallbacks: ["local/fallback"]}},
       {id: "max", workspace: "/data/max", model: {primary: "openai/old"}},
@@ -61,6 +68,35 @@ test("renders each agent's selected profile into effective OpenClaw config", () 
   assert.deepEqual(rendered.plugins.entries.acpx.config.agents.cursor.args, ["--trust", "--model", "cursor/grok-medium", "acp"]);
   assert.equal(rendered.bindings[0].type, "route");
   assert.deepEqual(rendered.agents.list[1].models["openai/gpt-5.6-sol"].agentRuntime, {id: "openclaw"});
+  assert.deepEqual(Object.keys(rendered.agents.defaults.models), ["openai/gpt-5.6-sol"]);
+  assert.deepEqual(rendered.agents.defaults.models["openai/gpt-5.6-sol"], {alias: "sol", agentRuntime: {id: "openclaw"}});
+});
+
+test("exposes every CLI profile globally so explicit broker switches pass OpenClaw visibility", () => {
+  const cliCatalog = structuredClone(catalog);
+  cliCatalog.profiles.cursor = {
+    executionMode: "general",
+    runtime: "cli",
+    harness: "cursor",
+    backend: "cursor-ask",
+    model: "cursor-ask/grok-4.6-low-fast",
+    reasoning: "low",
+    fastMode: true,
+  };
+  cliCatalog.profiles["cursor-deep"] = {
+    ...cliCatalog.profiles.cursor,
+    model: "cursor-ask/grok-4.6-high-fast",
+    reasoning: "high",
+  };
+
+  const rendered = applyRuntimeProfiles(source, cliCatalog);
+  assert.deepEqual(Object.keys(rendered.agents.defaults.models).sort(), [
+    "cursor-ask/grok-4.6-high-fast",
+    "cursor-ask/grok-4.6-low-fast",
+    "openai/gpt-5.6-sol",
+  ]);
+  assert.deepEqual(rendered.agents.defaults.models["cursor-ask/grok-4.6-high-fast"].agentRuntime, {id: "cursor-ask"});
+  assert.equal(rendered.agents.defaults.models["local/fallback"], undefined);
 });
 
 test("rejects a profile outside the agent allowlist", () => {

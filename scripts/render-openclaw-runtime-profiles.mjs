@@ -51,6 +51,19 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
   const agents = source?.agents?.list;
   if (!Array.isArray(agents) || agents.length === 0) fail("source config agents.list must be a non-empty array");
   const selectedHarnessModels = new Map();
+  const sourceDefaultModels = source?.agents?.defaults?.models && typeof source.agents.defaults.models === "object" && !Array.isArray(source.agents.defaults.models)
+    ? source.agents.defaults.models
+    : {};
+  const globalModelPolicies = {};
+
+  const exposeGlobalModel = (model, selectedRuntime) => {
+    const prior = globalModelPolicies[model] ?? sourceDefaultModels[model] ?? {};
+    const priorRuntime = prior?.agentRuntime?.id;
+    if (priorRuntime && priorRuntime !== selectedRuntime) {
+      fail(`global model ${model} maps to conflicting runtimes ${priorRuntime} and ${selectedRuntime}`);
+    }
+    globalModelPolicies[model] = {...prior, agentRuntime: {id: selectedRuntime}};
+  };
 
   source.agents.list = agents.map((agent) => {
     const id = String(agent?.id ?? "").trim();
@@ -87,6 +100,7 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
           fail(`model ${model} maps to conflicting runtimes ${priorRuntime} and ${selectedRuntime}`);
         }
         modelPolicies[model] = {...prior, agentRuntime: {id: selectedRuntime}};
+        exposeGlobalModel(model, selectedRuntime);
       }
     }
 
@@ -129,6 +143,11 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
 
     fail(`profile ${profileId} has unsupported runtime ${String(profile.runtime)}`);
   });
+
+  source.agents.defaults = {
+    ...(source.agents.defaults ?? {}),
+    models: globalModelPolicies,
+  };
 
   const sourceBindings = Array.isArray(source.bindings) ? source.bindings : [];
   for (const binding of sourceBindings) {
