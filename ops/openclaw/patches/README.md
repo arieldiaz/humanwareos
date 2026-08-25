@@ -90,6 +90,10 @@ notification. Same rules: idempotent, fails closed, restart after applying.
 
 The patch changes only real user requests whose ACP session is already bound to the source conversation. Static `bindings` entries are recognized from their canonical `agent:<id>:acp:binding:<channel>:<account>:...` session key; the runtime conversation-binding table can legitimately be empty for those routes. Dynamic conversation bindings remain supported through the table lookup. Those turns use automatic ACP projection; other ACP sessions keep their existing source-delivery policy. The script is idempotent, upgrades its first database-only patch shape, fails closed when the installed bundle shape changes, and requires a gateway restart after application.
 
+## 2026.7.1-2 message-tool Slack thread context
+
+`patch-2026.7.1-2-message-tool-thread-context.mjs` closes the gap between a bound Slack thread session and the generic message tool. OpenClaw records the thread timestamp in the canonical `agent:<id>:slack:channel:<channel>:thread:<timestamp>` session key, but `createMessageTool` does not recover it when separately supplied thread fields are absent. A same-channel send then becomes a new root before the Slack plugin can enforce its own fail-closed thread guard. The patch uses the canonical Slack channel or group thread key as the final fallback while preserving explicit route-context precedence. This makes an ordinary send inherit the current thread and preserves `topLevel: true` as the explicit escape hatch. The script is idempotent, fails closed when the installed bundle shape changes, and requires a gateway restart after application.
+
 ## 2026.7.1 prompt boilerplate override
 
 `patch-2026.7.1-prompt-boilerplate.mjs` rewrites the two per-turn prompt
