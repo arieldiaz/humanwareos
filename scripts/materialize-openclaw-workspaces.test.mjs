@@ -20,7 +20,8 @@ test("materializes regular managed projections, archives starter files, and rest
     for (const filename of ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md", "STRATEGY.md"]) writeFileSync(join(runtime, "instructions", "openclaw", "max", filename), filename);
     writeFileSync(join(runtime, "config", "instance.json"), JSON.stringify({paths: {dataRoot: data}}));
     writeFileSync(join(data, "current", "memory", "index.md"), "memory");
-    writeFileSync(join(data, "current", "strategy.md"), "strategy");
+    mkdirSync(join(data, "current", "strategy"), {recursive: true});
+    writeFileSync(join(data, "current", "strategy", "current.md"), "strategy");
     writeFileSync(join(workspace, "IDENTITY.md"), "starter identity");
     symlinkSync(join(data, "memory", "current", "index.md"), join(workspace, "MEMORY.md"));
     writeFileSync(join(workspace, "BOOTSTRAP.md"), "starter bootstrap");
