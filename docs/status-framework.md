@@ -11,7 +11,7 @@ The internal outbound enum is `answer`, `act`, `working`, `scheduled`, `no_actio
 - `answer` — the human owes an answer, choice, judgment, or go. Visible closing section: `## ❓ Clarify`. Root tile: ❓ `:question:`.
 - `act` — the human owes work that only they can do with their identity, credential, vendor console, or physical access. Visible closing section: `## ✋ Act`. Root tile: ✋ `:raised_hand:`.
 - `working` — the agent still owns a long-running turn. The kickoff is plain prose with no lifecycle heading. Root tile: 🔄 `:arrows_counterclockwise:`.
-- `scheduled` — the item has a real resurface time backed by a reminder or durable wake. Visible closing section: `## 🗓️ Scheduled`. Root tile: 🗓️ `:calendar:`.
+- `scheduled` — the item has a real resurface time backed by an internal durable wake. Visible closing section: `## 🗓️ Scheduled`. Root tile: 🗓️ `:calendar:`.
 - `no_action` — an ordinary answer, result, or completed reversible action with no pending handoff. The reply ends naturally. Root tile: none.
 - `closed` — the human confirmed the user-level outcome and the durable close-out was recorded. Visible closing section: `## Session Closed`. Root tile: ✅ `:white_check_mark:`.
 
@@ -27,7 +27,7 @@ The visible lifecycle section contains the shortest useful next step. The reason
 
 **Working is an ownership claim.** Use it only when the agent has started follow-through that will continue after the kickoff post. A completed turn is never working merely because it lacks a lifecycle section.
 
-**Scheduled needs a wake.** No resurface date means kill it, complete it, or keep it on the agent; do not park it without a trigger.
+**Scheduled needs an internal wake.** When the agent must message or resume work later, create an OpenClaw cron wake in the current conversation and then publish the exact `## 🗓️ Scheduled` section. Do not route that request to Apple Reminders, a calendar, or another personal task system unless the human explicitly names that destination. If the cron wake fails, report the failure and do not claim `scheduled`; no resurface date means kill it, complete it, or keep it on the agent.
 
 **Completion does not create an ask.** Report the result and stop. Closed is reserved for the human's confirmed thread close and measured close-out, not for a draft, commit, subtask, or ordinary finished turn.
 
