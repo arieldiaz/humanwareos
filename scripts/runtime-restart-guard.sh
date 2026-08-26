@@ -6,6 +6,11 @@ usage() {
   exit 2
 }
 
+JQ=${JQ:-}
+if [ -z "$JQ" ]; then
+  JQ=$(command -v jq 2>/dev/null) || { echo "Restart approval refused: jq is required" >&2; exit 2; }
+fi
+
 fail() {
   echo "Restart approval refused: $1" >&2
   exit "${2:-77}"
@@ -47,11 +52,11 @@ CONSUMED_DIR="$CONTROL_DIR/restart-approvals/consumed"
 [ -d "$PENDING_DIR" ] || fail "pending approval directory is missing: $PENDING_DIR"
 [ ! -L "$PENDING_DIR" ] || fail "pending approval directory cannot be a symlink"
 
-if ! /usr/bin/jq -e '.schemaVersion == 1 and (.active | type == "boolean") and (.updatedBy | type == "string") and (.reason | type == "string")' "$FREEZE_FILE" >/dev/null; then
+if ! "$JQ" -e '.schemaVersion == 1 and (.active | type == "boolean") and (.updatedBy | type == "string") and (.reason | type == "string")' "$FREEZE_FILE" >/dev/null; then
   fail "shared freeze state is invalid: $FREEZE_FILE" 78
 fi
-if [ "$(/usr/bin/jq -r '.active' "$FREEZE_FILE")" = "true" ]; then
-  reason=$(/usr/bin/jq -r '.reason' "$FREEZE_FILE")
+if [ "$("$JQ" -r '.active' "$FREEZE_FILE")" = "true" ]; then
+  reason=$("$JQ" -r '.reason' "$FREEZE_FILE")
   fail "the shared restart freeze is active: $reason" 78
 fi
 
@@ -69,7 +74,7 @@ if (( (8#$mode & 077) != 0 )); then
 fi
 
 now=$(/bin/date -u +%s)
-if ! /usr/bin/jq -e --arg instance "$INSTANCE_ID" --argjson now "$now" '
+if ! "$JQ" -e --arg instance "$INSTANCE_ID" --argjson now "$now" '
   .schemaVersion == 1 and
   (.approvalId | type == "string" and length > 0) and
   .decision == "approve" and
@@ -88,13 +93,13 @@ if ! /usr/bin/jq -e --arg instance "$INSTANCE_ID" --argjson now "$now" '
   fail "approval is invalid, expired, too broad, or for another instance"
 fi
 
-approval_id=$(/usr/bin/jq -r '.approvalId' "$APPROVAL_FILE")
+approval_id=$("$JQ" -r '.approvalId' "$APPROVAL_FILE")
 case "$approval_id" in
   *[!A-Za-z0-9._-]*|'') fail "approvalId contains unsupported characters" ;;
 esac
 [ "$(basename "$APPROVAL_FILE")" = "$approval_id.json" ] || fail "approval filename must match approvalId"
 
-if [ "$ACTIVE_SESSION_COUNT" -gt 0 ] && [ "$(/usr/bin/jq -r '.allowActiveSessions' "$APPROVAL_FILE")" != "true" ]; then
+if [ "$ACTIVE_SESSION_COUNT" -gt 0 ] && [ "$("$JQ" -r '.allowActiveSessions' "$APPROVAL_FILE")" != "true" ]; then
   fail "$ACTIVE_SESSION_COUNT active session(s) must drain, or the operator must explicitly approve the active-session override" 79
 fi
 
@@ -115,7 +120,7 @@ stamp=$(/bin/date -u +%Y%m%dT%H%M%SZ)
 CONSUMED_FILE="$CONSUMED_DIR/$approval_id-$stamp.json"
 [ ! -e "$CONSUMED_FILE" ] || fail "consumed approval destination already exists"
 /bin/mv "$APPROVAL_FILE" "$CONSUMED_FILE"
-/usr/bin/jq --arg consumedAt "$consumed_at" --argjson activeSessionCount "$ACTIVE_SESSION_COUNT" \
+"$JQ" --arg consumedAt "$consumed_at" --argjson activeSessionCount "$ACTIVE_SESSION_COUNT" \
   '. + {consumedAt: $consumedAt, activeSessionCount: $activeSessionCount}' "$CONSUMED_FILE" > "$REPORT_FILE.tmp"
 /bin/chmod 600 "$REPORT_FILE.tmp"
 /bin/mv "$REPORT_FILE.tmp" "$REPORT_FILE"
