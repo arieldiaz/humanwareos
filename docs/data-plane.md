@@ -13,7 +13,7 @@ data-root/
 ├── working/         agent, session, and project workspaces plus the classification inbox
 ├── artifacts/       immutable revisions, blobs, manifests, and archives
 ├── generated/       rebuildable transcripts, session views, reports, indexes, and review projections
-└── operations/      cache, backups, migrations, cutovers, locks, diagnostics, and restore evidence
+└── operations/      cache, backups, migrations, and restore evidence
 ```
 
 These six parents express storage semantics. They are separate from privacy tiers: an item can be Tier 0 and generated, or Tier 2 and current. They are also separate from the four context layers: framework and identity context live in source/runtime, while approved current projections enter Layer 4.
@@ -26,7 +26,7 @@ Raw stream events are immutable. A correction is a new event that references and
 
 Memory evidence follows the same rule. An agent appends a learned fact or decision with its source and confidence under `evidence/memory/events`. `current/memory` is a curated projection over those events. It may merge, replace, or omit stale facts because its history remains recoverable from events. This keeps daily context small without rewriting evidence.
 
-Strategy uses the same shape: agents load one current document, while changes append a dated decision event that preserves why the projection changed.
+Strategy uses the same shape: agents load `current/strategy/current.md`, while changes append a dated decision event under `evidence/memory/events` that preserves why the projection changed.
 
 ## Working documents
 

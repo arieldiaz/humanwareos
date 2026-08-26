@@ -24,7 +24,7 @@ test("renders framework, instance, identity, and data-plane references", () => {
   assert.match(rendered["IDENTITY.md"], /Name: Max/);
   assert.match(rendered["IDENTITY.md"], /Emoji: fox_face/);
   assert.match(rendered["MEMORY.md"], /\/data\/current\/memory/);
-  assert.match(rendered["STRATEGY.md"], /\/data\/current\/strategy\.md/);
+  assert.match(rendered["STRATEGY.md"], /\/data\/current\/strategy\/current\.md/);
 });
 
 test("renders every declared agent into the runtime bundle", () => {
