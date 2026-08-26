@@ -151,7 +151,7 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
 
   const sourceBindings = Array.isArray(source.bindings) ? source.bindings : [];
   for (const binding of sourceBindings) {
-    if (binding?.type === "acp" && binding?.match?.peer?.id === "*") fail("wildcard ACP bindings are prohibited; select ACP explicitly through the broker");
+    if (binding?.type === "acp" && binding?.match?.peer?.id === "*") fail("wildcard ACP bindings are prohibited; use an explicit ACP binding");
   }
   source.bindings = sourceBindings;
 

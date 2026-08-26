@@ -72,7 +72,21 @@ test("renders each agent's selected profile into effective OpenClaw config", () 
   assert.deepEqual(rendered.agents.defaults.models["openai/gpt-5.6-sol"], {alias: "sol", agentRuntime: {id: "openclaw"}});
 });
 
-test("exposes every CLI profile globally so explicit broker switches pass OpenClaw visibility", () => {
+test("keeps the reference instance on the native interactive path by default", () => {
+  const templatePath = fileURLToPath(new URL("../templates/instance/runtime/profiles.json", import.meta.url));
+  const template = JSON.parse(readFileSync(templatePath, "utf8"));
+  const rendered = applyRuntimeProfiles(source, template);
+
+  assert.equal(template.defaultProfile, "native-low");
+  for (const agent of rendered.agents.list) {
+    assert.equal(template.agents[agent.id].defaultProfile, "native-low");
+    assert.equal(template.profiles[template.agents[agent.id].defaultProfile].executionMode, "general");
+    assert.deepEqual(agent.runtime, {type: "embedded"});
+    assert.equal(agent.model.primary, "openai/gpt-5.6-sol");
+  }
+});
+
+test("exposes every allowed CLI profile through OpenClaw model visibility", () => {
   const cliCatalog = structuredClone(catalog);
   cliCatalog.profiles.cursor = {
     executionMode: "general",

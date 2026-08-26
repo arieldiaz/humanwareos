@@ -1,17 +1,31 @@
 {
   "schemaVersion": 2,
-  "defaultProfile": "codex-low",
+  "defaultProfile": "native-low",
   "agents": {
     "liv": {
-      "defaultProfile": "cursor-ask-low",
-      "allowedProfiles": ["cursor-ask-low", "cursor-agent-high", "codex-low", "codex-high"]
+      "defaultProfile": "native-low",
+      "allowedProfiles": ["native-low", "cursor-ask-low", "cursor-agent-high"]
     },
     "max": {
-      "defaultProfile": "codex-low",
-      "allowedProfiles": ["cursor-ask-low", "cursor-agent-high", "codex-low", "codex-high"]
+      "defaultProfile": "native-low",
+      "allowedProfiles": ["native-low", "cursor-ask-low", "cursor-agent-high"]
     }
   },
   "profiles": {
+    "native-low": {
+      "executionMode": "general",
+      "runtime": "native",
+      "harness": "openclaw",
+      "family": "openai-sol",
+      "aliases": ["native", "openclaw", "openclaw/sol"],
+      "model": "openai/gpt-5.6-sol",
+      "permissions": "standard",
+      "workspace": "isolated-on-write",
+      "dataScope": "tier-2",
+      "reasoning": "low",
+      "fastMode": true,
+      "responseTargetSeconds": 20
+    },
     "cursor-ask-low": {
       "executionMode": "general",
       "runtime": "cli",
@@ -52,7 +66,8 @@
       "workspace": "required",
       "dataScope": "tier-2",
       "reasoning": "low",
-      "fastMode": true
+      "fastMode": true,
+      "enabled": false
     },
     "codex-high": {
       "executionMode": "workspace",
@@ -66,7 +81,8 @@
       "workspace": "required",
       "dataScope": "tier-2",
       "reasoning": "high",
-      "fastMode": true
+      "fastMode": true,
+      "enabled": false
     }
   }
 }

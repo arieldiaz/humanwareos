@@ -31,7 +31,7 @@ Edit the private instance, not the framework. Start with one agent overlay under
 
 Fill the first honest strategy at `<DATA_ROOT>/current/strategy/current.md` and the compact memory index at `<DATA_ROOT>/current/memory/index.md`. Do not commit either file.
 
-The instance's `runtime/profiles.json` separates identity from execution. Give each equivalent agent the same allowed profiles unless a documented trust boundary requires a difference. The deterministic broker resolves the profile before inference. A direct provider may be the general default; Cursor CLI, Codex app-server, ACP, OpenCode, and Pi are supported profiles rather than permanent identities.
+The instance's `runtime/profiles.json` separates identity from execution. Give each equivalent agent the same allowed profiles unless a documented trust boundary requires a difference. The selected default profile is rendered directly into the agent configuration before activation. A direct provider may be the general default; Cursor CLI, Codex app-server, ACP, OpenCode, and Pi are supported profiles rather than permanent identities.
 
 Validate the configuration and build a new runtime:
 
