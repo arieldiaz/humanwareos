@@ -1,14 +1,16 @@
 {
   "schemaVersion": 2,
-  "defaultProfile": "native-low",
+  "defaultProfile": "codex-low",
   "agents": {
     "liv": {
-      "defaultProfile": "native-low",
-      "allowedProfiles": ["native-low", "cursor-ask-low", "cursor-agent-high"]
+      "defaultProfile": "cursor-agent-low",
+      "escalationProfile": "cursor-agent-high",
+      "allowedProfiles": ["cursor-agent-low", "cursor-agent-high", "codex-low", "codex-high"]
     },
     "max": {
-      "defaultProfile": "native-low",
-      "allowedProfiles": ["native-low", "cursor-ask-low", "cursor-agent-high"]
+      "defaultProfile": "codex-low",
+      "escalationProfile": "codex-high",
+      "allowedProfiles": ["cursor-agent-low", "cursor-agent-high", "codex-low", "codex-high"]
     }
   },
   "profiles": {
@@ -24,65 +26,68 @@
       "dataScope": "tier-2",
       "reasoning": "low",
       "fastMode": true,
-      "responseTargetSeconds": 20
+      "responseTargetSeconds": 20,
+      "enabled": false
     },
-    "cursor-ask-low": {
-      "executionMode": "general",
+    "cursor-agent-low": {
+      "executionMode": "workspace",
       "runtime": "cli",
       "harness": "cursor",
+      "backend": "cursor-agent",
       "family": "cursor-grok",
-      "aliases": ["cursor/grok", "grok", "cursor"],
-      "backend": "cursor-ask",
-      "model": "cursor-ask/grok-4.6-low-fast",
+      "model": "cursor-agent/grok-4.6-low-fast",
+      "aliases": ["cursor/grok", "cursor", "grok"],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
       "reasoning": "low",
-      "fastMode": true
+      "fastMode": true,
+      "responseTargetSeconds": 30
     },
     "cursor-agent-high": {
       "executionMode": "workspace",
       "runtime": "cli",
       "harness": "cursor",
-      "family": "cursor-grok",
-      "aliases": ["cursor/grok", "grok", "cursor"],
       "backend": "cursor-agent",
+      "family": "cursor-grok",
       "model": "cursor-agent/grok-4.6-high-fast",
+      "aliases": ["cursor/grok", "cursor", "grok"],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
       "reasoning": "high",
-      "fastMode": true
+      "fastMode": true,
+      "responseTargetSeconds": 90
     },
     "codex-low": {
       "executionMode": "workspace",
       "runtime": "app-server",
       "harness": "codex",
-      "family": "codex-sol",
-      "aliases": ["codex/sol", "codex", "chatgpt/sol"],
       "backend": "codex",
+      "family": "codex-sol",
       "model": "openai/gpt-5.6-sol",
+      "aliases": ["codex/sol", "codex", "chatgpt/sol", "sol"],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
       "reasoning": "low",
       "fastMode": true,
-      "enabled": false
+      "responseTargetSeconds": 30
     },
     "codex-high": {
       "executionMode": "workspace",
       "runtime": "app-server",
       "harness": "codex",
-      "family": "codex-sol",
-      "aliases": ["codex/sol", "codex", "chatgpt/sol"],
       "backend": "codex",
+      "family": "codex-sol",
       "model": "openai/gpt-5.6-sol",
+      "aliases": ["codex/sol", "codex", "chatgpt/sol", "sol"],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
       "reasoning": "high",
       "fastMode": true,
-      "enabled": false
+      "responseTargetSeconds": 90
     }
   }
 }
