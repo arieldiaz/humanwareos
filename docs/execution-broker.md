@@ -2,6 +2,8 @@
 
 Issue: [humanwareos#38](https://github.com/arieldiaz/humanwareos/issues/38)
 
+Budget: 1,400 words. Over it, consolidate.
+
 This is the executable specification for identity-neutral routing. Liv and Max use the same broker; identity changes context and authority, never the dispatch algorithm.
 
 ## Turn contract
@@ -89,7 +91,7 @@ Required events are `turn.accepted`, `route.resolved`, optional `handoff.created
 
 ## Acceptance and release
 
-The release unit follows Issue → Spec → PR → Deploy → Evals. The PR contains this spec, schemas, parser/resolver tests, backend tests, data migration, rollback, and runtime verification. Deployment requires a verified external snapshot and pre-production evals. Post-production evals must observe both Slack replies from the channel, exercise profile switches and multi-intent coverage, verify explicit failures, inspect the shared trace, restart the gateway, and sample a restore. Process health alone is not delivery proof.
+The release unit follows Issue → Spec → PR → Deploy → Evals. The PR contains this spec, schemas, parser/resolver tests, backend tests, data migration, rollback, and runtime verification. Deployment requires a verified external snapshot and pre-production evals. Restart recovery and restore sampling run against an isolated gateway with no user sessions. Post-production evals are non-disruptive: they observe both Slack replies from the channel, exercise profile switches and multi-intent coverage, verify explicit failures, inspect the shared trace, and probe production health without restarting the gateway or creating unbounded timestamped session keys. Process health alone is not delivery proof.
 
 The private instance implements one leased transaction: checksum-verify the external snapshot, clone the old flat data classes into a new versioned v2 layout, atomically select the `active` data pointer, build and select the immutable runtime, patch and validate OpenClaw, restart once, verify both channel accounts, and run backend/outbound canaries. Any failure before completion restores the prior runtime, config, auth database, materialized bridge files, and data pointer; it retains the new layout, snapshot, and failure evidence for diagnosis.
 

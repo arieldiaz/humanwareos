@@ -30,6 +30,10 @@ Services point at a stable `current` reference, not a source checkout. Activatio
 
 Rollback reselects the previous runtime build. It does not reset source repositories or data.
 
+Deployment and cutover commands run in a foreground operator shell or through a reviewed supervisor that is explicitly one-shot. `launchctl submit` is prohibited for deployments and cutovers because it creates an inferred keepalive job that may respawn a completed command indefinitely. The deployment entrypoint fails closed when it detects an unapproved service supervisor, treats an already-active pair of source revisions as a successful no-op, and verifies that no retired deployment or cutover job remains registered.
+
+Production post-deploy canaries are non-disruptive. They may probe channels and run bounded synthetic turns with stable session keys, but they never restart the production gateway. Restart recovery is tested against a shadow or isolated gateway with no user sessions.
+
 ## Source checkouts and worktrees
 
 The deployed framework and instance checkouts remain clean and pinned to their canonical branches. Agents never receive either as a writable task directory.
