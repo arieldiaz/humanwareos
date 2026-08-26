@@ -31,7 +31,7 @@ Edit the private instance, not the framework. Start with one agent overlay under
 
 Fill the first honest strategy at `<DATA_ROOT>/current/strategy/current.md` and the compact memory index at `<DATA_ROOT>/current/memory/index.md`. Do not commit either file.
 
-The instance's `runtime/profiles.json` separates identity from execution. Give each equivalent agent the same allowed profiles unless a documented trust boundary requires a difference. The selected default profile is rendered directly into the agent configuration before activation. A direct provider may be the general default; Cursor CLI, Codex app-server, ACP, OpenCode, and Pi are supported profiles rather than permanent identities.
+The instance's `runtime/profiles.json` separates identity from execution. Begin with the reference profile catalog and change its defaults only through an explicit instance decision. Give each equivalent agent the same allowed profiles unless a documented trust boundary requires a difference. The selected default profile is rendered directly into the agent configuration before activation. Cursor CLI, Codex app-server, native OpenClaw, ACP, OpenCode, and Pi are supported profiles rather than permanent identities; runtime simplicity or an integration refactor never selects the default implicitly. See [Channels, agents, and execution profiles](channel-runtime.md) for the policy contract.
 
 Validate the configuration and build a new runtime:
 
