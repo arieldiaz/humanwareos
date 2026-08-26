@@ -86,7 +86,7 @@ test("keeps the reference instance on the native interactive path by default", (
   }
 });
 
-test("exposes every CLI profile globally so explicit broker switches pass OpenClaw visibility", () => {
+test("exposes every allowed CLI profile through OpenClaw model visibility", () => {
   const cliCatalog = structuredClone(catalog);
   cliCatalog.profiles.cursor = {
     executionMode: "general",
