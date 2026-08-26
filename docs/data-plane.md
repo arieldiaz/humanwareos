@@ -13,7 +13,7 @@ data-root/
 ├── working/         agent, session, and project workspaces plus the classification inbox
 ├── artifacts/       immutable revisions, blobs, manifests, and archives
 ├── generated/       rebuildable transcripts, session views, reports, indexes, and review projections
-└── operations/      cache, backups, migrations, and restore evidence
+└── operations/      shared control state, cache, backups, migrations, and restore evidence
 ```
 
 These six parents express storage semantics. They are separate from privacy tiers: an item can be Tier 0 and generated, or Tier 2 and current. They are also separate from the four context layers: framework and identity context live in source/runtime, while approved current projections enter Layer 4.
@@ -64,6 +64,8 @@ The data plane enforces scopes at retrieval time:
 Search returns references and the smallest relevant projection before returning full source material. A cloud harness does not gain raw-data access merely because it can edit code.
 
 Secrets are not data-plane content. They remain in the instance secrets manager and appear in manifests only by key name.
+
+`operations/control` holds small shared safety state that every harness must observe before control-plane mutation. Gateway restart freezes and pending or consumed restart approvals live here. An approval is short-lived and single-use; consuming it preserves the action provenance in the deployment report. This state is operational authority, not memory, generated output, or a source-controlled rule.
 
 ## Durability
 

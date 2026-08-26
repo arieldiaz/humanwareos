@@ -78,6 +78,7 @@ cp "$FRAMEWORK_DIR/scripts/render-openclaw-runtime-profiles.mjs" "$BUILD_DIR/fra
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-agent-context.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-agent-context.mjs"
 cp "$FRAMEWORK_DIR/scripts/materialize-openclaw-workspaces.mjs" "$BUILD_DIR/framework/scripts/materialize-openclaw-workspaces.mjs"
 cp "$FRAMEWORK_DIR/scripts/runtime-cutover-lease.sh" "$BUILD_DIR/framework/scripts/runtime-cutover-lease.sh"
+cp "$FRAMEWORK_DIR/scripts/runtime-restart-guard.sh" "$BUILD_DIR/framework/scripts/runtime-restart-guard.sh"
 cp -R "$FRAMEWORK_DIR/ops/openclaw/plugins/." "$BUILD_DIR/framework/ops/openclaw/plugins/"
 cp "$INSTANCE_DIR/AGENTS-instance.md" "$BUILD_DIR/instructions/AGENTS-instance.md"
 cp -R "$INSTANCE_DIR/agents" "$BUILD_DIR/instructions/agent-overlays"

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "active": true,
+  "updatedAt": null,
+  "updatedBy": "data-plane bootstrap",
+  "reason": "Gateway restarts remain frozen until an operator deliberately clears this shared state."
+}

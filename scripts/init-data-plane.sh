@@ -45,6 +45,8 @@ for path in \
   generated/review-projections \
   operations/cache \
   operations/backups \
+  operations/control/restart-approvals/pending \
+  operations/control/restart-approvals/consumed \
   operations/migrations \
   operations/restore-tests; do
   mkdir -p "$DATA_ROOT/$path"
@@ -58,6 +60,9 @@ if [ ! -f "$DATA_ROOT/current/memory/index.md" ]; then
 fi
 if [ ! -f "$DATA_ROOT/artifacts/manifests/data-plane.json" ]; then
   install -m 600 "$FRAMEWORK_DIR/templates/data/manifests/data-plane.json" "$DATA_ROOT/artifacts/manifests/data-plane.json"
+fi
+if [ ! -f "$DATA_ROOT/operations/control/restart-freeze.json" ]; then
+  install -m 600 "$FRAMEWORK_DIR/templates/data/operations/control/restart-freeze.json" "$DATA_ROOT/operations/control/restart-freeze.json"
 fi
 
 printf 'data-plane: ready at %s\n' "$DATA_ROOT"
