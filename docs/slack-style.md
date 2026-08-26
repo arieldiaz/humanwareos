@@ -10,7 +10,7 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 
 **Write standard Markdown** — `**bold**`, `## Heading`, `- item`, `[label](url)`. Never hand-write Slack mrkdwn (`*bold*`, `<url|label>`); it gets double-processed by any gateway that converts on the way out.
 
-**Rich output degrades silently.** Where the gateway upgrades Markdown to Block Kit, `#`/`##` become real header blocks and `- ` becomes a native list — but that conversion falls back to flat mrkdwn (headings gone, lists rendered as literal `•`) when the send is multi-chunk, carries media, or exceeds the converter's block or character limits. A long structured reply therefore renders as junk. Content needing that much room belongs in a repo doc or a canvas.
+**Rich output degrades silently.** Where the gateway upgrades Markdown to Block Kit, `#`/`##` become real header blocks and `- ` becomes a native list — but that conversion falls back to flat mrkdwn (headings gone, lists rendered as literal `•`) when the send is multi-chunk, carries media, or exceeds the converter's block or character limits. A long structured reply therefore renders as junk. Keep the reply short and link the durable object that holds the detail.
 
 **Budget against 4,000 characters.** Gateways chunk well before a converter's own limit, and every degradation fires at once when they do — including a numbered list orphaned from the `## ` header it belonged to. Two deliberately-scoped messages beat one the gateway splits mid-list. Attach media in a separate message from a formatted one, or the formatting dies with it.
 
@@ -25,9 +25,9 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 - Use one blank line between a heading and its content, as standard Markdown requires. Do not add extra spacer lines.
 - Lists use `- `, never a literal `•`. One bullet is one uninterrupted list item — a hard line break or manual indent inside it kills the hanging indent. Numbers are reserved for steps performed in order; everything else is a bullet.
 - **No decorative emoji in headings.** The exact lifecycle headings from `docs/status-framework.md` are the only exception because their glyph is semantic state.
-- **Tables: fenced code block, space-aligned, ≤60 chars.** Slack has no table primitive; a pipe table renders as literal `|` junk. Use one when comparing 3+ options across several attributes. Over about 6×5, use a canvas.
+- **Tables: fenced code block, space-aligned, ≤60 chars.** Slack has no table primitive; a pipe table renders as literal `|` junk. Use one when comparing 3+ options across several attributes. Over about 6×5, link the source; preview it in a canvas only when asked.
 - **Specialized vocabulary:** `**term** (short plain definition)` at first use in a thread, then append the entry to the instance's glossary. Never silently swap in a simpler word. Do not re-define a term already glossed in the same thread.
-- Diagrams ship as a viewable HTML artifact plus editable source.
+- Visual and interactive review work ships as a viewable HTML artifact plus editable source.
 
 ## Channel overrides
 
@@ -43,12 +43,13 @@ Enforced by the agent, because gateways generally have no per-channel knob. Do n
 
 Slack renders a raw path as dead text and an upload as a permanent duplicate in the workspace archive.
 
-- **Committed → repo link, and this is the default.** Link the blob at a SHA, not a branch, when the version matters. Always give the absolute local path alongside; the link supplements the path, never replaces it.
-- **Uncommitted, or a quick read → canvas.** Publish with the instance's markdown-to-canvas tool, never by hand.
-- **They ask for it inline → inline.** Their request beats both defaults.
+- **Source file → repo link.** Link the blob at a SHA, not a branch, when the version matters. Always give the absolute local path alongside; the link supplements the path, never replaces it.
+- **Markdown preview → canvas only when the human asks for a preview.** Publish with the instance's markdown-to-canvas tool, never by hand. Otherwise link the source file or answer in the thread.
+- **Visual or interactive review → HTML artifact link.** Promote it through the instance's artifact service and link the addressed revision. Never embed or upload the artifact, its frames, or screenshots into Slack; the artifact is the review surface and source of truth.
+- **They ask for a text file inline → inline.** This exception does not turn a visual or interactive artifact into a Slack attachment.
 - **Lives in an external tool → link the object, never name it.** A Notion page, ticket, or doc referenced by bare title or id is not reachable. Give the URL. When such a page is mirrored into the repo, the copy carries `source_url` in its frontmatter so the original stays one click away.
 
-**A canvas is a UX affordance, not a record — the repo file is the record.** Thread canvases are ephemeral and belong to the thread that prompted them; the close tool deletes them when the thread closes, so a canvas outliving its thread is a fault to report, not a chore to remember. A standing canvas is kept only when the human has asked for that specific doc. A channel's native tab canvas is created on first render and edited in place after. Never edit a canvas by hand — the next render overwrites it. A canvas title names its subject, never its channel — the title is permanent and channels get renamed.
+**A canvas is a requested Markdown preview, not a record — the source file is the record.** Thread canvases are ephemeral and belong to the thread that prompted them; the close tool deletes them when the thread closes, so a canvas outliving its thread is a fault to report, not a chore to remember. A standing canvas is kept only when the human has asked for that specific doc. A channel's native tab canvas is created on first render and edited in place after. Never edit a canvas by hand — the next render overwrites it. A canvas title names its subject, never its channel — the title is permanent and channels get renamed.
 
 ## Precedence
 
