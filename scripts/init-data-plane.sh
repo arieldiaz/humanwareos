@@ -23,13 +23,13 @@ umask 077
 for path in \
   evidence/stream \
   evidence/memory/events \
-  evidence/strategy/events \
   evidence/sessions/events \
   evidence/sessions/raw \
   evidence/imports \
   evidence/provenance \
   evidence/legacy \
   current/memory \
+  current/strategy \
   working/agents \
   working/sessions \
   working/projects \
@@ -46,15 +46,12 @@ for path in \
   operations/cache \
   operations/backups \
   operations/migrations \
-  operations/cutovers \
-  operations/locks \
-  operations/diagnostics \
   operations/restore-tests; do
   mkdir -p "$DATA_ROOT/$path"
 done
 
-if [ ! -f "$DATA_ROOT/current/strategy.md" ]; then
-  install -m 600 "$FRAMEWORK_DIR/templates/data/current/strategy.md" "$DATA_ROOT/current/strategy.md"
+if [ ! -f "$DATA_ROOT/current/strategy/current.md" ]; then
+  install -m 600 "$FRAMEWORK_DIR/templates/data/current/strategy/current.md" "$DATA_ROOT/current/strategy/current.md"
 fi
 if [ ! -f "$DATA_ROOT/current/memory/index.md" ]; then
   install -m 600 "$FRAMEWORK_DIR/templates/data/current/memory/index.md" "$DATA_ROOT/current/memory/index.md"
