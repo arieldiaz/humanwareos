@@ -26,7 +26,7 @@ The complete ownership contract is in [System boundaries](system-boundaries.md).
 
 An agent identity is a durable role, voice, memory scope, and authority boundary. It does not permanently select a channel, model, harness, checkout, or delivery implementation.
 
-OpenClaw is the reference control plane: it owns channel connections, identity routing, conversation state, tools, secrets resolution, and execution dispatch. A native OpenClaw turn is the lowest-complexity default. Pi, Cursor, Codex, and other harnesses are selectable execution profiles for work that benefits from them. Both Liv and Max can use the same approved profile catalog.
+OpenClaw is the reference control plane: it owns channel connections, identity routing, conversation state, tools, secrets resolution, and execution dispatch. Native OpenClaw, Pi, Cursor, Codex, and other harnesses are selectable execution profiles. Runtime simplicity is one selection input; it does not determine the default. The reference defaults and their change-control contract belong to the channel-runtime specification.
 
 The detailed contract is in [Channels, agents, and execution profiles](channel-runtime.md).
 
