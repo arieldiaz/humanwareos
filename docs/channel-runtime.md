@@ -32,7 +32,7 @@ An execution profile binds:
 
 Profiles are supported pairs, not an imaginary unrestricted model-by-harness matrix. Cursor can expose the models Cursor supports; Codex can expose its supported OpenAI models; native OpenClaw can use configured providers; Pi can expose the models its adapter supports. Both Liv and Max can select any profile allowed by the instance.
 
-The reference defaults both agents to native OpenClaw for ordinary conversation. Native execution has the fewest process and delivery boundaries. Pi is a candidate first-party default after its adapter, packaging, permissions, and state paths are reproducible. Cursor and Codex are approved task harnesses for coding, review, and other specialized work.
+The reference defaults Liv to Cursor with Grok and Max to Codex with Sol because an ordinary thread may progress from conversation through specification into implementation. Their high-reasoning variants are the escalation profiles. Native OpenClaw remains a selectable execution harness after its packaging, permissions, state paths, and context behavior are proven for the workload; it is not the reference default merely because it has fewer process and delivery boundaries.
 
 A profile declares its reasoning and fast-mode defaults. The ordinary interactive profile should target a useful first response within 20 seconds and use medium-or-lower reasoning unless the model has a provider-specific equivalent. Coding, research, architecture, high-stakes work, and explicit requests for depth use a separate escalation profile. Fast mode changes latency, not permissions or privacy scope.
 

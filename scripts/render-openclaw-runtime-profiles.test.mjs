@@ -72,18 +72,25 @@ test("renders each agent's selected profile into effective OpenClaw config", () 
   assert.deepEqual(rendered.agents.defaults.models["openai/gpt-5.6-sol"], {alias: "sol", agentRuntime: {id: "openclaw"}});
 });
 
-test("keeps the reference instance on the native interactive path by default", () => {
+test("keeps the reference instance on the task-capable harnesses by default", () => {
   const templatePath = fileURLToPath(new URL("../templates/instance/runtime/profiles.json", import.meta.url));
   const template = JSON.parse(readFileSync(templatePath, "utf8"));
   const rendered = applyRuntimeProfiles(source, template);
 
-  assert.equal(template.defaultProfile, "native-low");
-  for (const agent of rendered.agents.list) {
-    assert.equal(template.agents[agent.id].defaultProfile, "native-low");
-    assert.equal(template.profiles[template.agents[agent.id].defaultProfile].executionMode, "general");
-    assert.deepEqual(agent.runtime, {type: "embedded"});
-    assert.equal(agent.model.primary, "openai/gpt-5.6-sol");
-  }
+  assert.equal(template.defaultProfile, "codex-low");
+  assert.equal(template.profiles["native-low"].enabled, false);
+  assert.deepEqual(template.agents.liv.allowedProfiles, template.agents.max.allowedProfiles);
+  assert.deepEqual(template.agents.liv.allowedProfiles, ["cursor-agent-low", "cursor-agent-high", "codex-low", "codex-high"]);
+  assert.equal(template.agents.liv.defaultProfile, "cursor-agent-low");
+  assert.equal(template.agents.liv.escalationProfile, "cursor-agent-high");
+  assert.deepEqual(rendered.agents.list[0].runtime, {type: "embedded"});
+  assert.equal(rendered.agents.list[0].model.primary, "cursor-agent/grok-4.6-low-fast");
+  assert.deepEqual(rendered.agents.list[0].models["cursor-agent/grok-4.6-low-fast"].agentRuntime, {id: "cursor-agent"});
+  assert.equal(template.agents.max.defaultProfile, "codex-low");
+  assert.equal(template.agents.max.escalationProfile, "codex-high");
+  assert.deepEqual(rendered.agents.list[1].runtime, {type: "embedded"});
+  assert.equal(rendered.agents.list[1].model.primary, "openai/gpt-5.6-sol");
+  assert.deepEqual(rendered.agents.list[1].models["openai/gpt-5.6-sol"].agentRuntime, {id: "codex"});
 });
 
 test("exposes every allowed CLI profile through OpenClaw model visibility", () => {
