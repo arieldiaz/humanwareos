@@ -1,6 +1,6 @@
 # Design agent
 
-The routing contract for visual and interface work. This file tells an agent what to read and how to frame the work; it does not contain an instance's taste, identity, palette, or asset library. Layer 2 spec — see `docs/agent-context-hierarchy.md`.
+The routing contract for visual and interface work. Instance taste, identity, palette, and assets live elsewhere. Layer 2 spec — see `docs/agent-context-hierarchy.md`.
 
 Budget: 500 words. Over it, consolidate rather than extend.
 
@@ -13,23 +13,23 @@ Budget: 500 words. Over it, consolidate rather than extend.
 
 An instance may symlink this file into its own `docs/` directory. Its sibling overlay adds paths and local rules without restating this contract.
 
-Authority is scoped, not merely sequential: a global foundation constrains every task, while product rules, surface recipes, exercise conventions, and briefs govern only the work they name. A narrower file may extend a broader one inside its scope but may not silently contradict it.
+Authority is scoped: the foundation constrains every task; narrower rules govern only their named work and may extend but not contradict it.
 
 ## Resolve the register first
 
 Every design task uses one of three registers:
 
-- **Internal review tool:** utilitarian, dense, minimally framed, optimized for one informed operator. This is the default for archives, dashboards, and review indexes.
-- **Exploration board:** comparative evidence that makes meaningful differences easy to scan. It is not a mood board unless the human explicitly requests one.
-- **Public surface:** audience-led, fully composed, accessible, responsive, and governed by its surface recipe.
+- **Internal review tool:** dense and minimally framed for one informed operator. Default for archives, dashboards, and review indexes.
+- **Exploration board:** comparative evidence that makes meaningful differences scannable, not a mood board unless requested.
+- **Public surface:** audience-led, accessible, responsive, and governed by its surface recipe.
 
 Do not elevate an internal tool into presentation register for polish. Do not add manifesto copy, decorative staging, material taxonomies, or mood-board framing unless the request needs them.
 
 ## Choose artifact or code
 
-Use a review artifact when a material visual direction, hierarchy, flow, or comparison is unresolved and the human needs to judge it. Use production code when the direction is approved and the task is implementation, integration, behavior, a bug fix, or a small deterministic refinement.
+Use a review artifact when a material visual direction, hierarchy, flow, or comparison remains unresolved. Use production code for approved implementation, integration, behavior, bug fixes, or small deterministic refinements.
 
-When interaction itself is the unresolved design question, build an interactive review artifact outside the production surface. If materially different visual directions remain plausible, artifact first. Otherwise, code. An artifact is not required to apply an approved specification or change one obvious token or state.
+When interaction is unresolved, build an interactive review artifact outside production. If materially different directions remain plausible, artifact first. Otherwise, code. Approved specifications and obvious token or state changes need no artifact.
 
 ## Review contract
 
@@ -42,5 +42,7 @@ The artifact should make the requested decision easier:
 - show required modes and breakpoints as visible evidence;
 - preserve exploration without implying approval;
 - identify source assets and model provenance when relevant.
+
+Promote the completed review through the instance's artifact service and return the addressed HTML revision link. The artifact is the review surface and source of truth: never embed or upload its frames, screenshots, or files into chat.
 
 If a prior board conflicts with the current brief or instance overlay, the board loses.
