@@ -8,7 +8,16 @@ import { fileURLToPath } from "node:url";
 
 const patchPath = fileURLToPath(new URL("./patch-2026.7.1-2-acp-bound-source-delivery.mjs", import.meta.url));
 
-const unpatchedFixture = `function resolveAcpTurnText(params) {
+const unpatchedFixture = `function resolveAcpPromptText(ctx) {
+\treturn resolveFirstContextText(ctx, [
+\t\t"BodyForAgent",
+\t\t"BodyForCommands",
+\t\t"CommandBody",
+\t\t"RawBody",
+\t\t"Body"
+\t]).trim();
+}
+function resolveAcpTurnText(params) {
 \tif (params.sourceReplyDeliveryMode !== "message_tool_only") return params.promptText;
 \treturn params.promptText;
 }
@@ -61,6 +70,9 @@ test("static ACP binding session keys bypass message-tool-only suppression", () 
   assert.match(patched, /Source channel delivery is automatic for this bound ACP turn/);
   assert.match(patched, /Do not call message\(action=send\) or any CLI delivery fallback/);
   assert.match(patched, /Do not include progress narration, delivery tests, or internal work notes/);
+  assert.match(patched, /const arielosAcpThreadHistoryBody = normalizeOptionalString\(ctx\.ThreadHistoryBody\)/);
+  assert.match(patched, /\[Thread history - for context\]/);
+  assert.match(patched, /\[arielosAcpThreadContext, arielosAcpCurrentBody\]\.filter\(Boolean\)\.join\("\\n\\n"\)/);
 });
 
 test("patch is idempotent", () => {
@@ -83,4 +95,14 @@ test("current static-binding patch upgrades with the projected-final contract", 
   const upgraded = runPatch(staticOnly);
   assert.match(upgraded, /arielosProjectedFinalGuidance/);
   assert.match(upgraded, /arielosProjectedFinal: arielosBoundChannelTurn/);
+});
+
+test("current projected-final patch upgrades with Slack thread context", () => {
+  const current = runPatch(unpatchedFixture).replace(
+    /function resolveAcpPromptText\(ctx\) \{[\s\S]*?\n\}\nfunction resolveAcpTurnText/,
+    `function resolveAcpPromptText(ctx) {\n\treturn resolveFirstContextText(ctx, [\n\t\t"BodyForAgent",\n\t\t"BodyForCommands",\n\t\t"CommandBody",\n\t\t"RawBody",\n\t\t"Body"\n\t]).trim();\n}\nfunction resolveAcpTurnText`,
+  );
+  const upgraded = runPatch(current);
+  assert.match(upgraded, /arielosAcpThreadHistoryBody/);
+  assert.match(upgraded, /arielosProjectedFinalGuidance/);
 });

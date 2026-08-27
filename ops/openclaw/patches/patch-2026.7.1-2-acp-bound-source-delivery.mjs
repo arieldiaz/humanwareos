@@ -19,6 +19,7 @@ const candidates = fs
   .map((name) => path.join(distDir, name));
 
 const marker = "arielosProjectedFinalGuidance";
+const threadContextMarker = "arielosAcpThreadHistoryBody";
 const staticMarker = "arielosStaticBindingPrefix";
 const legacyMarker = "arielosBoundChannelTurn";
 const sessionAnchor = `\tconst canonicalSessionKey = acpResolution.sessionKey;\n\tconst acpAgentId = resolveAgentIdFromSessionKey(canonicalSessionKey);`;
@@ -32,6 +33,16 @@ const turnTextAnchor = `function resolveAcpTurnText(params) {\n\tif (params.sour
 const turnTextReplacement = `function resolveAcpTurnText(params) {\n\tif (params.arielosProjectedFinal) {\n\t\tconst arielosProjectedFinalGuidance = prefixSystemMessage([\n\t\t\t"Source channel delivery is automatic for this bound ACP turn.",\n\t\t\t"Return only the polished user-visible reply in your final assistant text.",\n\t\t\t"Do not call message(action=send) or any CLI delivery fallback.",\n\t\t\t"Do not include progress narration, delivery tests, or internal work notes.",\n\t\t\t"OpenClaw posts the final assistant text to the source channel after the turn completes."\n\t\t].join(" "));\n\t\treturn params.promptText ? \`\${arielosProjectedFinalGuidance}\\n\\n\${params.promptText}\` : arielosProjectedFinalGuidance;\n\t}\n\tif (params.sourceReplyDeliveryMode !== "message_tool_only") return params.promptText;`;
 const turnCallAnchor = `\t\t\ttext: resolveAcpTurnText({\n\t\t\t\tpromptText: turnPromptText,\n\t\t\t\tsourceReplyDeliveryMode: arielosAcpSourceReplyDeliveryMode\n\t\t\t}),`;
 const turnCallReplacement = `\t\t\ttext: resolveAcpTurnText({\n\t\t\t\tpromptText: turnPromptText,\n\t\t\t\tsourceReplyDeliveryMode: arielosAcpSourceReplyDeliveryMode,\n\t\t\t\tarielosProjectedFinal: arielosBoundChannelTurn\n\t\t\t}),`;
+const promptTextAnchor = `function resolveAcpPromptText(ctx) {\n\treturn resolveFirstContextText(ctx, [\n\t\t"BodyForAgent",\n\t\t"BodyForCommands",\n\t\t"CommandBody",\n\t\t"RawBody",\n\t\t"Body"\n\t]).trim();\n}`;
+const promptTextReplacement = `function resolveAcpPromptText(ctx) {\n\tconst arielosAcpCurrentBody = resolveFirstContextText(ctx, [\n\t\t"BodyForAgent",\n\t\t"BodyForCommands",\n\t\t"CommandBody",\n\t\t"RawBody",\n\t\t"Body"\n\t]).trim();\n\tconst arielosAcpThreadHistoryBody = normalizeOptionalString(ctx.ThreadHistoryBody);\n\tconst arielosAcpThreadStarterBody = normalizeOptionalString(ctx.ThreadStarterBody);\n\tconst arielosAcpThreadContext = arielosAcpThreadHistoryBody ? \`[Thread history - for context]\\n\${arielosAcpThreadHistoryBody}\` : arielosAcpThreadStarterBody ? \`[Thread starter - for context]\\n\${arielosAcpThreadStarterBody}\` : "";\n\treturn [arielosAcpThreadContext, arielosAcpCurrentBody].filter(Boolean).join("\\n\\n");\n}`;
+
+function addThreadContext(source, file) {
+  if (source.includes(threadContextMarker)) return source;
+  if (!source.includes(promptTextAnchor)) {
+    throw new Error(`ACP prompt text anchor missing in ${file}; review the installed OpenClaw shape before patching.`);
+  }
+  return source.replace(promptTextAnchor, promptTextReplacement);
+}
 
 function addProjectedFinalGuidance(source, file) {
   for (const [before, after, label] of [
@@ -51,12 +62,13 @@ let alreadyPatched = 0;
 for (const file of candidates) {
   let source = fs.readFileSync(file, "utf8");
   if (!source.includes("async function tryDispatchAcpReply")) continue;
-  if (source.includes(marker)) {
+  if (source.includes(marker) && source.includes(threadContextMarker)) {
     alreadyPatched += 1;
     continue;
   }
+  source = addThreadContext(source, file);
   if (source.includes(staticMarker)) {
-    source = addProjectedFinalGuidance(source, file);
+    if (!source.includes(marker)) source = addProjectedFinalGuidance(source, file);
     fs.writeFileSync(file, source);
     patched += 1;
     continue;
