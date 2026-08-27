@@ -17,9 +17,58 @@ function createMessageTool(options) {
 \treturn currentThreadTs;
 }`;
 
+const gatewayFixture = `function callMessageGateway(params) {
+\treturn params;
+}
+function sendMessage(params) {
+\treturn callMessageGateway({
+\t\tgateway: params.gateway,
+\t\tmethod: "send",
+\t\tparams: {
+\t\t\tthreadId: params.threadId != null ? String(params.threadId) : params.topLevel === true ? "" : void 0,
+\t\t}
+\t});
+}`;
+
+const sendFixture = `function normalizeOptionalString(value) {
+\treturn typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+async function routeAndDeliver(request, providedSessionKey, derivedRoute) {
+\t\tconst threadId = normalizeOptionalString(request.threadId);
+\tconst routeInput = {
+\t\t\t\t\t\tcurrentSessionKey: providedSessionKey,
+\t};
+\tconst delivery = {
+\t\t\t\t\t\tthreadId: outboundRoute?.threadId ?? threadId ?? null,
+\t};
+\treturn { routeInput, delivery };
+}`;
+
+const schemaFixture = `const Type = {
+\tOptional: (value) => value,
+\tString: () => "string",
+\tBoolean: () => "boolean",
+};
+const SendParamsSchema = Type.Object({
+\t/** Thread id (channel-specific meaning, e.g. Telegram forum topic id). */
+\tthreadId: Type.Optional(Type.String()),
+});`;
+
 function runPatch(source) {
   const distDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-message-thread-patch-"));
   const bundle = path.join(distDir, "openclaw-tools-fixture.js");
+  fs.writeFileSync(bundle, source);
+  execFileSync(process.execPath, [patchPath], {
+    env: { ...process.env, OPENCLAW_DIST_DIR: distDir },
+    stdio: "pipe",
+  });
+  return fs.readFileSync(bundle, "utf8");
+}
+
+function runBundlePatch(filename, source) {
+  const distDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-message-thread-patch-"));
+  fs.writeFileSync(path.join(distDir, "openclaw-tools-fixture.js"), unpatchedFixture);
+  const bundle = path.join(distDir, filename);
   fs.writeFileSync(bundle, source);
   execFileSync(process.execPath, [patchPath], {
     env: { ...process.env, OPENCLAW_DIST_DIR: distDir },
@@ -63,4 +112,23 @@ test("patch is idempotent", () => {
   const once = runPatch(unpatchedFixture);
   const twice = runPatch(once);
   assert.equal(twice, once);
+});
+
+test("topLevel crosses the message-to-gateway boundary as typed state", () => {
+  const patched = runBundlePatch("message-fixture.js", gatewayFixture);
+  const sendMessage = Function(`${patched}\nreturn sendMessage;`)();
+  assert.equal(sendMessage({ topLevel: true }).params.topLevel, true);
+  assert.equal(sendMessage({ topLevel: true }).params.threadId, undefined);
+});
+
+test("gateway topLevel suppresses session-derived routing and delivery threads", () => {
+  const patched = runBundlePatch("send-fixture.js", sendFixture);
+  assert.match(patched, /const topLevel = request\.topLevel === true;/);
+  assert.match(patched, /currentSessionKey: topLevel \? void 0 : providedSessionKey/);
+  assert.match(patched, /threadId: topLevel \? null : outboundRoute\?\.threadId \?\? threadId \?\? null/);
+});
+
+test("gateway send schema accepts topLevel", () => {
+  const patched = runBundlePatch("schema-fixture.js", schemaFixture);
+  assert.match(patched, /topLevel: Type\.Optional\(Type\.Boolean\(\)\)/);
 });
