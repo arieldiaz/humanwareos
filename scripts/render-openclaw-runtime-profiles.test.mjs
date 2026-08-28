@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {spawnSync} from "node:child_process";
-import {mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync} from "node:fs";
+import {mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -9,6 +9,7 @@ import {fileURLToPath} from "node:url";
 import {applyRuntimeProfiles} from "./render-openclaw-runtime-profiles.mjs";
 
 const source = {
+  runtimePath: "__HUMANWARE_RUNTIME_ROOT__/config",
   agents: {
     defaults: {
       models: {
@@ -156,9 +157,11 @@ test("runs through an immutable-runtime symlink path", () => {
     writeFileSync(sourcePath, JSON.stringify(source));
     writeFileSync(profilesPath, JSON.stringify(catalog));
 
-    const result = spawnSync(process.execPath, [linkedScript, sourcePath, profilesPath, outputPath], {encoding: "utf8"});
+    const result = spawnSync(process.execPath, [linkedScript, sourcePath, profilesPath, outputPath, directory], {encoding: "utf8"});
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(JSON.parse(readFileSync(outputPath, "utf8")).agents.list[0].runtime.type, "acp");
+    const rendered = JSON.parse(readFileSync(outputPath, "utf8"));
+    assert.equal(rendered.agents.list[0].runtime.type, "acp");
+    assert.equal(rendered.runtimePath, `${realpathSync(directory)}/config`);
   } finally {
     rmSync(directory, {recursive: true, force: true});
   }
