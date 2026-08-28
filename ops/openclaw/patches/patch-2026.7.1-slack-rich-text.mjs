@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Slack's plain `text` field renders mrkdwn, which has no list primitive, so
 // the upstream Slack formatter flattens markdown lists into literal "• " lines:
@@ -28,7 +29,7 @@ const pluginRoot = path.join(
   ".openclaw/npm/projects/openclaw-slack-b25c10c1bd__openclaw-generation__g-0c72fcf9148ba807/node_modules/@openclaw/slack/dist",
 );
 const moduleSource = path.join(
-  path.dirname(new URL(import.meta.url).pathname),
+  path.dirname(fileURLToPath(import.meta.url)),
   "slack-rich-text/markdown-to-rich-text.mjs",
 );
 const MODULE_NAME = "openclaw-instance-rich-text.js";
