@@ -19,6 +19,11 @@ const messageCandidates = fs
   .filter((name) => /^message-.*\.js$/.test(name))
   .map((name) => path.join(distDir, name));
 
+const messageActionCandidates = fs
+  .readdirSync(distDir)
+  .filter((name) => /^message-action-runner-.*\.js$/.test(name))
+  .map((name) => path.join(distDir, name));
+
 const sendCandidates = fs
   .readdirSync(distDir)
   .filter((name) => /^send-.*\.js$/.test(name))
@@ -38,6 +43,22 @@ const after = `\tconst arielosSlackThreadSessionMatch = typeof options?.agentSes
 const messageBefore = `\t\t\tthreadId: params.threadId != null ? String(params.threadId) : params.topLevel === true ? "" : void 0,`;
 const messageAfter = `\t\t\tthreadId: params.threadId != null ? String(params.threadId) : void 0,
 \t\t\ttopLevel: params.topLevel === true ? true : void 0,`;
+
+const actionSendBefore = `\t\treplyToId: params.replyToId,
+\t\tthreadId: params.threadId,
+\t\tgifPlayback: params.gifPlayback,`;
+const actionSendAfter = `\t\treplyToId: params.replyToId,
+\t\tthreadId: params.threadId,
+\t\ttopLevel: params.topLevel === true ? true : void 0,
+\t\tgifPlayback: params.gifPlayback,`;
+
+const actionCallBefore = `\t\treplyToId: resolvedReplyToId ?? void 0,
+\t\tthreadId: resolvedThreadId ?? void 0
+\t});`;
+const actionCallAfter = `\t\treplyToId: resolvedReplyToId ?? void 0,
+\t\tthreadId: resolvedThreadId ?? void 0,
+\t\ttopLevel: params.topLevel === true ? true : void 0
+\t});`;
 
 const sendBefore = `\t\tconst threadId = normalizeOptionalString(request.threadId);`;
 const sendAfter = `\t\tconst threadId = normalizeOptionalString(request.threadId);
@@ -90,6 +111,10 @@ function patchFiles(files, replacements, marker) {
 }
 
 patchFiles(messageCandidates, [{ before: messageBefore, after: messageAfter }], "topLevel: params.topLevel === true ? true : void 0,");
+patchFiles(messageActionCandidates, [
+  { before: actionSendBefore, after: actionSendAfter },
+  { before: actionCallBefore, after: actionCallAfter },
+], "topLevel: params.topLevel === true ? true : void 0");
 patchFiles(sendCandidates, [
   { before: sendBefore, after: sendAfter },
   { before: routeBefore, after: routeAfter },
