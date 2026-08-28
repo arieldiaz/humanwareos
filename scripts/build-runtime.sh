@@ -82,6 +82,7 @@ cp "$FRAMEWORK_DIR/scripts/runtime-cutover-lease.sh" "$BUILD_DIR/framework/scrip
 cp "$FRAMEWORK_DIR/scripts/runtime-restart-guard.sh" "$BUILD_DIR/framework/scripts/runtime-restart-guard.sh"
 cp -R "$FRAMEWORK_DIR/ops/openclaw/plugins/." "$BUILD_DIR/framework/ops/openclaw/plugins/"
 cp -R "$FRAMEWORK_DIR/ops/openclaw/patches/." "$BUILD_DIR/framework/ops/openclaw/patches/"
+for component in menubar session-console; do cp -R "$FRAMEWORK_DIR/ops/$component" "$BUILD_DIR/framework/ops/$component"; done
 cp "$INSTANCE_DIR/AGENTS-instance.md" "$BUILD_DIR/instructions/AGENTS-instance.md"
 cp -R "$INSTANCE_DIR/agents" "$BUILD_DIR/instructions/agent-overlays"
 if [ -d "$INSTANCE_DIR/docs" ]; then
