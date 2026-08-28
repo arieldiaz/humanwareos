@@ -6,6 +6,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 test "$(wc -w < "$ROOT/docs/reply-shape.md")" -le 500
 test "$(wc -w < "$ROOT/docs/status-framework.md")" -le 1800
 grep -q 'An ordinary answer or completed reversible action ends naturally' "$ROOT/docs/reply-shape.md"
+grep -q 'A substantive answer uses `## TLDR`, optional `## Background`, and `## Next Step`' "$ROOT/docs/reply-shape.md"
 grep -q 'Never append `## Status`, `No action needed.`, a forced CTA, or a closing question' "$ROOT/docs/reply-shape.md"
 grep -q 'It never appends a generic `## Status` footer' "$ROOT/docs/status-framework.md"
 grep -q 'The reply ends naturally' "$ROOT/docs/status-framework.md"
