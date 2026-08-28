@@ -30,6 +30,23 @@ function sendMessage(params) {
 \t});
 }`;
 
+const messageActionFixture = `async function sendMessage(params) {
+\treturn params;
+}
+async function sendCoreMessage(params) {
+\treturn await sendMessage({
+\t\treplyToId: params.replyToId,
+\t\tthreadId: params.threadId,
+\t\tgifPlayback: params.gifPlayback,
+\t});
+}
+async function runMessageAction(params, resolvedReplyToId, resolvedThreadId) {
+\treturn await sendCoreMessage({
+\t\treplyToId: resolvedReplyToId ?? void 0,
+\t\tthreadId: resolvedThreadId ?? void 0
+\t});
+}`;
+
 const sendFixture = `function normalizeOptionalString(value) {
 \treturn typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -120,6 +137,12 @@ test("topLevel crosses the message-to-gateway boundary as typed state", () => {
   const sendMessage = Function(`${patched}\nreturn sendMessage;`)();
   assert.equal(sendMessage({ topLevel: true }).params.topLevel, true);
   assert.equal(sendMessage({ topLevel: true }).params.threadId, undefined);
+});
+
+test("topLevel crosses the message action's final send hop", async () => {
+  const patched = runBundlePatch("message-action-runner-fixture.js", messageActionFixture);
+  const runMessageAction = Function(`${patched}\nreturn runMessageAction;`)();
+  assert.equal((await runMessageAction({ topLevel: true })).topLevel, true);
 });
 
 test("gateway topLevel suppresses session-derived routing and delivery threads", () => {
