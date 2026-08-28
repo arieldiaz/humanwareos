@@ -41,7 +41,8 @@ async function routeAndDeliver(request, providedSessionKey, derivedRoute) {
 \tconst delivery = {
 \t\t\t\t\t\tthreadId: outboundRoute?.threadId ?? threadId ?? null,
 \t};
-\treturn { routeInput, delivery };
+\t\t\t\t\tconst outboundSessionKey = outboundRoute?.sessionKey ?? providedSessionKey;
+\treturn { routeInput, delivery, outboundSessionKey };
 }`;
 
 const schemaFixture = `const Type = {
@@ -126,6 +127,7 @@ test("gateway topLevel suppresses session-derived routing and delivery threads",
   assert.match(patched, /const topLevel = request\.topLevel === true;/);
   assert.match(patched, /currentSessionKey: topLevel \? void 0 : providedSessionKey/);
   assert.match(patched, /threadId: topLevel \? null : outboundRoute\?\.threadId \?\? threadId \?\? null/);
+  assert.match(patched, /const outboundSessionKey = topLevel \? outboundRoute\?\.sessionKey : outboundRoute\?\.sessionKey \?\? providedSessionKey/);
 });
 
 test("gateway send schema accepts topLevel", () => {
