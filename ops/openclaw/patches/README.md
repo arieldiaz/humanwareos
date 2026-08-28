@@ -1,5 +1,7 @@
 # OpenClaw instance patches
 
+Runtime activation must run `scripts/apply-openclaw-patches.sh` after stopping the gateway and before starting it again. The runner applies every production `patch-*.mjs` file in stable order and stops on the first failure; changing a patch file without running the runner leaves the installed OpenClaw bundles stale even when the immutable Humanware runtime revision advances.
+
 These are narrow, version-scoped compatibility patches for the globally
 installed OpenClaw runtime. They exist only until the corresponding upstream
 fix ships in a stable release.
