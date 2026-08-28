@@ -19,6 +19,12 @@ jobs:
           node-version: 22
       - name: Node contracts
         run: node --test $(find . -name '*.test.mjs' -o -name '*.test.js' | sort)
+      - name: Python contracts
+        run: |
+          PYTHONPATH=ops/menubar python3 -m unittest discover -s ops/menubar
+          python3 -m unittest discover -s ops/session-console/tests
+      - name: macOS surface
+        run: swift build --package-path surfaces/macos/HumanwareOS
       - name: Shell contracts
         run: |
           set -euo pipefail

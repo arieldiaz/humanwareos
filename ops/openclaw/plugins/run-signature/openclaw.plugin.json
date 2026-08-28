@@ -1,0 +1,33 @@
+{
+  "id": "run-signature",
+  "name": "Run Signature",
+  "description": "Adds per-message reaction signatures and maintains the root lifecycle tile.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "ownerLabel": {"type": "string", "minLength": 1},
+      "excludedChannels": {
+        "type": "array",
+        "items": {"type": "string", "pattern": "^[A-Z0-9]+$"},
+        "uniqueItems": true
+      },
+      "threadOwnership": {
+        "type": "object",
+        "required": ["enabled", "accounts"],
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "accounts": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {"type": "string", "pattern": "^U[A-Z0-9]+$"}
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  }
+}
