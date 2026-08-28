@@ -175,14 +175,17 @@ function loadJson5(path) {
 }
 
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
-  const [sourcePath, profilesPath, outputPath] = process.argv.slice(2);
+  const [sourcePath, profilesPath, outputPath, runtimeRoot] = process.argv.slice(2);
   if (!sourcePath || !profilesPath || !outputPath) {
-    console.error("Usage: render-openclaw-runtime-profiles.mjs SOURCE PROFILES OUTPUT");
+    console.error("Usage: render-openclaw-runtime-profiles.mjs SOURCE PROFILES OUTPUT [RUNTIME_ROOT]");
     process.exit(2);
   }
   try {
     const rendered = applyRuntimeProfiles(loadJson5(sourcePath), JSON.parse(readFileSync(profilesPath, "utf8")));
-    writeFileSync(outputPath, `${JSON.stringify(rendered, null, 2)}\n`, {mode: 0o600});
+    let serialized = JSON.stringify(rendered, null, 2);
+    if (serialized.includes("__HUMANWARE_RUNTIME_ROOT__") && !runtimeRoot) fail("source config requires RUNTIME_ROOT");
+    if (runtimeRoot) serialized = serialized.replaceAll("__HUMANWARE_RUNTIME_ROOT__", JSON.stringify(realpathSync(runtimeRoot)).slice(1, -1));
+    writeFileSync(outputPath, `${serialized}\n`, {mode: 0o600});
   } catch (error) {
     console.error(error.message);
     process.exit(1);
