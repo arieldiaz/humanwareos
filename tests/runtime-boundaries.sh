@@ -32,6 +32,7 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -f "$RUNTIME/current/manifest.json" ]
 [ -x "$RUNTIME/current/framework/scripts/runtime-cutover-lease.sh" ]
 [ -x "$RUNTIME/current/framework/scripts/runtime-restart-guard.sh" ]
+[ -x "$RUNTIME/current/framework/scripts/apply-openclaw-patches.sh" ]
 [ -f "$DATA/artifacts/manifests/data-plane.json" ]
 [ -f "$DATA/operations/control/restart-freeze.json" ]
 [ "$("$JQ" -r '.active' "$DATA/operations/control/restart-freeze.json")" = "true" ]
