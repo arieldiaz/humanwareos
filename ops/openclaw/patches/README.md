@@ -96,6 +96,8 @@ The patch changes only real user requests whose ACP session is already bound to 
 
 `patch-2026.7.1-2-message-tool-thread-context.mjs` closes both directions of the gap between a bound Slack thread session and the generic message tool. OpenClaw records the thread timestamp in the canonical `agent:<id>:slack:channel:<channel>:thread:<timestamp>` session key, but `createMessageTool` does not recover it when separately supplied thread fields are absent. Conversely, the message client encodes `topLevel: true` as an empty thread string; gateway validation then normalizes that string away and reconstructs the current thread from the session key. The patch recovers the canonical Slack thread as the final implicit fallback and carries the explicit top-level boolean through the gateway protocol so route derivation and delivery cannot reintroduce the current thread. The script is idempotent, fails closed when the installed bundle shape changes, and requires a gateway restart after application.
 
+`../slack-spin-out.mjs` is the narrow workflow helper for an approved work-thread spin-out. It sends the goal as an explicit channel root through the gateway, requires the returned Slack message ID, and targets the first detail reply to that exact root. It does not schedule or perform the work; the calling agent still owns same-turn follow-through.
+
 ## 2026.7.1 prompt boilerplate override
 
 `patch-2026.7.1-prompt-boilerplate.mjs` rewrites the two per-turn prompt
