@@ -46,6 +46,8 @@ const routeBefore = `\t\t\t\t\t\tcurrentSessionKey: providedSessionKey,`;
 const routeAfter = `\t\t\t\t\t\tcurrentSessionKey: topLevel ? void 0 : providedSessionKey,`;
 const deliveryBefore = `\t\t\t\t\t\tthreadId: outboundRoute?.threadId ?? threadId ?? null,`;
 const deliveryAfter = `\t\t\t\t\t\tthreadId: topLevel ? null : outboundRoute?.threadId ?? threadId ?? null,`;
+const sessionBefore = `\t\t\t\t\tconst outboundSessionKey = outboundRoute?.sessionKey ?? providedSessionKey;`;
+const sessionAfter = `\t\t\t\t\tconst outboundSessionKey = topLevel ? outboundRoute?.sessionKey : outboundRoute?.sessionKey ?? providedSessionKey;`;
 
 const schemaBefore = `\t/** Thread id (channel-specific meaning, e.g. Telegram forum topic id). */
 \tthreadId: Type.Optional(Type.String()),`;
@@ -93,6 +95,7 @@ patchFiles(sendCandidates, [
   { before: routeBefore, after: routeAfter },
   { before: deliveryBefore, after: deliveryAfter },
 ], "currentSessionKey: topLevel ? void 0 : providedSessionKey,");
+patchFiles(sendCandidates, [{ before: sessionBefore, after: sessionAfter }], "const outboundSessionKey = topLevel ? outboundRoute?.sessionKey");
 patchFiles(schemaCandidates, [{ before: schemaBefore, after: schemaAfter }], "Explicitly suppress inherited thread placement and send to the channel root.");
 
 if (patched === 0 && alreadyPatched === 0) {
