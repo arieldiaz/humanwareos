@@ -5,7 +5,7 @@ from __future__ import annotations
 import urllib.parse
 
 
-STATUS_LABELS = {"answer": "Clarify", "act": "Act", "working": "In process", "scheduled": "Scheduled"}
+STATUS_LABELS = {"answer": "Clarify", "act": "Act", "working": "Working", "scheduled": "Scheduled"}
 
 
 def session_status(session: dict) -> str | None:

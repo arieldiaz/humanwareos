@@ -40,24 +40,6 @@ SAFE_ARGUMENTS = {
     "messageId", "message_id", "model", "number", "path", "pr", "repo",
     "remove", "sessionKey", "threadId", "url",
 }
-LIFECYCLE = {
-    "arrows_counterclockwise": "active",
-    "question": "needs_you",
-    "arrow_forward": "needs_you",
-    "raised_hand": "needs_you",
-    "calendar": "scheduled",
-    "white_check_mark": "completed",
-}
-EMOJI_TO_OUTBOUND = {
-    "question": "answer",
-    "arrow_forward": "answer",
-    "raised_hand": "act",
-    "arrows_counterclockwise": "working",
-    "calendar": "scheduled",
-    "white_check_mark": "closed",
-}
-
-
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -443,39 +425,21 @@ def workflow_states(events):
     states = {}
     for event in sorted(events, key=lambda item: item.get("ts") or ""):
         details = event.get("details") or {}
-        if event.get("kind") == "status.set":
-            thread_id = str(details.get("threadId") or "")
-            if not thread_id:
-                continue
-            outbound = details.get("status")
-            if outbound in {"no_action", "closed"} or details.get("remove"):
-                states.pop(thread_id, None)
-                continue
-            mapped = OUTBOUND_LIFECYCLE.get(outbound)
-            emoji = details.get("emoji") or (mapped[1] if mapped else None)
-            state = (mapped[0] if mapped else None) or LIFECYCLE.get(emoji)
-            if state:
-                states[thread_id] = {
-                    "state": state,
-                    "emoji": emoji,
-                    "outbound": outbound if outbound in OUTBOUND_LIFECYCLE else EMOJI_TO_OUTBOUND.get(emoji),
-                    "ts": event.get("ts"),
-                }
+        if event.get("kind") != "status.set":
             continue
-        args = details.get("arguments") or {}
-        if event.get("kind") != "tool.call" or details.get("tool") != "message" or args.get("action") != "react":
+        thread_id = str(details.get("threadId") or "")
+        if not thread_id:
             continue
-        emoji = args.get("emoji")
-        message_id = str(args.get("messageId") or args.get("message_id") or "")
-        if not message_id or emoji not in LIFECYCLE:
+        outbound = details.get("status")
+        if outbound in {"no_action", "closed"} or details.get("remove"):
+            states.pop(thread_id, None)
             continue
-        if args.get("remove"):
-            states.pop(message_id, None)
-        else:
-            states[message_id] = {
-                "state": LIFECYCLE[emoji],
-                "emoji": emoji,
-                "outbound": EMOJI_TO_OUTBOUND.get(emoji),
+        mapped = OUTBOUND_LIFECYCLE.get(outbound)
+        if mapped:
+            states[thread_id] = {
+                "state": mapped[0],
+                "emoji": details.get("emoji") or mapped[1],
+                "outbound": outbound,
                 "ts": event.get("ts"),
             }
     return states

@@ -14,7 +14,7 @@ import AppKit
 /// minimal borderless field instead, per the build brief's sanctioned fallback.
 final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate {
     /// Native menus size themselves from their longest title and offer no maximum width. Keep every dynamic label bounded so an operational error or thread title cannot stretch the menu across the screen.
-    private static let menuTitleLimit = 42
+    private static let menuTitleLimit = 36
     private let statusItem: NSStatusItem
     private let captureField: NSTextField
     private let captureItemView: NSView
@@ -180,7 +180,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
                     addSectionHeader(submenu, "#\(channel.channel)")
                     for thread in channel.threads {
                         let item = NSMenuItem(
-                            title: truncated(thread.title, limit: 52),
+                            title: truncated(thread.title, limit: Self.menuTitleLimit),
                             action: #selector(openThread(_:)),
                             keyEquivalent: ""
                         )
