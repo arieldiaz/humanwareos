@@ -106,7 +106,7 @@ class SessionConsoleTest(unittest.TestCase):
             "needs_you",
         )
 
-    def test_reaction_tile_keeps_outbound_status(self):
+    def test_legacy_reaction_does_not_create_outbound_status(self):
         events = [{
             "kind": "tool.call",
             "ts": "2026-08-24T15:00:00Z",
@@ -114,9 +114,7 @@ class SessionConsoleTest(unittest.TestCase):
                 "action": "react", "emoji": "raised_hand", "messageId": "123.45"
             }},
         }]
-        workflow = MODULE.workflow_states(events)["123.45"]
-        self.assertEqual(workflow["state"], "needs_you")
-        self.assertEqual(workflow["outbound"], "act")
+        self.assertEqual(MODULE.workflow_states(events), {})
 
     def test_working_expires_when_no_run_is_running(self):
         workflow = {"state": "active", "outbound": "working"}

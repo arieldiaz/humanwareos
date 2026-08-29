@@ -20,6 +20,12 @@ class ThreadStatusTest(unittest.TestCase):
         self.assertEqual(result["groups"][0]["label"], "Clarify")
         self.assertIn("team=T1", result["groups"][0]["threads"][0]["appUrl"])
 
+    def test_framework_label_for_working(self):
+        result = thread_status.render_groups({"threads": [{
+            "status": "working", "channel_name": "work", "root_text": "Build", "channel_id": "C1", "thread_ts": "1"
+        }]}, "T1")
+        self.assertEqual(result["groups"][0]["label"], "Working")
+
 
 if __name__ == "__main__":
     unittest.main()
