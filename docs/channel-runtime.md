@@ -1,12 +1,12 @@
 # Channels, agents, and execution profiles
 
-Humanware OS separates durable agent identity from conversation channel, execution harness, model, permission profile, and writable workspace.
+Humanware OS separates agent identity from channel, harness, model, permissions, and workspace.
 
 Budget: 1,100 words. Over it, consolidate.
 
 ## Control plane
 
-OpenClaw is the reference control plane. It owns identity routing, canonical conversation state, channel adapters, tool registration, secrets resolution, execution dispatch, delivery, and lifecycle status. Slack, Buzz, and a first-party application are replaceable adapters around that control plane.
+OpenClaw owns identity routing, canonical conversation state, adapters, tools, secrets, dispatch, delivery, and lifecycle status. Slack, Buzz, and first-party applications are replaceable adapters.
 
 A channel adapter converts an inbound surface event into a canonical event with external account, conversation and thread identifiers, sender, explicit mentions, attachments, timestamps, and delivery capabilities. It converts the canonical response and lifecycle state back to the surface. Channel rendering never owns identity or memory.
 
@@ -18,25 +18,15 @@ Both identities receive the same approved execution-profile catalog unless an ex
 
 ## Execution profile
 
-An execution profile binds:
+An execution profile binds runtime, harness, model, reasoning, permissions, session mode, timeout, data scope, tools, worktree policy, and delivery.
 
-- runtime type and harness;
-- supported model identifier;
-- reasoning level;
-- permission profile;
-- session mode and timeout;
-- data-access scope;
-- tool set;
-- worktree policy;
-- delivery contract.
+Profiles are supported pairs, not an unrestricted model-by-harness matrix. Each harness exposes only supported models. Either identity can select any instance-allowed profile.
 
-Profiles are supported pairs, not an imaginary unrestricted model-by-harness matrix. Cursor can expose the models Cursor supports; Codex can expose its supported OpenAI models; native OpenClaw can use configured providers; Pi can expose the models its adapter supports. Both Liv and Max can select any profile allowed by the instance.
-
-The reference defaults Liv to Cursor with Grok and Max to Codex with Sol because an ordinary thread may progress from conversation through specification into implementation. Their high-reasoning variants are the escalation profiles. Native OpenClaw remains a selectable execution harness after its packaging, permissions, state paths, and context behavior are proven for the workload; it is not the reference default merely because it has fewer process and delivery boundaries.
+The reference defaults Liv to Cursor/Grok and Max to Codex/Sol; high-reasoning variants are escalation profiles. Native OpenClaw becomes selectable only after its packaging, permissions, state, and context behavior are proven for the workload.
 
 Removing, replacing, or simplifying dispatch infrastructure does not authorize a profile-policy change. Preserve each identity's default profile, escalation profile, and allowlist unless the human approves those values as a separate decision. Encode the approved tuple in the reference template, renderer regression tests, instance configuration, and deployment verification so an implementation refactor cannot silently rewrite policy.
 
-A profile declares its reasoning and fast-mode defaults. The ordinary interactive profile should target a useful first response within 20 seconds and use medium-or-lower reasoning unless the model has a provider-specific equivalent. Coding, research, architecture, high-stakes work, and explicit requests for depth use a separate escalation profile. Fast mode changes latency, not permissions or privacy scope.
+A profile declares reasoning and fast-mode defaults. Ordinary interaction targets a useful first response within 20 seconds; coding, research, architecture, high-stakes work, and explicit depth use escalation. Fast mode changes latency, not permissions or privacy.
 
 ## Dispatch and switching
 
@@ -44,11 +34,19 @@ Each identity has one default profile, one optional escalation profile, and an a
 
 OpenClaw remains owner of the conversation when it delegates a task to an external harness. The task receives an isolated worktree and a structured handoff containing objective, conversation root, agent identity, decisions, source references, branch, changed files, tests, and unresolved questions.
 
-Short work runs inline and returns results to the owning identity. Work expected to exceed the interactive target is acknowledged promptly, then runs as a durable child task with the escalation profile. A long coding conversation may explicitly bind the thread to a persistent ACP session. Permanent channel-wide ACP bindings are exceptional because they couple delivery, permissions, model choice, and startup behavior to one harness.
+Short work runs inline. Longer work is acknowledged promptly, then runs as a durable escalation task. A long coding conversation may bind its thread to persistent ACP; channel-wide bindings are exceptional because they couple delivery, permissions, model, and startup to one harness.
 
 Switching profiles creates a handoff event; it does not pretend two harness session stores are one transcript. The visible response signature records the effective agent, model, harness, reasoning, and runtime for that message.
 
 A direct human request to change model, harness, reasoning, or fast mode is control-plane input, not conversational advice. Apply and verify the requested switch before content work or other tool use in that turn, then continue under the effective profile. If the switch is unavailable, state the exact constraint before continuing. Never acknowledge the switch while leaving the old profile active, and never defer an explicit switch behind the work it was meant to govern.
+
+The adapter detects profile intent before resolving a bound session or dispatching any harness. It parses ordinary language against the selected identity's allowlisted profile catalog and stable aliases, including requests to use a named harness, model family, reasoning level, fast mode, escalation profile, or identity default. An unambiguous request produces one canonical target profile; an ambiguous or disallowed request does not mutate routing and asks one concise question or states the policy constraint.
+
+Switching is one atomic control-plane operation: resolve the canonical conversation, persist the target profile binding, create a structured handoff from canonical channel history and current memory, verify the effective runtime tuple, and only then dispatch the user's remaining work. The old harness cannot approve, simulate, or perform its own replacement. A failed bind or verification leaves the prior binding intact and reports the failure without running the requested work under the wrong profile.
+
+Natural language is the product interface. Slash commands and administrative APIs may remain diagnostics and recovery controls, but documentation and agents never present them as the normal answer to a missing control-plane capability. The implementation has one shared profile-intent resolver used by every channel adapter; channel-specific regexes, prompt instructions, and harness-local switching branches are defects to remove.
+
+Acceptance covers Liv and Max symmetrically across every allowlisted profile: switch from native or bound Cursor to Codex, from native or bound Codex to Cursor, change reasoning within a harness, return to the identity default, reject a disallowed profile without mutation, preserve the complete thread handoff without duplicate current messages, and prove from the delivered response signature that the first content response used the requested profile. Regression tests assert that no content harness receives the control request before the binding commits.
 
 ## Permissions
 
@@ -60,7 +58,7 @@ The control plane verifies the profile's data and tool scopes before dispatch. S
 
 Every execution path returns one canonical final response to the control plane. The adapter owns surface publication and appends provenance after confirmed delivery. An external harness does not independently call a Slack or Buzz send tool unless the profile explicitly declares that transport and prevents duplicate delivery.
 
-Mid-turn progress is structured telemetry in the session ledger. The session console may render status, selected profile, checkpoints, tool summaries, artifacts, and elapsed time. Conversation adapters render only a bounded acknowledgement, a question that genuinely blocks work, and the final summary; internal narration and hidden harness finals never silently replace the final response.
+Mid-turn progress is structured session-ledger telemetry. Conversation adapters render only a bounded acknowledgement, a genuine blocking question, and the final summary; internal narration and hidden harness finals never replace it.
 
 ## Health
 
