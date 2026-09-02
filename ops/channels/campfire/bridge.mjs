@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import http from "node:http";
 import { spawn } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 const MAX_BODY_BYTES = 1_000_000;
 
@@ -140,7 +141,7 @@ export function createBridge({
   });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const host = process.env.CAMPFIRE_BRIDGE_HOST || "127.0.0.1";
   const port = Number(process.env.CAMPFIRE_BRIDGE_PORT || 3304);
   const agents = (process.env.CAMPFIRE_AGENTS || "liv,max").split(",").map((item) => item.trim()).filter(Boolean);
