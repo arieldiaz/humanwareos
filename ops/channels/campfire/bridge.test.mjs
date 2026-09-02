@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentPrompt, createBridge, extractReply, keyedQueue, postReply, sessionKey, validateWebhook } from "./bridge.mjs";
+import { agentPrompt, createBridge, extractAgentResult, extractReply, keyedQueue, postReply, renderCampfireReply, sessionKey, validateWebhook } from "./bridge.mjs";
 
 const payload = {
   user: { id: 7, name: "Ariel" },
@@ -20,6 +20,11 @@ test("extracts OpenClaw JSON replies", () => {
   assert.throws(() => extractReply({ result: {} }), /no text reply/);
 });
 
+test("extracts provenance and renders structured Campfire HTML with a signature", () => {
+  const result = extractAgentResult({ result: { payloads: [{ text: "## TLDR\n\nDone.\n\n- One\n- Two" }], meta: { agentMeta: { model: "gpt-5.6-sol", provider: "openai", agentHarnessId: "codex" }, requestShaping: { thinking: "low" } } } });
+  assert.equal(renderCampfireReply(result), "<h2>TLDR</h2>\n<p>Done.</p>\n<ul><li>One</li><li>Two</li></ul>\n<p>🟢 Sol · ⌘ Codex · 💭 Low</p>");
+});
+
 test("serializes tasks by key", async () => {
   const enqueue = keyedQueue();
   const seen = [];
@@ -30,7 +35,7 @@ test("serializes tasks by key", async () => {
   assert.deepEqual(seen, [1, 2]);
 });
 
-test("posts plain-text replies only to the configured origin", async () => {
+test("posts rich-text replies only to the configured origin", async () => {
   let request;
   await postReply({
     baseUrl: "https://cf.example.com",
@@ -40,6 +45,7 @@ test("posts plain-text replies only to the configured origin", async () => {
   });
   assert.equal(request.url, "https://cf.example.com/rooms/11/2-AbCd123/messages");
   assert.equal(request.options.body, "Reply");
+  assert.equal(request.options.headers["content-type"], "text/html; charset=utf-8");
 });
 
 test("acknowledges webhooks before asynchronous delivery", async () => {
@@ -57,6 +63,6 @@ test("acknowledges webhooks before asynchronous delivery", async () => {
   });
   assert.equal(response.status, 202);
   for (let attempt = 0; attempt < 20 && !delivered; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5));
-  assert.equal(delivered.text, "max reply");
+  assert.equal(delivered.text, "<p>max reply</p>");
   await new Promise((resolve) => server.close(resolve));
 });

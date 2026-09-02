@@ -6,6 +6,8 @@ Run one private bridge for an installation. Point each Campfire bot at `/campfir
 
 The adapter preserves one OpenClaw session per agent and Campfire room, serializes turns inside that session, treats webhook text as untrusted input, validates reply paths, and never stores bot keys. Campfire includes the bot-scoped reply path in each webhook payload.
 
+The adapter injects the canonical Humanware OS reply-shape contract, converts the agent's Markdown into sanitized Campfire rich text, and appends a surface-native run signature resolved from OpenClaw's returned model, harness, and thinking metadata.
+
 Required environment:
 
 - `CAMPFIRE_BASE_URL`: the canonical HTTPS origin.
@@ -13,3 +15,4 @@ Required environment:
 - `CAMPFIRE_BRIDGE_PORT`: listener port; defaults to `3304`.
 - `CAMPFIRE_AGENTS`: comma-separated OpenClaw agent IDs; defaults to `liv,max`.
 - `OPENCLAW_BIN`: OpenClaw executable; defaults to `/opt/homebrew/bin/openclaw`.
+- `HUMANWARE_INSTRUCTIONS_ROOT`: generated runtime instructions directory used as the canonical reply contract.
