@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, realpathSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { agentPrompt, createBridge, extractAgentResult, extractReply, keyedQueue, postReply, renderCampfireReply, sessionKey, validateWebhook } from "./bridge.mjs";
+import { agentPrompt, createBridge, extractAgentResult, extractReply, isMainModule, keyedQueue, postReply, renderCampfireReply, sessionKey, validateWebhook } from "./bridge.mjs";
 
 const payload = {
   user: { id: 7, name: "Ariel" },
   room: { id: 11, name: "Lobby", path: "/rooms/11/2-AbCd123/messages" },
   message: { id: 23, body: { html: "<p>Hello</p>", plain: "Hello" }, path: "/rooms/11/@23" },
 };
+
+test("recognizes execution through a runtime symlink as the main module", () => {
+  const directory = mkdtempSync(join(realpathSync(tmpdir()), "campfire-main-"));
+  const linked = join(directory, "bridge.mjs");
+  symlinkSync(new URL("./bridge.mjs", import.meta.url), linked);
+  assert.equal(isMainModule(new URL("./bridge.mjs", import.meta.url).href, linked), true);
+});
 
 test("validates Campfire payloads and stable room sessions", () => {
   assert.deepEqual(validateWebhook(payload), payload);
