@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
 import { renderRunSignature } from "../outbound-signature.mjs";
 
 const MAX_BODY_BYTES = 1_000_000;
+
+export function isMainModule(moduleUrl, argvPath) {
+  return Boolean(argvPath) && realpathSync(argvPath) === realpathSync(new URL(moduleUrl));
+}
 
 export function validateWebhook(value) {
   if (!value || typeof value !== "object") throw new Error("payload must be an object");
@@ -201,7 +205,7 @@ export function createBridge({
   });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   const host = process.env.CAMPFIRE_BRIDGE_HOST || "127.0.0.1";
   const port = Number(process.env.CAMPFIRE_BRIDGE_PORT || 3304);
   const agents = (process.env.CAMPFIRE_AGENTS || "liv,max").split(",").map((item) => item.trim()).filter(Boolean);
