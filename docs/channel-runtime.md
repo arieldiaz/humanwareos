@@ -6,7 +6,7 @@ Budget: 1,100 words. Over it, consolidate.
 
 ## Control plane
 
-OpenClaw is the reference control plane. It owns identity routing, canonical conversation state, channel adapters, tool registration, secrets resolution, execution dispatch, delivery, and lifecycle status. Slack, Buzz, and a first-party application are replaceable adapters around that control plane.
+OpenClaw is the reference control plane. It owns identity routing, canonical conversation state, channel adapters, tool registration, secrets resolution, execution dispatch, delivery, and lifecycle status. Slack, Campfire, Buzz, and a first-party application are replaceable adapters around that control plane. Campfire uses one native bot per identity and a private asynchronous webhook bridge because its synchronous webhook response window is shorter than an agent turn.
 
 A channel adapter converts an inbound surface event into a canonical event with external account, conversation and thread identifiers, sender, explicit mentions, attachments, timestamps, and delivery capabilities. It converts the canonical response and lifecycle state back to the surface. Channel rendering never owns identity or memory.
 

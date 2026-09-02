@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "campfire",
+  "adapter": "campfire-webhook",
+  "enabled": false,
+  "accounts": {
+    "liv": {"webhookPath": "/campfire/liv"},
+    "max": {"webhookPath": "/campfire/max"}
+  },
+  "routing": {
+    "mode": "mentions-and-direct",
+    "conversationOwner": "openclaw",
+    "sessionScope": "agent-room"
+  }
+}
