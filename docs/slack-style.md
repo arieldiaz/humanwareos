@@ -41,11 +41,11 @@ Enforced by the agent, because gateways generally have no per-channel knob. Do n
 
 ## Showing them a file
 
-Slack renders a raw path as dead text and archives every uploaded copy in the workspace. Upload only when the human explicitly needs the file from Slack; otherwise use the source-of-truth route below.
+Slack renders a raw path as dead text and archives every uploaded copy in the workspace. Upload PDFs only when the human explicitly needs the PDF from Slack; otherwise use the source-of-truth route below. Markdown remains ephemeral on Slack and is never uploaded as a file.
 
-- **Requested download → document attachment.** Send the file with document/file semantics that produce a visible filename and download control, then verify the delivered Slack message has that control. A generic media upload or preview embed is not a downloadable-file delivery even when the API reports success. In OpenClaw, use `upload-file` with `asDocument: true` and `forceDocument: true`; do not use the default media attachment path.
+- **Requested PDF download → document attachment.** Send the PDF with document/file semantics that produce a visible filename and download control, then verify the delivered Slack message has that control. A generic media upload or preview embed is not a downloadable-PDF delivery even when the API reports success. In OpenClaw, use `upload-file` with `asDocument: true` and `forceDocument: true`; do not use the default media attachment path.
 - **Source file → repo link.** Link the blob at a SHA, not a branch, when the version matters. Always give the absolute local path alongside; the link supplements the path, never replaces it.
-- **Markdown preview → canvas only when the human asks for a preview.** Publish with the instance's markdown-to-canvas tool, never by hand. Otherwise link the source file or answer in the thread.
+- **Markdown → ephemeral thread canvas.** Render Markdown with the instance's markdown-to-canvas tool, never upload the `.md` file to Slack and never edit the canvas by hand. Otherwise link the source file or answer in the thread.
 - **Visual or interactive review → HTML artifact link.** Promote it through the instance's artifact service and link the addressed revision. Never embed or upload the artifact, its frames, or screenshots into Slack; the artifact is the review surface and source of truth.
 - **They ask for a text file inline → inline.** This exception does not turn a visual or interactive artifact into a Slack attachment.
 - **Lives in an external tool → link the object, never name it.** A Notion page, ticket, or doc referenced by bare title or id is not reachable. Give the URL. When such a page is mirrored into the repo, the copy carries `source_url` in its frontmatter so the original stays one click away.
