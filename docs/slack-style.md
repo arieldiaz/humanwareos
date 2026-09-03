@@ -41,8 +41,9 @@ Enforced by the agent, because gateways generally have no per-channel knob. Do n
 
 ## Showing them a file
 
-Slack renders a raw path as dead text and an upload as a permanent duplicate in the workspace archive.
+Slack renders a raw path as dead text and archives every uploaded copy in the workspace. Upload only when the human explicitly needs the file from Slack; otherwise use the source-of-truth route below.
 
+- **Requested download → document attachment.** Send the file with document/file semantics that produce a visible filename and download control, then verify the delivered Slack message has that control. A generic media upload or preview embed is not a downloadable-file delivery even when the API reports success. In OpenClaw, use `upload-file` with `asDocument: true` and `forceDocument: true`; do not use the default media attachment path.
 - **Source file → repo link.** Link the blob at a SHA, not a branch, when the version matters. Always give the absolute local path alongside; the link supplements the path, never replaces it.
 - **Markdown preview → canvas only when the human asks for a preview.** Publish with the instance's markdown-to-canvas tool, never by hand. Otherwise link the source file or answer in the thread.
 - **Visual or interactive review → HTML artifact link.** Promote it through the instance's artifact service and link the addressed revision. Never embed or upload the artifact, its frames, or screenshots into Slack; the artifact is the review surface and source of truth.
