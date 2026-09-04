@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,10 +25,22 @@ import { fileURLToPath } from "node:url";
 // Idempotent, fails closed if the bundle shape changed. Restart the gateway
 // after applying.
 
-const pluginRoot = path.join(
-  process.env.HOME ?? "",
-  ".openclaw/npm/projects/openclaw-slack-b25c10c1bd__openclaw-generation__g-0c72fcf9148ba807/node_modules/@openclaw/slack/dist",
-);
+const projectsRoot = process.env.OPENCLAW_NPM_PROJECTS_DIR ?? path.join(os.homedir(), ".openclaw", "npm", "projects");
+const explicitRoot = process.env.OPENCLAW_SLACK_PLUGIN_ROOT;
+const pluginRoots = explicitRoot
+  ? [explicitRoot]
+  : fs.readdirSync(projectsRoot)
+    .filter((name) => name.startsWith("openclaw-slack-"))
+    .map((name) => path.join(projectsRoot, name, "node_modules", "@openclaw", "slack"))
+    .filter((candidate) => fs.existsSync(path.join(candidate, "package.json")));
+const supportedRoots = pluginRoots.filter((root) => {
+  const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
+  return version === "2026.7.1" || version === "2026.9.1";
+});
+if (supportedRoots.length !== 1) {
+  throw new Error(`Expected exactly one supported Slack plugin root, found ${supportedRoots.length}.`);
+}
+const pluginRoot = path.join(supportedRoots[0], "dist");
 const moduleSource = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "slack-rich-text/markdown-to-rich-text.mjs",
@@ -41,8 +54,10 @@ if (!fs.existsSync(moduleSource)) {
   throw new Error(`Converter module missing at ${moduleSource}.`);
 }
 
-const findOne = (pattern, label) => {
-  const matches = fs.readdirSync(pluginRoot).filter((name) => pattern.test(name));
+const findOne = (pattern, label, marker) => {
+  const matches = fs.readdirSync(pluginRoot)
+    .filter((name) => pattern.test(name))
+    .filter((name) => !marker || fs.readFileSync(path.join(pluginRoot, name), "utf8").includes(marker));
   if (matches.length !== 1) {
     throw new Error(`Expected exactly one ${label} bundle in ${pluginRoot}, found ${matches.length}.`);
   }
@@ -55,7 +70,7 @@ fs.copyFileSync(moduleSource, path.join(pluginRoot, MODULE_NAME));
 const result = { module: MODULE_NAME, replies: "unchanged", send: "unchanged" };
 
 // 2. Reply payload path.
-const repliesFile = findOne(/^replies-.*\.js$/, "Slack replies");
+const repliesFile = findOne(/^replies-.*\.js$/, "Slack replies", "function readSlackReplyBlocks");
 {
   const before = `function readSlackReplyBlocks(payload) {
 	return resolveSlackReplyBlocks(payload);
@@ -82,7 +97,7 @@ const repliesFile = findOne(/^replies-.*\.js$/, "Slack replies");
 // 3. Message-tool send path. Only single-chunk, media-free sends get blocks:
 // multi-chunk splits would need per-chunk conversion, and media sends carry
 // their text as a file caption.
-const sendFile = findOne(/^send-.*\.js$/, "Slack send");
+const sendFile = findOne(/^send-.*\.js$/, "Slack send", "postSlackMessageBestEffort");
 {
   const before = `		const posted = await postSlackMessageBestEffort({
 			client,
