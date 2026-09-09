@@ -75,6 +75,7 @@ cp -R "$FRAMEWORK_DIR/agents" "$BUILD_DIR/instructions/agents"
 cp -R "$FRAMEWORK_DIR/skills" "$BUILD_DIR/instructions/skills"
 cp -R "$FRAMEWORK_DIR/commands" "$BUILD_DIR/instructions/commands"
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-runtime-profiles.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-runtime-profiles.mjs"
+cp "$FRAMEWORK_DIR/scripts/openclaw-agent-entries.mjs" "$BUILD_DIR/framework/scripts/openclaw-agent-entries.mjs"
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-agent-context.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-agent-context.mjs"
 cp "$FRAMEWORK_DIR/scripts/materialize-openclaw-workspaces.mjs" "$BUILD_DIR/framework/scripts/materialize-openclaw-workspaces.mjs"
 cp "$FRAMEWORK_DIR/scripts/apply-openclaw-patches.sh" "$BUILD_DIR/framework/scripts/apply-openclaw-patches.sh"
@@ -85,6 +86,8 @@ cp -R "$FRAMEWORK_DIR/ops/openclaw/patches/." "$BUILD_DIR/framework/ops/openclaw
 cp -R "$FRAMEWORK_DIR/ops/channels/." "$BUILD_DIR/framework/ops/channels/"
 cp "$FRAMEWORK_DIR/ops/openclaw/slack-spin-out.mjs" "$BUILD_DIR/framework/ops/openclaw/slack-spin-out.mjs"
 for component in menubar session-console; do cp -R "$FRAMEWORK_DIR/ops/$component" "$BUILD_DIR/framework/ops/$component"; done
+mkdir -p "$BUILD_DIR/framework/ops/lib"
+cp "$FRAMEWORK_DIR/ops/lib/openclaw_sessions.py" "$BUILD_DIR/framework/ops/lib/openclaw_sessions.py"
 cp "$INSTANCE_DIR/AGENTS-instance.md" "$BUILD_DIR/instructions/AGENTS-instance.md"
 cp -R "$INSTANCE_DIR/agents" "$BUILD_DIR/instructions/agent-overlays"
 if [ -d "$INSTANCE_DIR/docs" ]; then

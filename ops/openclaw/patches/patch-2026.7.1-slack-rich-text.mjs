@@ -1,7 +1,7 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {resolveSlackPluginDist} from "./slack-plugin-root.mjs";
 
 // Slack's plain `text` field renders mrkdwn, which has no list primitive, so
 // the upstream Slack formatter flattens markdown lists into literal "• " lines:
@@ -25,22 +25,7 @@ import { fileURLToPath } from "node:url";
 // Idempotent, fails closed if the bundle shape changed. Restart the gateway
 // after applying.
 
-const projectsRoot = process.env.OPENCLAW_NPM_PROJECTS_DIR ?? path.join(os.homedir(), ".openclaw", "npm", "projects");
-const explicitRoot = process.env.OPENCLAW_SLACK_PLUGIN_ROOT;
-const pluginRoots = explicitRoot
-  ? [explicitRoot]
-  : fs.readdirSync(projectsRoot)
-    .filter((name) => name.startsWith("openclaw-slack-"))
-    .map((name) => path.join(projectsRoot, name, "node_modules", "@openclaw", "slack"))
-    .filter((candidate) => fs.existsSync(path.join(candidate, "package.json")));
-const supportedRoots = pluginRoots.filter((root) => {
-  const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
-  return version === "2026.7.1" || version === "2026.9.1";
-});
-if (supportedRoots.length !== 1) {
-  throw new Error(`Expected exactly one supported Slack plugin root, found ${supportedRoots.length}.`);
-}
-const pluginRoot = path.join(supportedRoots[0], "dist");
+const pluginRoot = resolveSlackPluginDist();
 const moduleSource = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "slack-rich-text/markdown-to-rich-text.mjs",

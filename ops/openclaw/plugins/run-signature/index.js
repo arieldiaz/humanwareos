@@ -1,6 +1,7 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { readdirSync, statSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import {loadSessionEntry} from "./session-store.mjs";
 import { homedir } from "node:os";
 import {
   STRIP_NAME_SET,
@@ -40,7 +41,8 @@ export {
 // journal and the digest are the whole monitoring path: strip problems are
 // cosmetic and never earn a post in the thread they happened in.
 const HOME = homedir();
-const FAULT_JOURNAL = `${HOME}/.openclaw/run-signature/faults.jsonl`;
+const STATE_ROOT = process.env.OPENCLAW_STATE_DIR || join(HOME, ".openclaw");
+const FAULT_JOURNAL = `${STATE_ROOT}/run-signature/faults.jsonl`;
 const DATA_ROOT = process.env.HUMANWARE_DATA_ROOT || `${HOME}/humanware-data`;
 const OUTBOUND_EMOJI = {
   answer: "question",
@@ -82,7 +84,7 @@ async function appendFaultJournal(entry) {
   }
 }
 
-const SLACK_PROJECTS_DIR = `${HOME}/.openclaw/npm/projects`;
+const SLACK_PROJECTS_DIR = `${STATE_ROOT}/npm/projects`;
 
 // The gateway's Slack package lives under a generation-hashed directory and its
 // dist chunks are content-hashed; both change on every OpenClaw update. A
@@ -393,10 +395,17 @@ export function routeCacheKey(agentId, channel, ts) {
 // per-session override wins, else the agent's configured default. Codex runs
 // never emit a thinking level in model events, so without this every codex
 // signature omitted the tile while the resolved value sat provable in config.
+function configuredAgent(config, agentId) {
+  const id = String(agentId).toLowerCase();
+  if (config?.agents?.entries && typeof config.agents.entries === "object") {
+    return Object.entries(config.agents.entries).find(([key]) => key.toLowerCase() === id)?.[1];
+  }
+  return (config?.agents?.list ?? []).find((agent) => String(agent?.id ?? "").toLowerCase() === id);
+}
+
 export function resolveConfiguredThinking(config, agentId) {
   if (!agentId) return undefined;
-  const id = String(agentId).toLowerCase();
-  const entry = (config?.agents?.list ?? []).find((agent) => String(agent?.id ?? "").toLowerCase() === id);
+  const entry = configuredAgent(config, agentId);
   return entry?.thinkingDefault ?? config?.agents?.defaults?.thinkingDefault;
 }
 
@@ -420,7 +429,7 @@ export function resolveConfiguredAcpProvenance(config, sessionKey, route = {}) {
       String(binding?.match?.peer?.id ?? "").toLowerCase() === peerId);
     if (!bound) return;
   }
-  const agent = (config?.agents?.list ?? []).find((entry) => String(entry?.id ?? "").toLowerCase() === agentId);
+  const agent = configuredAgent(config, agentId);
   const acpAgentId = String(agent?.runtime?.acp?.agent ?? "").toLowerCase();
   if (agent?.runtime?.type !== "acp" || acpAgentId !== "cursor") return;
   const args = config?.plugins?.entries?.acpx?.config?.agents?.[acpAgentId]?.args;
@@ -437,17 +446,13 @@ export function resolveConfiguredAcpProvenance(config, sessionKey, route = {}) {
 }
 
 async function loadSessionThinking(sessionKey) {
-  const agentId = sessionKey?.match(/^agent:([^:]+)/)?.[1];
-  if (!agentId) return;
-  const sessionsPath = `${HOME}/.openclaw/agents/${agentId}/sessions/sessions.json`;
-  const sessions = JSON.parse(await readFile(sessionsPath, "utf8"));
-  return sessions[sessionKey]?.thinkingLevel;
+  return (await loadSessionEntry(sessionKey))?.thinkingLevel;
 }
 
 // The in-memory provenance maps die with the process, so the first reply after
 // every gateway restart went out bare. The per-agent last-known provenance is
 // tiny and changes rarely — persist it beside the fault journal, seed on boot.
-const AGENT_PROVENANCE_SNAPSHOT = `${HOME}/.openclaw/run-signature/agent-provenance.json`;
+const AGENT_PROVENANCE_SNAPSHOT = `${STATE_ROOT}/run-signature/agent-provenance.json`;
 
 export async function saveAgentProvenance(byAgent, path = AGENT_PROVENANCE_SNAPSHOT) {
   try {
@@ -468,23 +473,11 @@ export async function loadAgentProvenance(path = AGENT_PROVENANCE_SNAPSHOT) {
 }
 
 async function loadSessionBoundThread(sessionKey) {
-  const agentId = sessionKey?.match(/^agent:([^:]+)/)?.[1];
-  if (!agentId) return;
-  const sessionsPath = `${HOME}/.openclaw/agents/${agentId}/sessions/sessions.json`;
-  try {
-    const sessions = JSON.parse(await readFile(sessionsPath, "utf8"));
-    return sessionBoundThread(sessions[sessionKey]);
-  } catch {
-    return;
-  }
+  return sessionBoundThread(await loadSessionEntry(sessionKey));
 }
 
 async function loadSessionProvenance(sessionKey) {
-  const agentId = sessionKey?.match(/^agent:([^:]+)/)?.[1];
-  if (!agentId) return;
-  const sessionsPath = `${HOME}/.openclaw/agents/${agentId}/sessions/sessions.json`;
-  const sessions = JSON.parse(await readFile(sessionsPath, "utf8"));
-  const session = sessions[sessionKey];
+  const session = await loadSessionEntry(sessionKey);
   if (!session?.model) return;
   return {
     model: session.model,

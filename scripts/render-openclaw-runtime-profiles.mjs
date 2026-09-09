@@ -3,6 +3,7 @@
 import {readFileSync, realpathSync, writeFileSync} from "node:fs";
 import {createRequire} from "node:module";
 import {fileURLToPath} from "node:url";
+import {readAgentEntries} from "./openclaw-agent-entries.mjs";
 
 function fail(message) {
   throw new Error(`runtime-profiles: ${message}`);
@@ -48,8 +49,7 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
   const source = structuredClone(requireObject(sourceConfig, "source config"));
   const profiles = requireObject(catalog?.profiles, "profiles");
   const agentPolicies = requireObject(catalog?.agents, "agents");
-  const agents = source?.agents?.list;
-  if (!Array.isArray(agents) || agents.length === 0) fail("source config agents.list must be a non-empty array");
+  const {keyed, entries} = readAgentEntries(source);
   const selectedHarnessModels = new Map();
   const sourceDefaultModels = source?.agents?.defaults?.models && typeof source.agents.defaults.models === "object" && !Array.isArray(source.agents.defaults.models)
     ? source.agents.defaults.models
@@ -65,9 +65,7 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
     globalModelPolicies[model] = {...prior, agentRuntime: {id: selectedRuntime}};
   };
 
-  source.agents.list = agents.map((agent) => {
-    const id = String(agent?.id ?? "").trim();
-    if (!id) fail("every source agent must have an id");
+  const renderedAgents = entries.map(([id, agent]) => {
     const policy = requireObject(agentPolicies[id], `agent policy ${id}`);
     const profileId = String(policy.defaultProfile ?? catalog.defaultProfile ?? "").trim();
     if (!profileId) fail(`agent ${id} has no selected profile`);
@@ -143,6 +141,9 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
 
     fail(`profile ${profileId} has unsupported runtime ${String(profile.runtime)}`);
   });
+
+  if (keyed) source.agents.entries = Object.fromEntries(entries.map(([id], index) => [id, renderedAgents[index]]));
+  else source.agents.list = renderedAgents;
 
   source.agents.defaults = {
     ...(source.agents.defaults ?? {}),

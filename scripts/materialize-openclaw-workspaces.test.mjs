@@ -6,7 +6,7 @@ import {join} from "node:path";
 
 import {applyWorkspaceContext, restoreWorkspaceContext} from "./materialize-openclaw-workspaces.mjs";
 
-test("materializes regular managed projections, archives starter files, and restores transactionally", () => {
+for (const keyed of [false, true]) test(`materializes and restores ${keyed ? "canonical entries" : "legacy list"} workspaces transactionally`, () => {
   const root = mkdtempSync(join(tmpdir(), "openclaw-workspaces-"));
   try {
     const runtime = join(root, "runtime", "current");
@@ -26,7 +26,7 @@ test("materializes regular managed projections, archives starter files, and rest
     symlinkSync(join(data, "memory", "current", "index.md"), join(workspace, "MEMORY.md"));
     writeFileSync(join(workspace, "BOOTSTRAP.md"), "starter bootstrap");
     const config = join(root, "config.json");
-    writeFileSync(config, JSON.stringify({agents: {list: [{id: "max", workspace}]}}));
+    writeFileSync(config, JSON.stringify({agents: keyed ? {entries: {max: {workspace}}} : {list: [{id: "max", workspace}]}}));
 
     applyWorkspaceContext({runtimeDir: runtime, configPath: config, backupDir: backup});
     assert.equal(lstatSync(join(workspace, "IDENTITY.md")).isSymbolicLink(), false);
