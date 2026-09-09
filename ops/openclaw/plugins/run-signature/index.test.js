@@ -480,6 +480,29 @@ test("resolves the newest Slack package and its hashed runtime chunk", () => {
   assert.throws(() => resolveSlackRuntimeModule("actions", { projectsDir: "/proj", list: () => [], stat: () => ({ mtimeMs: 0 }) }));
 });
 
+test("resolves Slack 2026.9.1 named exports through the stable runtime API", () => {
+  const dist = "/proj/openclaw-slack-current/node_modules/@openclaw/slack/dist";
+  const options = {
+    projectsDir: "/proj",
+    list: (dir) => dir === "/proj" ? ["openclaw-slack-current"] : [
+      "actions-fh66A6lc.js", "action-runtime.runtime-CEhbmS-Z.js", "accounts.runtime-DRuEK6mL.js", "runtime-api.js",
+    ],
+    stat: () => ({ mtimeMs: 1 }),
+  };
+  for (const kind of ["actions", "accounts"]) {
+    assert.equal(resolveSlackRuntimeModule(kind, options), `${dist}/runtime-api.js`);
+  }
+  assert.throws(() => resolveSlackRuntimeModule("unknown", options), /no unknown runtime chunk/);
+});
+
+test("does not substitute an internal Slack chunk with minified exports", () => {
+  assert.throws(() => resolveSlackRuntimeModule("actions", {
+    projectsDir: "/proj",
+    list: (dir) => dir === "/proj" ? ["openclaw-slack-current"] : ["actions-fh66A6lc.js", "action-runtime.runtime-CEhbmS-Z.js"],
+    stat: () => ({ mtimeMs: 1 }),
+  }), /no actions runtime chunk/);
+});
+
 test("round-trips the per-agent provenance snapshot and drops junk entries", async () => {
   const path = `/tmp/run-signature-test-snapshot-${process.pid}.json`;
   const byAgent = new Map([
