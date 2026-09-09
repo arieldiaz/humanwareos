@@ -3,8 +3,7 @@ import {dirname, join} from "node:path";
 import {homedir} from "node:os";
 
 export const DEFAULT_THREAD_OWNERS_PATH = join(
-  homedir(),
-  ".openclaw",
+  process.env.OPENCLAW_STATE_DIR || join(homedir(), ".openclaw"),
   "run-signature",
   "thread-owners.jsonl",
 );

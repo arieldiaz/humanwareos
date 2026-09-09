@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import {resolveSlackPluginDist} from "./slack-plugin-root.mjs";
 
 // Two per-turn prompt injections contradict the instance's layer-2 specs
 // (docs/slack-style.md, docs/reply-shape.md) and win by proximity unless the
@@ -27,10 +28,7 @@ import path from "node:path";
 // after applying.
 
 const coreDist = process.env.OPENCLAW_CORE_DIST ?? "/opt/homebrew/lib/node_modules/openclaw/dist";
-const slackDist = path.join(
-  process.env.OPENCLAW_SLACK_DIST ?? process.env.HOME ?? "",
-  process.env.OPENCLAW_SLACK_DIST ? "" : ".openclaw/npm/projects/openclaw-slack-b25c10c1bd__openclaw-generation__g-0c72fcf9148ba807/node_modules/@openclaw/slack/dist",
-);
+const slackDist = resolveSlackPluginDist();
 
 const findOne = (dir, pattern, label) => {
   const matches = fs.readdirSync(dir).filter((name) => pattern.test(name));

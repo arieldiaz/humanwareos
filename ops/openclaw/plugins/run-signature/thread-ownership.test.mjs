@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {mkdtemp, readFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
+import {execFileSync} from "node:child_process";
 
 import {
   createThreadOwnershipRuntime,
@@ -76,4 +77,13 @@ test("claims persist and suppress the non-owner before dispatch", async () => {
   assert.deepEqual(await runtime.claim({...followup, accountId: "max"}), {handled: true, owner: "liv", reason: "different-thread-owner"});
   assert.match(await readFile(path, "utf8"), /"owner":"liv"/);
   assert.equal(threadOwnerKey(followup), "slack:c1:100");
+});
+
+
+test("thread ownership follows the selected state directory during rehearsals", () => {
+  const moduleUrl = new URL("./thread-ownership.mjs", import.meta.url).href;
+  const output = execFileSync(process.execPath, ["--input-type=module", "-e", `const m = await import(${JSON.stringify(moduleUrl)}); console.log(m.DEFAULT_THREAD_OWNERS_PATH);`], {
+    env: {...process.env, OPENCLAW_STATE_DIR: "/rehearsal/openclaw"}, encoding: "utf8",
+  });
+  assert.equal(output.trim(), "/rehearsal/openclaw/run-signature/thread-owners.jsonl");
 });

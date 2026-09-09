@@ -166,3 +166,29 @@ test("runs through an immutable-runtime symlink path", () => {
     rmSync(directory, {recursive: true, force: true});
   }
 });
+
+
+test("canonical keyed agents preserve the selected profiles and all agent policy", () => {
+  const canonical = structuredClone(source);
+  canonical.agents.entries = Object.fromEntries(canonical.agents.list.map(({id, ...entry}) => [id, {...entry, tools: {deny: ["browser"]}}]));
+  delete canonical.agents.list;
+  const original = structuredClone(canonical);
+  const template = JSON.parse(readFileSync(new URL("../templates/instance/runtime/profiles.json", import.meta.url), "utf8"));
+  const rendered = applyRuntimeProfiles(canonical, template);
+  assert.equal(rendered.agents.list, undefined);
+  assert.equal(rendered.agents.entries.liv.id, undefined);
+  assert.equal(rendered.agents.entries.liv.model.primary, "cursor-agent/grok-4.6-low-fast");
+  assert.equal(rendered.agents.entries.max.model.primary, "openai/gpt-5.6-sol");
+  assert.equal(rendered.agents.entries.liv.thinkingDefault, "low");
+  assert.equal(rendered.agents.entries.max.fastModeDefault, true);
+  assert.deepEqual(rendered.agents.entries.liv.tools, {deny: ["browser"]});
+  assert.deepEqual(rendered.agents.entries.max.models["openai/gpt-5.6-sol"].agentRuntime, {id: "codex"});
+  assert.deepEqual(canonical, original);
+});
+
+test("rejects ambiguous or invalid agent identities before rendering", () => {
+  assert.throws(() => applyRuntimeProfiles({...source, agents: {...source.agents, entries: {max: {}}}}, catalog), /both agents.entries and agents.list/);
+  assert.throws(() => applyRuntimeProfiles({...source, agents: {entries: {max: {id: "liv"}}}}, catalog), /not an id field/);
+  assert.throws(() => applyRuntimeProfiles({...source, agents: {entries: {"../max": {}}}}, catalog), /unsafe agent id/);
+  assert.throws(() => applyRuntimeProfiles({...source, agents: {entries: {max: null}}}, catalog), /must be an object/);
+});

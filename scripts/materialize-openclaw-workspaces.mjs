@@ -4,6 +4,7 @@ import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync
 import {createHash} from "node:crypto";
 import {fileURLToPath} from "node:url";
 import {basename, dirname, join} from "node:path";
+import {readAgentEntries} from "./openclaw-agent-entries.mjs";
 
 const CONTEXT_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md", "STRATEGY.md"];
 
@@ -82,8 +83,7 @@ export function applyWorkspaceContext({runtimeDir, configPath, backupDir}) {
   if (existsSync(join(backupDir, "manifest.json"))) fail(`backup manifest already exists at ${backupDir}`);
   const config = JSON.parse(readFileSync(configPath, "utf8"));
   const instance = JSON.parse(readFileSync(join(runtimeDir, "config", "instance.json"), "utf8"));
-  const agents = config?.agents?.list;
-  if (!Array.isArray(agents) || agents.length === 0) fail("config agents.list must be non-empty");
+  const agents = readAgentEntries(config).entries.map(([id, agent]) => ({...agent, id}));
   const actions = [];
 
   for (const agent of agents) {

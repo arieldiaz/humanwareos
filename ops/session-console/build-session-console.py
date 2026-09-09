@@ -16,10 +16,15 @@ import json
 import os
 import pathlib
 import re
+import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from glob import glob
 from urllib.parse import urlsplit, urlunsplit
+
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
+from openclaw_sessions import iter_agent_ids, iter_sessions, iter_transcript_records
 
 
 SCHEMA_VERSION = 1
@@ -262,9 +267,9 @@ def registry_index(openclaw_root: str, state: dict):
     runtime_cache = state.setdefault("runtimeByPath", {})
     trajectory_files = glob(os.path.join(openclaw_root, "*", "sessions", "*.trajectory.jsonl"))
 
-    for registry_path in glob(os.path.join(openclaw_root, "*", "sessions", "sessions.json")):
-        agent = agent_from_path(registry_path)
-        for key, meta in read_json(registry_path, {}).items():
+    state_root = pathlib.Path(openclaw_root).parent
+    for agent in iter_agent_ids(state_root):
+        for key, meta in iter_sessions(state_root, agent, include_history=True):
             if not isinstance(meta, dict) or not meta.get("sessionId"):
                 continue
             runtime_id = str(meta["sessionId"])
@@ -325,7 +330,7 @@ def registry_index(openclaw_root: str, state: dict):
                         title_cache[session_file] = stable_title
                 else:
                     fallback = None
-                    for _, record in each_jsonl(session_file):
+                    for record in iter_transcript_records(state_root, agent, meta):
                         message = record.get("message") if isinstance(record, dict) else None
                         if record.get("type") != "message" or not isinstance(message, dict) or message.get("role") != "user":
                             continue
