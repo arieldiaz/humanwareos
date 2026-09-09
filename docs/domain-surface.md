@@ -40,6 +40,7 @@ The private half exposes operational surfaces such as:
 - session and worktree status;
 - security posture and permission grants;
 - artifact review and publication;
+- curated framework, instance, governance, and current-context documents with agent-handled change proposals;
 - capture, stream, and derivation health;
 - agent and runtime profile configuration.
 

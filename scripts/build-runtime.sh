@@ -81,6 +81,7 @@ cp "$FRAMEWORK_DIR/scripts/materialize-openclaw-workspaces.mjs" "$BUILD_DIR/fram
 cp "$FRAMEWORK_DIR/scripts/apply-openclaw-patches.sh" "$BUILD_DIR/framework/scripts/apply-openclaw-patches.sh"
 cp "$FRAMEWORK_DIR/scripts/runtime-cutover-lease.sh" "$BUILD_DIR/framework/scripts/runtime-cutover-lease.sh"
 cp "$FRAMEWORK_DIR/scripts/runtime-restart-guard.sh" "$BUILD_DIR/framework/scripts/runtime-restart-guard.sh"
+cp "$FRAMEWORK_DIR/scripts/document-workspace-server.mjs" "$BUILD_DIR/framework/scripts/document-workspace-server.mjs"
 cp -R "$FRAMEWORK_DIR/ops/openclaw/plugins/." "$BUILD_DIR/framework/ops/openclaw/plugins/"
 cp -R "$FRAMEWORK_DIR/ops/openclaw/patches/." "$BUILD_DIR/framework/ops/openclaw/patches/"
 cp -R "$FRAMEWORK_DIR/ops/channels/." "$BUILD_DIR/framework/ops/channels/"

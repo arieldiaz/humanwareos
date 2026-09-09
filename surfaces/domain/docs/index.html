@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Documents · Humanware OS</title>
+<link rel="stylesheet" href="/os-shell.css">
+<link rel="stylesheet" href="/docs/docs.css">
+<link rel="stylesheet" href="/docs/pdf.css">
+</head>
+<body>
+<main class="docs-app">
+  <aside class="docs-sidebar" aria-label="Documents">
+    <div class="docs-search"><label class="sr-only" for="search">Search documents</label><input id="search" type="search" placeholder="Search documents" autocomplete="off"><kbd>⌘K</kbd></div>
+    <nav id="tree" class="docs-tree" aria-label="Document tree"><p class="muted">Loading documents…</p></nav>
+  </aside>
+  <section class="docs-reader">
+    <div id="readerTop" class="reader-top" hidden><div><div id="crumbs" class="crumbs"></div><div id="metadata" class="metadata"></div></div><button id="propose" class="propose" type="button">Propose change</button></div>
+    <article id="preview" class="preview"><div class="empty"><h1>Your operating documents</h1><p>Choose a document to read, search, or propose a change.</p></div></article>
+  </section>
+  <aside id="outline" class="docs-outline" aria-label="On this page"></aside>
+</main>
+<dialog id="proposalDialog">
+  <form id="proposalForm" method="dialog">
+    <div class="dialog-head"><div><h2>Propose a change</h2><p id="proposalTarget" class="muted"></p></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div>
+    <label for="selection">Selected passage <span class="muted">optional</span></label><textarea id="selection" name="selection" rows="4"></textarea>
+    <label for="comment">What should change?</label><textarea id="comment" name="comment" rows="6" required></textarea>
+    <div class="dialog-actions"><button value="cancel">Cancel</button><button id="submitProposal" class="primary" value="default">Send to agent</button></div>
+    <p id="proposalResult" class="result" role="status"></p>
+  </form>
+</dialog>
+<script src="/docs/docs.js"></script>
+<script src="/os-shell.js"></script>
+</body>
+</html>
