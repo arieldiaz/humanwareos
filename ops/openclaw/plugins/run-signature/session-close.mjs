@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { homedir } from "node:os";
+import {defaultAgentsRoot, loadSessionEntry, withCanonicalSessionDatabase} from "./session-store.mjs";
 
 function words(value) {
   return String(value ?? "").trim().split(/\s+/).filter(Boolean).length;
@@ -32,12 +32,14 @@ export function measureSlackThread(messages = []) {
 export function summarizeTrajectory(source = "") {
   const totals = { turns: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, peakContext: 0 };
   const models = new Map();
-  for (const line of String(source).split("\n")) {
-    let entry;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
+  const entries = typeof source === "string" ? source.split("\n").flatMap((line) => {
+    try { return [JSON.parse(line)]; } catch { return []; }
+  }) : source;
+  const seen = new Set();
+  for (const entry of entries) {
+    if (entry?.id) {
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
     }
     const completed = entry?.type === "model.completed";
     const assistant = entry?.type === "message" && entry?.message?.role === "assistant" && entry?.message?.usage;
@@ -60,16 +62,20 @@ export function summarizeTrajectory(source = "") {
   };
 }
 
-export async function loadThreadUsage({ agent, channel, thread, agentsRoot = join(homedir(), ".openclaw", "agents") }) {
+export async function loadThreadUsage({ agent, channel, thread, agentsRoot = defaultAgentsRoot() }) {
   const sessionsDir = join(agentsRoot, agent, "sessions");
-  let index;
-  try {
-    index = JSON.parse(await readFile(join(sessionsDir, "sessions.json"), "utf8"));
-  } catch {
-    return;
-  }
   const key = `agent:${agent}:slack:channel:${String(channel).toLowerCase()}:thread:${thread}`;
-  const sessionId = index[key]?.sessionId;
+  const canonical = await withCanonicalSessionDatabase({agent, agentsRoot}, (database) => {
+    const rows = database.prepare(`SELECT t.event_json FROM session_windows w
+      JOIN transcript_events t ON t.session_id = w.session_id
+      WHERE w.session_key = ? ORDER BY w.created_at, w.session_id, t.seq`).iterate(key);
+    function* entries() {
+      for (const row of rows) yield JSON.parse(row.event_json);
+    }
+    return summarizeTrajectory(entries());
+  });
+  if (canonical.found) return canonical.result;
+  const sessionId = (await loadSessionEntry(key, {agentsRoot}))?.sessionId;
   if (!sessionId) return;
   let candidates;
   try {

@@ -642,3 +642,14 @@ test("drops ACP work narration and keeps the polished reply", () => {
     text: "## TLDR\nDone.\n\n## Status\nNo action needed.",
   });
 });
+
+
+test("canonical keyed agents retain thinking and ACP provenance after migration", () => {
+  const config = {
+    agents: {defaults: {thinkingDefault: "low"}, entries: {liv: {thinkingDefault: "high", runtime: {type: "acp", acp: {agent: "cursor"}}}}},
+    plugins: {entries: {acpx: {config: {agents: {cursor: {args: ["--model", "auto"]}}}}}},
+  };
+  assert.equal(resolveConfiguredThinking(config, "LIV"), "high");
+  assert.equal(resolveConfiguredThinking(config, "max"), "low");
+  assert.equal(resolveConfiguredAcpProvenance(config, "agent:liv:acp:binding:slack:liv:1234").model, "cursor/auto");
+});

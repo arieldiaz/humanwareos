@@ -8,6 +8,7 @@ test -d "$PATCH_DIR"
 test -x "$NODE_BIN"
 
 OPENCLAW_PACKAGE_ROOT="${OPENCLAW_PACKAGE_ROOT:-/opt/homebrew/lib/node_modules/openclaw}"
+export OPENCLAW_PACKAGE_ROOT
 OPENCLAW_VERSION=$(
   OPENCLAW_PACKAGE_ROOT="$OPENCLAW_PACKAGE_ROOT" "$NODE_BIN" -e \
     'const fs=require("fs"),path=require("path"); process.stdout.write(JSON.parse(fs.readFileSync(path.join(process.env.OPENCLAW_PACKAGE_ROOT,"package.json"),"utf8")).version)'
