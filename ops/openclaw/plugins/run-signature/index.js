@@ -87,9 +87,9 @@ async function appendFaultJournal(entry) {
 const SLACK_PROJECTS_DIR = `${STATE_ROOT}/npm/projects`;
 
 // The gateway's Slack package lives under a generation-hashed directory and its
-// dist chunks are content-hashed; both change on every OpenClaw update. A
-// hardcoded path then fails inside the hook's catch: replies keep flowing,
-// strips silently stop, and only the journal knows. Resolve both hashes at use.
+// dist chunks are content-hashed; both change on every OpenClaw update.
+// Prefer the stable named exports; newer internal chunks use minified exports.
+// Older releases expose named exports through per-kind runtime chunks.
 export function resolveSlackRuntimeModule(kind, { projectsDir = SLACK_PROJECTS_DIR, list = readdirSync, stat = statSync } = {}) {
   const projects = list(projectsDir)
     .filter((name) => name.startsWith("openclaw-slack-"))
@@ -97,7 +97,9 @@ export function resolveSlackRuntimeModule(kind, { projectsDir = SLACK_PROJECTS_D
     .sort((a, b) => b.mtime - a.mtime);
   if (!projects.length) throw new Error(`no openclaw-slack package under ${projectsDir}`);
   const dist = `${projectsDir}/${projects[0].name}/node_modules/@openclaw/slack/dist`;
-  const chunk = list(dist).find((name) => name.startsWith(`${kind}.runtime-`) && name.endsWith(".js"));
+  const files = list(dist);
+  if ((kind === "actions" || kind === "accounts") && files.includes("runtime-api.js")) return `${dist}/runtime-api.js`;
+  const chunk = files.find((name) => name.startsWith(`${kind}.runtime-`) && name.endsWith(".js"));
   if (!chunk) throw new Error(`no ${kind} runtime chunk in ${dist}`);
   return `${dist}/${chunk}`;
 }
