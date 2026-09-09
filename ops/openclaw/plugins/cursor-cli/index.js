@@ -18,6 +18,7 @@ export function buildCursorCliBackends(command) {
   return [
     {
       id: "cursor-ask",
+      modelProvider: "cursor-ask",
       liveTest: {defaultModelRef: "cursor-ask/grok-4.6-low-fast", defaultImageProbe: false, defaultMcpProbe: false},
       nativeToolMode: "always-on",
       config: {
@@ -28,6 +29,7 @@ export function buildCursorCliBackends(command) {
     },
     {
       id: "cursor-agent",
+      modelProvider: "cursor-agent",
       liveTest: {defaultModelRef: "cursor-agent/grok-4.6-low-fast", defaultImageProbe: false, defaultMcpProbe: false},
       nativeToolMode: "always-on",
       config: {
