@@ -12,6 +12,10 @@ Instance-owned declarative configuration lives one level up:
 - `models.patch.json5` — model aliases and default fallbacks.
 - `runtime.patch.json5` — local media preprocessing and ACP harness policy.
 
+## 2026.9.1 intentional exec cancellation
+
+`patch-2026.9.1-manual-cancel-notify.mjs` prevents an agent-requested `process kill` from enqueueing a background-exec failure merely because the cancelled process emitted partial output. The initiating turn already observes the cancellation; converting its expected SIGTERM into a later heartbeat event falsely reopens completed work. Unexpected signals and other failed background exits keep their existing notification behavior. The patch is version-scoped, idempotent, fails closed when the bundle shape changes, and requires a gateway restart after application.
+
 ## 2026.7.1 session model + thinking switch
 
 `patch-2026.7.1-session-status-thinking.mjs` extends the native `session_status` control with the session store's existing `thinkingLevel` field. A single call can therefore set both `model` and `thinking`, and either accepts `default` to clear its override. This fixes mid-thread switches such as Sol + high without routing a native conversation through ACP. The patch also updates the tool's mutation classification and model-facing description. It is version-scoped, idempotent, and fails closed when the installed bundle changes.
