@@ -6,7 +6,7 @@ export const THINKING_TILES = ["think_off", "think_low", "think_medium", "think_
 export const LIFECYCLE_NAMES = ["arrows_counterclockwise", "question", "raised_hand", "calendar", "white_check_mark"];
 export const RETIRED_LIFECYCLE_NAMES = ["arrow_forward", "no_entry_sign"];
 export const AGENT_NAMES = ["butterfly", "fox_face"];
-export const STRIP_NAMES = [...LIFECYCLE_NAMES, ...RETIRED_LIFECYCLE_NAMES, ...AGENT_NAMES, "h_codex", "h_cc", "h_cursor", "h_opencode", "m_opus", "m_sonnet", "m_haiku", "m_fable", "m_gpt_astra", "m_gpt_sol", "m_gpt_terra", "m_gpt_luna", "m_cursor_auto", "m_grok", "m_qwen_moe", "m_qwen_dense", "m_llama", ...THINKING_TILES];
+export const STRIP_NAMES = [...LIFECYCLE_NAMES, ...RETIRED_LIFECYCLE_NAMES, ...AGENT_NAMES, "h_codex", "h_cc", "h_cursor", "h_opencode", "m_opus", "m_sonnet", "m_haiku", "m_fable", "stars", "m_gpt_sol", "m_gpt_terra", "m_gpt_luna", "m_cursor_auto", "m_grok", "m_qwen_moe", "m_qwen_dense", "m_llama", ...THINKING_TILES];
 export const STRIP_NAME_SET = new Set(STRIP_NAMES);
 
 // Slack stores a reaction under its own canonical name, not the alias it was
@@ -27,7 +27,7 @@ const MODEL_TILES = [
   [/sonnet/i, ":m_sonnet:"],
   [/haiku/i, ":m_haiku:"],
   [/fable/i, ":m_fable:"],
-  [/(?:gpt[-_. ]?6[-_. ]?)?astra/i, ":m_gpt_astra:"],
+  [/(?:gpt[-_. ]?6[-_. ]?)?astra/i, ":stars:"],
   [/(?:gpt[-_. ]?5\.?6[-_. ]?)?sol/i, ":m_gpt_sol:"],
   [/(?:gpt[-_. ]?5\.?6[-_. ]?)?terra/i, ":m_gpt_terra:"],
   [/(?:gpt[-_. ]?5\.?6[-_. ]?)?luna/i, ":m_gpt_luna:"],
