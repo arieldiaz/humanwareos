@@ -148,6 +148,10 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
   source.agents.defaults = {
     ...(source.agents.defaults ?? {}),
     models: globalModelPolicies,
+    modelPolicy: {
+      ...(source.agents.defaults?.modelPolicy ?? {}),
+      allow: Object.keys(globalModelPolicies),
+    },
   };
 
   const sourceBindings = Array.isArray(source.bindings) ? source.bindings : [];
