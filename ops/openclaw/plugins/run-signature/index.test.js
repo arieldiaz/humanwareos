@@ -82,7 +82,7 @@ test("normalizes legacy Status forms without exposing transport prose", () => {
     ["Human — act: Complete the vendor check.", "act", "## ✋ Act\nComplete the vendor check."],
     ["Agent — working: Running verification.", "working", ""],
     ["Scheduled: Resurfaces Monday.", "scheduled", "## 🗓️ Scheduled\nResurfaces Monday."],
-    ["No action needed.", "no_action", ""],
+    ["No action needed.", "working", ""],
     ["Session closed.", "closed", "## Session Closed"],
   ];
   for (const [body, status, lifecycle] of cases) {
@@ -93,16 +93,16 @@ test("normalizes legacy Status forms without exposing transport prose", () => {
   }
 });
 
-test("an ordinary reply creates no obligation without inspecting its prose", () => {
+test("an ordinary reply keeps the open thread in progress without inspecting its prose", () => {
   assert.deepEqual(normalizeOutboundStatus("Completed the fix."), {
-    status: "no_action",
+    status: "working",
     content: "Completed the fix.",
   });
   assert.deepEqual(normalizeOutboundStatus("## Status\nMaybe waiting"), {
-    status: "no_action",
+    status: "working",
     content: "## Status\nMaybe waiting",
   });
-  assert.equal(resolveStatusTile(normalizeOutboundStatus("Completed the fix.").status, [], new Set()), undefined);
+  assert.equal(resolveStatusTile(normalizeOutboundStatus("Completed the fix.").status, [], new Set()), "arrows_counterclockwise");
 });
 
 test("typed status wins without parsing reply prose", () => {
@@ -114,7 +114,7 @@ test("typed status wins without parsing reply prose", () => {
 
 test("explicit transport status wins over earlier lifecycle prose", () => {
   const normalized = normalizeOutboundStatus("## ❓ Clarify\nOld prose\n\n## Status\nNo action needed.");
-  assert.equal(normalized.status, "no_action");
+  assert.equal(normalized.status, "working");
   assert.match(normalized.content, /## ❓ Clarify/);
   assert.doesNotMatch(normalized.content, /## Status/);
 });
@@ -245,9 +245,9 @@ test("a lifecycle transition swaps the one tile", () => {
   assert.deepEqual(addNames(plan), ["raised_hand"]);
 });
 
-test("no action clears a stale working tile", () => {
-  const plan = planStatusTile([ownTile("arrows_counterclockwise")], { ...SPEC, lifecycle: undefined });
-  assert.deepEqual(removeNames(plan), ["arrows_counterclockwise"]);
+test("an ordinary reply preserves the working tile", () => {
+  const plan = planStatusTile([ownTile("arrows_counterclockwise")], { ...SPEC, lifecycle: "arrows_counterclockwise" });
+  assert.deepEqual(removeNames(plan), []);
   assert.deepEqual(plan.add, []);
 });
 
