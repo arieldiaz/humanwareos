@@ -674,7 +674,7 @@ test("resolves Slack DM destinations from the canonical session route", () => {
 });
 
 test("maps Astra to its Slack model tile", () => {
-  assert.equal(resolveModelTile("openai/gpt-6-astra"), ":m_gpt_astra:");
+  assert.equal(resolveModelTile("openai/gpt-6-astra"), ":stars:");
 });
 
 
