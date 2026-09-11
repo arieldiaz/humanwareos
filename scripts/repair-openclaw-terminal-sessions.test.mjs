@@ -37,7 +37,7 @@ test("preview identifies but does not mutate a terminal running row", () => {
 
 test("apply closes a terminal running row and clears stale ownership", () => {
   const { state, databasePath } = fixture();
-  assert.equal(run(state, ["--apply"]).repairs.length, 1);
+  assert.equal(run(state, ["--apply", "--session-key", "agent:max:slack:channel:C1:thread:1.1"]).repairs.length, 1);
   const database = new DatabaseSync(databasePath, { readOnly: true });
   const row = database.prepare("SELECT status, entry_json FROM session_nodes").get();
   const entry = JSON.parse(row.entry_json);
@@ -49,4 +49,9 @@ test("apply closes a terminal running row and clears stale ownership", () => {
   assert.equal(entry.activeWriterRunId, undefined);
   assert.equal(entry.mainRestartRecovery, undefined);
   database.close();
+});
+
+test("apply refuses an unscoped database mutation", () => {
+  const { state } = fixture();
+  assert.throws(() => run(state, ["--apply"]), /--apply requires at least one explicit --session-key/);
 });

@@ -5,6 +5,8 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const apply = process.argv.includes("--apply");
+const sessionKeys = process.argv.flatMap((value, index, args) => value === "--session-key" && args[index + 1] ? [args[index + 1]] : []);
+if (apply && sessionKeys.length === 0) throw new Error("--apply requires at least one explicit --session-key");
 const stateRoot = process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
 const agentsRoot = path.join(stateRoot, "agents");
 
@@ -22,7 +24,7 @@ function repairDatabase(databasePath) {
   try {
     const tables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name));
     if (!tables.has("session_nodes") || !tables.has("trajectory_runtime_events")) return repairs;
-    const rows = database.prepare("SELECT session_key, current_session_id, entry_json FROM session_nodes WHERE status = 'running' AND entry_valid = 1").all();
+    const rows = database.prepare("SELECT session_key, current_session_id, entry_json FROM session_nodes WHERE status = 'running' AND entry_valid = 1").all().filter((row) => sessionKeys.length === 0 || sessionKeys.includes(row.session_key));
     const latestEvent = database.prepare("SELECT event_json FROM trajectory_runtime_events WHERE session_id = ? AND run_id = ? ORDER BY seq DESC LIMIT 1");
     const update = database.prepare("UPDATE session_nodes SET entry_json = ?, status = ?, updated_at = ? WHERE session_key = ? AND current_session_id = ? AND status = 'running'");
     if (apply) database.exec("BEGIN IMMEDIATE");
@@ -71,4 +73,3 @@ function repairDatabase(databasePath) {
 const databases = fs.existsSync(agentsRoot) ? fs.readdirSync(agentsRoot).map((agent) => path.join(agentsRoot, agent, "agent", "openclaw-agent.sqlite")).filter((candidate) => fs.existsSync(candidate)) : [];
 const repairs = databases.flatMap(repairDatabase);
 console.log(JSON.stringify({ mode: apply ? "apply" : "preview", inspectedDatabases: databases.length, repairs }, null, 2));
-
