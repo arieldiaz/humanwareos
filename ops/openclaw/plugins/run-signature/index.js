@@ -52,6 +52,10 @@ const OUTBOUND_EMOJI = {
   closed: "white_check_mark",
 };
 
+export function outboundStatusDetails(channel, threadId, status) {
+  return { channelId: channel, threadId, status, emoji: OUTBOUND_EMOJI[status], remove: status === "completed" || undefined };
+}
+
 async function recordOutboundStatus({ channel, threadId, status, agent, traceId, sessionKey, runId }) {
   if (!channel || !threadId || !status) return;
   const ts = new Date().toISOString();
@@ -67,7 +71,7 @@ async function recordOutboundStatus({ channel, threadId, status, agent, traceId,
     kind: "status.set",
     level: "normal",
     summary: `Status ${status}`,
-    details: { channelId: channel, threadId, status, emoji: OUTBOUND_EMOJI[status] },
+    details: outboundStatusDetails(channel, threadId, status),
     sourceRef: {sessionKey: sessionKey ?? null, runId: runId ?? null},
   };
   const path = `${DATA_ROOT}/evidence/sessions/events/${ts.slice(0, 10)}.jsonl`;
@@ -553,7 +557,7 @@ export default {
           const accounts = await import(resolveSlackRuntimeModule("accounts"));
           const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
           if (!token) throw new Error(`the claimed account ${accountId ?? "unknown"} has no Slack token`);
-          await maintainStatusTile("no_action", ctx, {
+          await maintainStatusTile("completed", ctx, {
             channel: route.channel,
             rootTs: route.rootTs,
             routeKey: `${route.channel.toLowerCase()}:${route.rootTs}`,
@@ -685,7 +689,7 @@ export default {
         } catch (error) {
           api.logger?.error?.(`run-signature refused an unmeasured session close: ${String(error)}`);
           normalized = {
-            status: "no_action",
+            status: "completed",
             content: `⚠️ ${String(ctx.accountId ?? "Agent")} could not close this thread durably. The thread remains open; the failure is in the operational log.`,
           };
         }

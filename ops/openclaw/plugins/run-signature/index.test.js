@@ -37,6 +37,7 @@ import {
   mergeProvenance,
   recoverMissingHarness,
   normalizeReactions,
+  outboundStatusDetails,
 } from "./index.js";
 import runSignaturePlugin from "./index.js";
 
@@ -82,7 +83,8 @@ test("normalizes legacy Status forms without exposing transport prose", () => {
     ["Human — act: Complete the vendor check.", "act", "## ✋ Act\nComplete the vendor check."],
     ["Agent — working: Running verification.", "working", ""],
     ["Scheduled: Resurfaces Monday.", "scheduled", "## 🗓️ Scheduled\nResurfaces Monday."],
-    ["No action needed.", "no_action", ""],
+    ["No action needed.", "completed", ""],
+    ["Turn completed.", "completed", ""],
     ["Session closed.", "closed", "## Session Closed"],
   ];
   for (const [body, status, lifecycle] of cases) {
@@ -95,11 +97,11 @@ test("normalizes legacy Status forms without exposing transport prose", () => {
 
 test("an ordinary reply creates no obligation without inspecting its prose", () => {
   assert.deepEqual(normalizeOutboundStatus("Completed the fix."), {
-    status: "no_action",
+    status: "completed",
     content: "Completed the fix.",
   });
   assert.deepEqual(normalizeOutboundStatus("## Status\nMaybe waiting"), {
-    status: "no_action",
+    status: "completed",
     content: "## Status\nMaybe waiting",
   });
   assert.equal(resolveStatusTile(normalizeOutboundStatus("Completed the fix.").status, [], new Set()), undefined);
@@ -114,9 +116,27 @@ test("typed status wins without parsing reply prose", () => {
 
 test("explicit transport status wins over earlier lifecycle prose", () => {
   const normalized = normalizeOutboundStatus("## ❓ Clarify\nOld prose\n\n## Status\nNo action needed.");
-  assert.equal(normalized.status, "no_action");
+  assert.equal(normalized.status, "completed");
   assert.match(normalized.content, /## ❓ Clarify/);
   assert.doesNotMatch(normalized.content, /## Status/);
+});
+
+test("legacy no_action metadata reads as completed without surviving into output", () => {
+  assert.deepEqual(normalizeOutboundStatus("Finished.", { explicitStatus: "no_action" }), {
+    status: "completed",
+    content: "Finished.",
+  });
+});
+
+test("completed ledger events clear state for rollback-compatible readers", () => {
+  assert.deepEqual(outboundStatusDetails("C1", "123.45", "completed"), {
+    channelId: "C1",
+    threadId: "123.45",
+    status: "completed",
+    emoji: undefined,
+    remove: true,
+  });
+  assert.equal(outboundStatusDetails("C1", "123.45", "answer").remove, undefined);
 });
 
 test("lifecycle headings map directly without being rewritten", () => {
@@ -245,7 +265,7 @@ test("a lifecycle transition swaps the one tile", () => {
   assert.deepEqual(addNames(plan), ["raised_hand"]);
 });
 
-test("no action clears a stale working tile", () => {
+test("a completed turn clears a stale working tile", () => {
   const plan = planStatusTile([ownTile("arrows_counterclockwise")], { ...SPEC, lifecycle: undefined });
   assert.deepEqual(removeNames(plan), ["arrows_counterclockwise"]);
   assert.deepEqual(plan.add, []);
