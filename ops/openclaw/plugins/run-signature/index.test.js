@@ -27,6 +27,7 @@ import {
   resolveConfiguredThinking,
   redactSlackReferences,
   slackRouteFromSessionKey,
+  resolveSlackChannelId,
   resolveConfiguredAcpProvenance,
   normalizeThinkingLevel,
   resolveThinkingTile,
@@ -652,7 +653,7 @@ test("reads the Slack root from the ACP session row when the send omits threadId
 test("drops ACP work narration and keeps the polished reply", () => {
   assert.equal(isAcpBindingSession("agent:liv:acp:binding:slack:liv:abc"), true);
   assert.equal(isAcpBindingSession("agent:liv:slack:channel:c0b:thread:1.1"), false);
-  assert.equal(acpProjectionDecision("final", "I'll check the plugin next.").deliver, false);
+  assert.deepEqual(acpProjectionDecision("final", "I'll check the plugin next."), { deliver: true, text: "I'll check the plugin next." });
   assert.equal(acpProjectionDecision("block", "Closing this now.").deliver, false);
   assert.equal(
     acpProjectionDecision("final", "Working the Claude cutover, this will take a few minutes.").deliver,
@@ -662,8 +663,18 @@ test("drops ACP work narration and keeps the polished reply", () => {
   assert.equal(extractPublishedReply(mixed), "## TLDR\nDone.\n\n## Status\nNo action needed.");
   assert.deepEqual(acpProjectionDecision("final", mixed), {
     deliver: true,
-    text: "## TLDR\nDone.\n\n## Status\nNo action needed.",
+    text: mixed,
   });
+});
+
+test("resolves Slack DM destinations from the canonical session route", () => {
+  const ctx = { sessionKey: "agent:liv:slack:channel:D012ABC:thread:123.456" };
+  assert.equal(resolveSlackChannelId({ to: "USER:U012ABC" }, ctx), "D012ABC");
+  assert.equal(resolveSlackChannelId({ to: "channel:C012ABC" }, ctx), "C012ABC");
+});
+
+test("maps Astra to its Slack model tile", () => {
+  assert.equal(resolveModelTile("openai/gpt-6-astra"), ":m_gpt_astra:");
 });
 
 

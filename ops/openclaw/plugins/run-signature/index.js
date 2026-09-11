@@ -343,8 +343,8 @@ export function extractPublishedReply(content) {
 }
 
 export function acpProjectionDecision(kind, content) {
-  void kind;
   const source = String(content ?? "").trim();
+  if (kind === "final") return source ? { deliver: true, text: source } : { deliver: false };
   if (isLongRunKickoff(source)) return { deliver: true, text: source };
   const published = extractPublishedReply(source);
   if (!published) return { deliver: false };
@@ -378,6 +378,14 @@ export function slackRouteFromSessionKey(sessionKey) {
   const match = String(sessionKey ?? "").match(/:slack:channel:([^:]+):thread:([^:]+)$/i);
   if (!match) return;
   return { channel: match[1].toUpperCase(), rootTs: match[2] };
+}
+
+export function resolveSlackChannelId(event, ctx) {
+  const direct = String(event?.to ?? event?.conversationId ?? event?.metadata?.channelId ?? event?.metadata?.channel ?? ctx?.conversationId ?? "")
+    .replace(/^channel:/i, "")
+    .toUpperCase();
+  if (/^[CDG][A-Z0-9]+$/.test(direct)) return direct;
+  return slackRouteFromSessionKey(ctx?.sessionKey)?.channel;
 }
 
 export function redactSlackReferences(content) {
@@ -659,7 +667,7 @@ export default {
     // status tile is maintained after the final payload is normalized.
     api.on("message_sending", async (event, ctx) => {
       if (ctx.channelId !== "slack") return;
-      const channel = String(event.to ?? "").replace(/^channel:/, "").toUpperCase();
+      const channel = resolveSlackChannelId(event, ctx);
       // Guest channels keep plain guest prose and carry no operational state.
       if (isExcludedChannel(channel)) return;
       let normalized = normalizeOutboundStatus(redactSlackReferences(event.content), {
@@ -733,7 +741,7 @@ export default {
 
     async function signAndMark(event, ctx) {
       if (ctx.channelId !== "slack") return;
-      const channel = String(event.to ?? "").replace(/^channel:/, "").toUpperCase();
+      const channel = resolveSlackChannelId(event, ctx);
       // Guest channel: no signature, no tile — no ops provenance at all there.
       if (isExcludedChannel(channel)) return;
       const sessionRoute = slackRouteFromSessionKey(ctx.sessionKey);
@@ -829,7 +837,7 @@ export default {
 
     async function reactToSentMessage(event, ctx) {
       if (ctx.channelId !== "slack" || !event.success || !event.messageId) return;
-      const channel = String(event.to ?? "").replace(/^channel:/, "").toUpperCase();
+      const channel = resolveSlackChannelId(event, ctx);
       // Guest channel: no signature, no tile — no ops provenance at all there.
       if (!channel || isExcludedChannel(channel)) return;
       const messageTs = String(event.messageId);
