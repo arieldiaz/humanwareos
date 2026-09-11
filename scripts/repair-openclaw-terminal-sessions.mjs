@@ -49,15 +49,15 @@ function repairDatabase(databasePath) {
         const status = terminalStatus(event);
         const endedAt = Date.parse(event.ts);
         if (!status || !Number.isFinite(endedAt)) continue;
-        const repaired = { ...entry, status, endedAt, runtimeMs: Number.isFinite(entry.startedAt) ? Math.max(0, endedAt - entry.startedAt) : undefined, lastRunId: runId };
+        const updatedAt = Number.isFinite(entry.updatedAt) ? Math.max(entry.updatedAt, endedAt) : endedAt;
+        const repaired = { ...entry, status, updatedAt, endedAt, runtimeMs: Number.isFinite(entry.startedAt) ? Math.max(0, endedAt - entry.startedAt) : undefined, lastRunId: runId, activeWriterRunId: runId };
         delete repaired.lifecycleRunId;
-        delete repaired.activeWriterRunId;
         delete repaired.activeWriterLeaseUntil;
         delete repaired.mainRestartRecovery;
         delete repaired.restartRecoveryRuns;
         repaired.abortedLastRun = status !== "done";
         repairs.push({ database: databasePath, sessionKey: row.session_key, runId, status, endedAt });
-        if (apply) update.run(JSON.stringify(repaired), status, endedAt, row.session_key, row.current_session_id);
+        if (apply) update.run(JSON.stringify(repaired), status, updatedAt, row.session_key, row.current_session_id);
       }
       if (apply) database.exec("COMMIT");
     } catch (error) {

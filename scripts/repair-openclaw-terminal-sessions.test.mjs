@@ -16,7 +16,7 @@ function fixture() {
   const databasePath = path.join(agent, "openclaw-agent.sqlite");
   const database = new DatabaseSync(databasePath);
   database.exec("CREATE TABLE session_nodes(session_key TEXT PRIMARY KEY, current_session_id TEXT, entry_json TEXT, entry_valid INTEGER, updated_at INTEGER, status TEXT); CREATE TABLE trajectory_runtime_events(session_id TEXT, seq INTEGER, run_id TEXT, event_json TEXT, created_at INTEGER, PRIMARY KEY(session_id, seq));");
-  const entry = { status: "running", startedAt: 1_000, activeWriterRunId: "run-current", lifecycleRunId: "run-current", restartRecoveryRuns: [{ runId: "run-old" }], mainRestartRecovery: { revision: 7 } };
+  const entry = { status: "running", updatedAt: 2_750, startedAt: 1_000, activeWriterRunId: "run-current", lifecycleRunId: "run-current", restartRecoveryRuns: [{ runId: "run-old" }], mainRestartRecovery: { revision: 7 } };
   database.prepare("INSERT INTO session_nodes VALUES (?, ?, ?, 1, 1000, 'running')").run("agent:max:slack:channel:C1:thread:1.1", "session-1", JSON.stringify(entry));
   database.prepare("INSERT INTO trajectory_runtime_events VALUES (?, ?, ?, ?, ?)").run("session-1", 1, "run-current", JSON.stringify({ type: "session.ended", ts: "1970-01-01T00:00:02.500Z", data: { status: "success" } }), 2_500);
   database.close();
@@ -35,7 +35,7 @@ test("preview identifies but does not mutate a terminal running row", () => {
   database.close();
 });
 
-test("apply closes a terminal running row and clears stale ownership", () => {
+test("apply closes a terminal running row and retains its canonical writer fence", () => {
   const { state, databasePath } = fixture();
   assert.equal(run(state, ["--apply", "--session-key", "agent:max:slack:channel:C1:thread:1.1"]).repairs.length, 1);
   const database = new DatabaseSync(databasePath, { readOnly: true });
@@ -46,7 +46,9 @@ test("apply closes a terminal running row and clears stale ownership", () => {
   assert.equal(entry.runtimeMs, 1_500);
   assert.equal(entry.lastRunId, "run-current");
   assert.equal(entry.lifecycleRunId, undefined);
-  assert.equal(entry.activeWriterRunId, undefined);
+  assert.equal(entry.activeWriterRunId, "run-current");
+  assert.equal(entry.updatedAt, 2_750);
+  assert.equal(database.prepare("SELECT updated_at FROM session_nodes").get().updated_at, 2_750);
   assert.equal(entry.mainRestartRecovery, undefined);
   database.close();
 });
