@@ -59,15 +59,9 @@ function redactIngressSecrets(value) {
 
 const deadLetterBefore = `\tconst deadLetters = await queue.listFailed({ limit: parseLimit(options.limit) });`;
 const deadLetterAfter = `\t// humanware:redact-dead-letter-secrets
+\tconst deadLetters = (await queue.listFailed({ limit: parseLimit(options.limit) })).map((entry) => ({ ...entry, payload: JSON.parse(JSON.stringify(entry.payload ?? null, (key, value) => /^(?:token|authorization|cookie|x-slack-signature)$/i.test(key) ? "[REDACTED]" : value)) }));`;
+const deadLetterLegacy = `\t// humanware:redact-dead-letter-secrets
 \tconst deadLetters = (await queue.listFailed({ limit: parseLimit(options.limit) })).map((entry) => ({ ...entry, payload: redactDeadLetterSecrets(entry.payload) }));`;
-const deadLetterHelperAnchor = `//#region src/cli/channels-dead-letters.ts`;
-const deadLetterHelper = `// humanware:redact-dead-letter-secrets
-function redactDeadLetterSecrets(value) {
-\tif (Array.isArray(value)) return value.map(redactDeadLetterSecrets);
-\tif (!value || typeof value !== "object") return value;
-\treturn Object.fromEntries(Object.entries(value).map(([key, nested]) => [key, /^(?:token|authorization|cookie|x-slack-signature)$/i.test(key) ? "[REDACTED]" : redactDeadLetterSecrets(nested)]));
-}
-`;
 
 const results = {
   lifecycle: patchBundles(/^main-session-recovery-lifecycle-.*\.js$/, (source) => source.includes("humanware:terminal-current-writer-recovery") ? source : source.replace(lifecycleBefore, lifecycleAfter), "terminal-current-writer-recovery"),
@@ -78,9 +72,9 @@ const results = {
     return withHelper.replace(queueBefore, queueAfter);
   }, "redact-ingress-secrets"),
   deadLetters: patchBundles(/^dead-letters-.*\.js$/, (source) => {
-    if (source.includes("humanware:redact-dead-letter-secrets")) return source;
-    const withHelper = source.replace(deadLetterHelperAnchor, `${deadLetterHelper}${deadLetterHelperAnchor}`);
-    return withHelper.replace(deadLetterBefore, deadLetterAfter);
+    if (source.includes(deadLetterAfter)) return source;
+    if (source.includes(deadLetterLegacy)) return source.replace(deadLetterLegacy, deadLetterAfter);
+    return source.replace(deadLetterBefore, deadLetterAfter);
   }, "redact-dead-letter-secrets"),
 };
 

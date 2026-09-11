@@ -41,6 +41,16 @@ test("session conflicts are age-gated and ingress secrets are redacted", () => {
   assert.equal(JSON.parse(save({ body: { token: "secret", text: "hello" } }).payload_json).body.token, "[REDACTED]");
 });
 
+test("dead-letter inspection redacts nested secrets without an external helper", async () => {
+  const dist = fixtureDist();
+  apply(dist);
+  const source = fs.readFileSync(path.join(dist, "dead-letters-fixture.js"), "utf8");
+  const list = Function("parseLimit", `${source}; return list;`)((value) => value);
+  const result = await list({ listFailed: async () => [{ payload: { body: { token: "secret", text: "hello" } } }] }, { limit: 5 });
+  assert.equal(result[0].payload.body.token, "[REDACTED]");
+  assert.equal(result[0].payload.body.text, "hello");
+});
+
 test("patch is idempotent", () => {
   const dist = fixtureDist();
   apply(dist);
