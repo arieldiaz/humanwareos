@@ -62,6 +62,19 @@ const deadLetterAfter = `\t// humanware:redact-dead-letter-secrets
 \tconst deadLetters = (await queue.listFailed({ limit: parseLimit(options.limit) })).map((entry) => ({ ...entry, payload: JSON.parse(JSON.stringify(entry.payload ?? null, (key, value) => /^(?:token|authorization|cookie|x-slack-signature)$/i.test(key) ? "[REDACTED]" : value)) }));`;
 const deadLetterLegacy = `\t// humanware:redact-dead-letter-secrets
 \tconst deadLetters = (await queue.listFailed({ limit: parseLimit(options.limit) })).map((entry) => ({ ...entry, payload: redactDeadLetterSecrets(entry.payload) }));`;
+const deadLetterResubmitBefore = `\t\tif (options.json) writeRuntimeJson(runtime, {
+\t\t\tchannelId,
+\t\t\taccountId,
+\t\t\teventId,
+\t\t\tresult
+\t\t});`;
+const deadLetterResubmitAfter = `\t\t// humanware:redact-dead-letter-resubmit-secrets
+\t\tif (options.json) writeRuntimeJson(runtime, {
+\t\t\tchannelId,
+\t\t\taccountId,
+\t\t\teventId,
+\t\t\tresult: JSON.parse(JSON.stringify(result, (key, value) => /^(?:token|authorization|cookie|x-slack-signature)$/i.test(key) ? "[REDACTED]" : value))
+\t\t});`;
 
 const results = {
   lifecycle: patchBundles(/^main-session-recovery-lifecycle-.*\.js$/, (source) => source.includes("humanware:terminal-current-writer-recovery") ? source : source.replace(lifecycleBefore, lifecycleAfter), "terminal-current-writer-recovery"),
@@ -72,9 +85,12 @@ const results = {
     return withHelper.replace(queueBefore, queueAfter);
   }, "redact-ingress-secrets"),
   deadLetters: patchBundles(/^dead-letters-.*\.js$/, (source) => {
-    if (source.includes(deadLetterAfter)) return source;
-    if (source.includes(deadLetterLegacy)) return source.replace(deadLetterLegacy, deadLetterAfter);
-    return source.replace(deadLetterBefore, deadLetterAfter);
+    let updated = source;
+    if (!updated.includes(deadLetterAfter)) {
+      updated = updated.includes(deadLetterLegacy) ? updated.replace(deadLetterLegacy, deadLetterAfter) : updated.replace(deadLetterBefore, deadLetterAfter);
+    }
+    if (!updated.includes("humanware:redact-dead-letter-resubmit-secrets")) updated = updated.replace(deadLetterResubmitBefore, deadLetterResubmitAfter);
+    return updated;
   }, "redact-dead-letter-secrets"),
 };
 

@@ -13,7 +13,7 @@ function fixtureDist() {
   fs.writeFileSync(path.join(dist, "main-session-recovery-lifecycle-fixture.js"), `function project(params) {\n\tconst runId = params.event.runId?.trim();\n\tconst lifecycleGeneration = params.event.lifecycleGeneration?.trim();\n\tconst runs = params.entry?.restartRecoveryRuns;\n\tconst matchesFence = Boolean(runId && lifecycleGeneration && runs?.some((run) => run.runId === runId && run.lifecycleGeneration === lifecycleGeneration));\n\tconst remaining = matchesFence ? runs?.filter((run) => run.runId !== runId || lifecycleGeneration !== params.currentLifecycleGeneration && run.lifecycleGeneration !== lifecycleGeneration) : runs;\n\treturn {matchesFence, remaining};\n}`);
   fs.writeFileSync(path.join(dist, "ingress-retry-policy-fixture.js"), `function policy(params) {\n\tconst { maxAttempts } = resolveConfig(params.config);\n\tconst attempt = resolveIngressAttemptNumber(params.event);\n\tconst message = params.formatError(params.err);\n\tconst now = params.now ?? Date.now();\n\tif (attempt >= maxAttempts && isSessionStartConflictFailure(params.err)) return {\n\t\tkind: "fail",\n\t\treason: "session-start-conflict-retry-limit",\n\t\tmessage,\n\t\tattempt\n\t};\n}`);
   fs.writeFileSync(path.join(dist, "ingress-queue-fixture.js"), `//#region src/channels/message/ingress-queue.ts\nfunction save(payload) { return {\n\t\t\t\tpayload_json: JSON.stringify(payload),\n}; }`);
-  fs.writeFileSync(path.join(dist, "dead-letters-fixture.js"), `//#region src/cli/channels-dead-letters.ts\nasync function list(queue, options) {\n\tconst deadLetters = await queue.listFailed({ limit: parseLimit(options.limit) });\n\treturn deadLetters;\n}`);
+  fs.writeFileSync(path.join(dist, "dead-letters-fixture.js"), `//#region src/cli/channels-dead-letters.ts\nasync function list(queue, options) {\n\tconst deadLetters = await queue.listFailed({ limit: parseLimit(options.limit) });\n\treturn deadLetters;\n}\nasync function resubmit(queue, options, runtime) {\n\tconst channelId = "slack";\n\tconst accountId = "max";\n\tconst eventId = "event-1";\n\tconst result = await queue.resubmit(eventId);\n\tif (result.kind === "resubmitted") {\n\t\tif (options.json) writeRuntimeJson(runtime, {\n\t\t\tchannelId,\n\t\t\taccountId,\n\t\t\teventId,\n\t\t\tresult\n\t\t});\n\t\treturn;\n\t}\n}`);
   return dist;
 }
 
@@ -49,6 +49,18 @@ test("dead-letter inspection redacts nested secrets without an external helper",
   const result = await list({ listFailed: async () => [{ payload: { body: { token: "secret", text: "hello" } } }] }, { limit: 5 });
   assert.equal(result[0].payload.body.token, "[REDACTED]");
   assert.equal(result[0].payload.body.text, "hello");
+});
+
+test("dead-letter resubmission redacts both current and previous retained payloads", async () => {
+  const dist = fixtureDist();
+  apply(dist);
+  const source = fs.readFileSync(path.join(dist, "dead-letters-fixture.js"), "utf8");
+  const outputs = [];
+  const resubmit = Function("writeRuntimeJson", `${source}; return resubmit;`)((_runtime, value) => outputs.push(value));
+  await resubmit({ resubmit: async () => ({ kind: "resubmitted", record: { payload: { body: { token: "current-secret", text: "hello" } } }, previous: { payload: { body: { token: "previous-secret" } } } }) }, { json: true }, {});
+  assert.equal(outputs[0].result.record.payload.body.token, "[REDACTED]");
+  assert.equal(outputs[0].result.record.payload.body.text, "hello");
+  assert.equal(outputs[0].result.previous.payload.body.token, "[REDACTED]");
 });
 
 test("patch is idempotent", () => {
