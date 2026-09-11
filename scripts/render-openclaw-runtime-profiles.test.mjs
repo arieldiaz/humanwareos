@@ -71,6 +71,7 @@ test("renders each agent's selected profile into effective OpenClaw config", () 
   assert.deepEqual(rendered.agents.list[1].models["openai/gpt-5.6-sol"].agentRuntime, {id: "openclaw"});
   assert.deepEqual(Object.keys(rendered.agents.defaults.models), ["openai/gpt-5.6-sol"]);
   assert.deepEqual(rendered.agents.defaults.models["openai/gpt-5.6-sol"], {alias: "sol", agentRuntime: {id: "openclaw"}});
+  assert.deepEqual(rendered.agents.defaults.modelPolicy.allow, ["openai/gpt-5.6-sol"]);
 });
 
 test("keeps the reference instance on the task-capable harnesses by default", () => {
@@ -113,6 +114,11 @@ test("exposes every allowed CLI profile through OpenClaw model visibility", () =
 
   const rendered = applyRuntimeProfiles(source, cliCatalog);
   assert.deepEqual(Object.keys(rendered.agents.defaults.models).sort(), [
+    "cursor-ask/grok-4.6-high-fast",
+    "cursor-ask/grok-4.6-low-fast",
+    "openai/gpt-5.6-sol",
+  ]);
+  assert.deepEqual(rendered.agents.defaults.modelPolicy.allow.sort(), [
     "cursor-ask/grok-4.6-high-fast",
     "cursor-ask/grok-4.6-low-fast",
     "openai/gpt-5.6-sol",
