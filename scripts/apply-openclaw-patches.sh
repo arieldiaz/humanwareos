@@ -25,6 +25,7 @@ case "$OPENCLAW_VERSION" in
       "$NODE_BIN" "$PATCH_DIR/patch-2026.7.1-prompt-boilerplate.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.7.1-slack-rich-text.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-manual-cancel-notify.mjs"
+    "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-slack-response-reliability.mjs"
     ;;
   *)
     echo "Unsupported OpenClaw version $OPENCLAW_VERSION; review runtime patches before activation." >&2
