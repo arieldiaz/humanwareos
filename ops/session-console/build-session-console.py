@@ -426,10 +426,6 @@ OUTBOUND_LIFECYCLE = {
 }
 
 
-def canonical_outbound(value):
-    return "completed" if value == "no_action" else value
-
-
 def workflow_states(events):
     states = {}
     for event in sorted(events, key=lambda item: item.get("ts") or ""):
@@ -439,8 +435,8 @@ def workflow_states(events):
         thread_id = str(details.get("threadId") or "")
         if not thread_id:
             continue
-        outbound = canonical_outbound(details.get("status"))
-        if outbound in {"completed", "closed"} or details.get("remove"):
+        outbound = details.get("status")
+        if outbound in {"no_action", "closed"} or details.get("remove"):
             states.pop(thread_id, None)
             continue
         mapped = OUTBOUND_LIFECYCLE.get(outbound)

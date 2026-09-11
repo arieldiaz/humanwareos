@@ -74,12 +74,11 @@ export const OUTBOUND_STATUS_TO_TILE = Object.freeze({
   act: "raised_hand",
   working: "arrows_counterclockwise",
   scheduled: "calendar",
-  completed: undefined,
+  no_action: undefined,
   closed: "white_check_mark",
 });
 
-const OUTBOUND_STATUSES = new Set(["answer", "act", "working", "scheduled", "completed", "closed"]);
-const LEGACY_OUTBOUND_STATUSES = new Map([["no_action", "completed"]]);
+const OUTBOUND_STATUSES = new Set(["answer", "act", "working", "scheduled", "no_action", "closed"]);
 
 function escapePattern(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -87,8 +86,7 @@ function escapePattern(value) {
 
 function parseStatusBody(body, ownerLabel = "Human") {
   const value = String(body ?? "").trim();
-  if (/^No action needed\.\s*$/i.test(value)) return { status: "completed" };
-  if (/^Turn completed\.\s*$/i.test(value)) return { status: "completed" };
+  if (/^No action needed\.\s*$/i.test(value)) return { status: "no_action" };
   if (/^Session closed\.\s*$/i.test(value)) return { status: "closed" };
   const forms = [
     ["answer", new RegExp(`^${escapePattern(ownerLabel)} — answer:\\s*([\\s\\S]*)$`, "i")],
@@ -109,9 +107,9 @@ export function renderStatusFooter(status, detail = "", ownerLabel = "Human") {
     act: `${ownerLabel} — act:${next ? ` ${next}` : ""}`,
     working: `Agent — working:${next ? ` ${next}` : ""}`,
     scheduled: `Scheduled:${next ? ` ${next}` : ""}`,
-    completed: "Turn completed.",
+    no_action: "No action needed.",
     closed: "Session closed.",
-  }[status] ?? "Turn completed.";
+  }[status] ?? "No action needed.";
   return `## Status\n${body}`;
 }
 
@@ -154,7 +152,7 @@ function retiredHeadingStatus(content) {
 // Status is normalized once and passed to the root-tile planner and ledger.
 // Arbitrary reply prose is never inspected. Typed status wins, lifecycle
 // headings and legacy footers remain compatibility inputs, and absence means
-// a completed turn rather than a manufactured obligation.
+// no action rather than a manufactured obligation.
 export function normalizeOutboundStatus(content, { explicitStatus, ownerLabel = "Human" } = {}) {
   const source = String(content ?? "").trim();
   const marker = /(?:^|\n)## Status\s*\n/g;
@@ -163,10 +161,8 @@ export function normalizeOutboundStatus(content, { explicitStatus, ownerLabel = 
   while ((match = marker.exec(source)) !== null) last = match;
   const prefix = last ? source.slice(0, last.index).trim() : source;
   const parsed = last ? parseStatusBody(source.slice(last.index + last[0].length), ownerLabel) : undefined;
-  const typed = OUTBOUND_STATUSES.has(explicitStatus)
-    ? explicitStatus
-    : LEGACY_OUTBOUND_STATUSES.get(explicitStatus);
-  const status = typed ?? parsed?.status ?? (!last ? retiredHeadingStatus(source) : undefined) ?? "completed";
+  const typed = OUTBOUND_STATUSES.has(explicitStatus) ? explicitStatus : undefined;
+  const status = typed ?? parsed?.status ?? (!last ? retiredHeadingStatus(source) : undefined) ?? "no_action";
   if (!last) return { status, content: source };
   if (!parsed) return { status, content: source };
   const lifecycle = renderLifecycleSection(status, parsed?.detail);

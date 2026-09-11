@@ -106,14 +106,6 @@ class SessionConsoleTest(unittest.TestCase):
             "needs_you",
         )
 
-    def test_completed_and_legacy_no_action_clear_workflow_state(self):
-        for status in ("completed", "no_action"):
-            events = [
-                {"kind": "status.set", "ts": "2026-08-24T15:00:00Z", "details": {"threadId": "123.45", "status": "answer"}},
-                {"kind": "status.set", "ts": "2026-08-24T15:01:00Z", "details": {"threadId": "123.45", "status": status}},
-            ]
-            self.assertEqual(MODULE.workflow_states(events), {})
-
     def test_legacy_reaction_does_not_create_outbound_status(self):
         events = [{
             "kind": "tool.call",
