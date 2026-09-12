@@ -168,6 +168,34 @@ class CanonicalSessionReaderTest(unittest.TestCase):
         self.assertTrue(history['sessionFile'].startswith('sqlite:liv:historical:'))
         self.assertEqual(len(list(MODULE.iter_sessions(self.root, 'liv'))), 1)
 
+    def test_canonical_window_and_session_key_restore_slack_projection_fields(self):
+        self.entry.pop('lastThreadId')
+        self.entry.pop('status')
+        self.entry['groupId'] = 'c1'
+        self.db.execute(
+            'UPDATE session_nodes SET entry_json = ? WHERE session_key = ?',
+            (json.dumps(self.entry), self.key),
+        )
+        self.db.execute(
+            "UPDATE session_windows SET status = 'running', channel = 'slack', chat_type = 'channel' WHERE session_id = 'current'",
+        )
+        self.db.commit()
+
+        key, current = next(iter(MODULE.iter_sessions(self.root, 'liv')))
+        self.assertEqual(key, self.key)
+        self.assertEqual(current['groupId'], 'c1')
+        self.assertEqual(current['lastThreadId'], '123.45')
+        self.assertEqual(current['lastChannel'], 'slack')
+        self.assertEqual(current['channel'], 'slack')
+        self.assertEqual(current['chatType'], 'channel')
+        self.assertEqual(current['status'], 'running')
+
+        result, _ = MODULE.build(str(self.root/'data'), str(self.root/'agents'), dry_run=True)
+        projected = result['sessions'][0]
+        self.assertEqual(projected['channelId'], 'C1')
+        self.assertEqual(projected['threadId'], '123.45')
+        self.assertEqual(projected['status'], 'active')
+
     def test_transcript_event_shape_order_usage_and_wal_visibility(self):
         self.db.execute('PRAGMA journal_mode=WAL')
         records = [
