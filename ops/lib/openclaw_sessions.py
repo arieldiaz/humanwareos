@@ -102,6 +102,29 @@ _WINDOW_FIELDS = {
 }
 
 
+_SLACK_SESSION_KEY = re.compile(
+    r"^agent:[^:]+:slack:channel:([^:]+):thread:(\d+(?:\.\d+)?)$",
+    re.IGNORECASE,
+)
+
+
+def _session_key_fields(session_key):
+    """Recover stable Slack identity from the canonical logical key."""
+    match = _SLACK_SESSION_KEY.match(str(session_key or ""))
+    if not match:
+        return {}
+    return {
+        "channel": "slack",
+        "lastChannel": "slack",
+        "groupId": match.group(1).upper(),
+        "lastThreadId": match.group(2),
+    }
+
+
+def _window_fields(window):
+    return {target: window[source] for source, target in _WINDOW_FIELDS.items() if window[source] is not None}
+
+
 def iter_sessions(state_root, agent_id, *, include_history=False):
     """Yield (key, entry), preserving archives and current-entry fields.
 
@@ -129,6 +152,11 @@ def iter_sessions(state_root, agent_id, *, include_history=False):
             if entry:
                 if entry.get("sessionId") != row["current_session_id"] or entry.get("updatedAt") != row["updated_at"]:
                     raise SessionStoreError("Canonical session identity or timestamp requires repair")
+                current_window = connection.execute("SELECT * FROM session_windows WHERE session_id = ?", (row["current_session_id"],)).fetchone()
+                if current_window:
+                    entry.update(_window_fields(current_window))
+                for key, value in _session_key_fields(row["session_key"]).items():
+                    entry.setdefault(key, value)
                 entry["sessionFile"] = _marker(path, agent_id, entry["sessionId"])
                 yield row["session_key"], entry
             if not include_history:
@@ -137,7 +165,9 @@ def iter_sessions(state_root, agent_id, *, include_history=False):
                 if entry and window["session_id"] == row["current_session_id"]:
                     continue
                 historical = {key: entry[key] for key in _HISTORY_FIELDS if key in entry}
-                historical.update({target: window[source] for source, target in _WINDOW_FIELDS.items() if window[source] is not None})
+                historical.update(_window_fields(window))
+                for key, value in _session_key_fields(row["session_key"]).items():
+                    historical.setdefault(key, value)
                 historical["sessionId"] = window["session_id"]
                 historical["sessionFile"] = _marker(path, agent_id, window["session_id"])
                 yield row["session_key"], historical
