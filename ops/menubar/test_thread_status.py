@@ -8,7 +8,7 @@ class ThreadStatusTest(unittest.TestCase):
         data = {"sessions": [
             {"channelId": "C1", "threadId": "1", "status": "active"},
             {"channelId": "C1", "threadId": "2", "outboundStatus": "working", "title": "Real work"},
-            {"channelId": "C1", "threadId": "3", "outboundStatus": "no_action"},
+            {"channelId": "C1", "threadId": "3", "outboundStatus": "closed"},
         ]}
         snapshot = thread_status.snapshot_from_sessions(data)
         self.assertEqual([(item["thread_ts"], item["status"]) for item in snapshot["threads"]], [("2", "working")])

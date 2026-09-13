@@ -561,7 +561,7 @@ export default {
           const accounts = await import(resolveSlackRuntimeModule("accounts"));
           const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
           if (!token) throw new Error(`the claimed account ${accountId ?? "unknown"} has no Slack token`);
-          await maintainStatusTile("no_action", ctx, {
+          await maintainStatusTile("working", ctx, {
             channel: route.channel,
             rootTs: route.rootTs,
             routeKey: `${route.channel.toLowerCase()}:${route.rootTs}`,
@@ -693,7 +693,7 @@ export default {
         } catch (error) {
           api.logger?.error?.(`run-signature refused an unmeasured session close: ${String(error)}`);
           normalized = {
-            status: "no_action",
+            status: "working",
             content: `⚠️ ${String(ctx.accountId ?? "Agent")} could not close this thread durably. The thread remains open; the failure is in the operational log.`,
           };
         }
