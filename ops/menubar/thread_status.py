@@ -6,6 +6,40 @@ import urllib.parse
 
 
 STATUS_LABELS = {"answer": "Clarify", "act": "Act", "working": "Working", "scheduled": "Scheduled"}
+REACTION_STATUSES = {
+    "question": "answer",
+    "raised_hand": "act",
+    "arrows_counterclockwise": "working",
+    "calendar": "scheduled",
+    "white_check_mark": "closed",
+}
+
+
+def root_status(reactions: list[dict], owner_user_id: str | None = None) -> str | None:
+    """Project the adapter-owned root tile, with the human owner's tile winning."""
+    observed = []
+    owner = []
+    for reaction in reactions or []:
+        status = REACTION_STATUSES.get(reaction.get("name"))
+        if not status:
+            continue
+        observed.append(status)
+        if owner_user_id and owner_user_id in (reaction.get("users") or []):
+            owner.append(status)
+    selected = owner or observed
+    distinct = list(dict.fromkeys(selected))
+    return distinct[0] if len(distinct) == 1 else None
+
+
+def snapshot_from_slack_roots(roots: dict, audited_at: str | None = None, owner_user_id: str | None = None) -> dict:
+    """Build the menu from the root tiles that render canonical lifecycle state."""
+    threads = []
+    for root in roots.values():
+        status = root_status(root.get("reactions") or [], owner_user_id)
+        if status not in STATUS_LABELS:
+            continue
+        threads.append({**root, "status": status})
+    return {"audited_at": audited_at, "source": "slack-root-status", "threads": threads}
 
 
 def session_status(session: dict) -> str | None:
