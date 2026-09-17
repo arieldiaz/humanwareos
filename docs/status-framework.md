@@ -6,16 +6,16 @@ Budget: 1,800 words. Over it, consolidate — do not extend. Counted in words be
 
 ## The states
 
-The internal outbound enum is `answer`, `act`, `working`, `scheduled`, `no_action`, or `closed`. The adapter records one value on the session ledger and renders the matching root tile. It never appends a generic `## Status` footer to the human-visible reply.
+The internal outbound enum is `answer`, `act`, `working`, `scheduled`, or `closed`. The adapter records one value on the session ledger and renders the matching root tile. It never appends a generic `## Status` footer to the human-visible reply.
 
 - `answer` — the human owes an answer, choice, judgment, or go. Visible closing section: `## ❓ Clarify`. Root tile: ❓ `:question:`.
 - `act` — the human owes work that only they can do with their identity, credential, vendor console, or physical access. Visible closing section: `## ✋ Act`. Root tile: ✋ `:raised_hand:`.
 - `working` — the agent still owns a long-running turn. The kickoff is plain prose with no lifecycle heading. Root tile: 🔄 `:arrows_counterclockwise:`.
 - `scheduled` — the item has a real resurface time backed by an internal durable wake. Visible closing section: `## 🗓️ Scheduled`. Root tile: 🗓️ `:calendar:`.
-- `no_action` — an ordinary answer, result, or completed reversible action with no pending handoff. The reply ends naturally. Root tile: none.
 - `closed` — the human confirmed the user-level outcome and the durable close-out was recorded. Visible closing section: `## Session Closed`. Root tile: ✅ `:white_check_mark:`.
 
 The visible lifecycle section contains the shortest useful next step. The reasoning, tradeoff, and evidence belong above it. No status sentence is added when there is no handoff.
+An ordinary reply remains `working` in the control plane, but the reply ends naturally with no visible status footer.
 
 ## Choosing the state
 
@@ -25,7 +25,7 @@ The visible lifecycle section contains the shortest useful next step. The reason
 
 **Questions have a budget.** Ask one blocking question by default, three only when inseparable. Act on the confident majority and flag reversible assumptions. Never manufacture a choice because a reply template expects one.
 
-**Working is an ownership claim.** Use it only when the agent has started follow-through that will continue after the kickoff post. A completed turn is never working merely because it lacks a lifecycle section.
+**Working is an ownership claim.** It is the default while the thread remains open and the agent owns follow-through. Finishing an agent turn does not complete the thread. Only the human can confirm the user-level outcome and move it to `closed`.
 
 **Scheduled needs an internal wake.** When the agent must message or resume work later, create an OpenClaw cron wake in the current conversation and then publish the exact `## 🗓️ Scheduled` section. Do not route that request to Apple Reminders, a calendar, or another personal task system unless the human explicitly names that destination. If the cron wake fails, report the failure and do not claim `scheduled`; no resurface date means kill it, complete it, or keep it on the agent.
 
@@ -33,9 +33,9 @@ The visible lifecycle section contains the shortest useful next step. The reason
 
 ## One value, three renderings
 
-The control plane normalizes one outbound status before delivery, writes it to the session ledger, and uses it to maintain the root tile. Human-visible lifecycle sections are the conversational rendering only for `answer`, `act`, `scheduled`, and `closed`; `working` and `no_action` deliberately add no footer.
+The control plane normalizes one outbound status before delivery, writes it to the session ledger, and uses it to maintain the root tile. Human-visible lifecycle sections are the conversational rendering only for `answer`, `act`, `scheduled`, and `closed`; `working` deliberately adds no footer.
 
-The adapter recognizes only exact lifecycle sections or explicit internal metadata. It does not infer obligation from arbitrary prose. Missing or invalid status defaults to `no_action`, which can clear a stale gateway-held transient tile but can never manufacture a handoff. Legacy `## Status` transport footers may be accepted during migration, but the adapter strips or projects them into the lifecycle rendering instead of publishing protocol text.
+The adapter recognizes only exact lifecycle sections or explicit internal metadata. It does not infer obligation from arbitrary prose. Missing or invalid status defaults to `working`, because the thread remains open until the human explicitly closes it. A human reply to an agent handoff also returns the thread to `working` while the agent processes it. Legacy `no_action` values are inert historical records and legacy `## Status` transport footers are stripped or projected instead of publishing protocol text.
 
 The mapping is exact:
 
@@ -43,7 +43,6 @@ The mapping is exact:
 - `act` → ✋
 - `working` → 🔄
 - `scheduled` → 🗓️
-- `no_action` → no tile
 - `closed` → ✅
 
 The human's root message carries at most one adapter-held lifecycle tile. A human-held lifecycle tile owns the state and is never removed or co-reacted by the adapter. Non-lifecycle reactions are never touched. Forward cleanup removes only gateway-held tiles from retired schemes when the thread next sees a send.
@@ -64,6 +63,7 @@ Status, signature, or ledger write failures are journaled for scheduled review, 
 
 ## Changelog
 
+- **2026-09-11** — Removed `no_action`. Open threads default to `working`; only the human can confirm `closed`.
 - **2026-08-24** — Restored lifecycle-only visible sections. Status remains one internal value across the ledger and root tile, while ordinary replies again end naturally.
 - **2026-08-24** — The outbound status also writes the session ledger; the menu is a view of that ledger.
 - **2026-08-23** — Replaced competing lifecycle parsers with one normalized outbound value.

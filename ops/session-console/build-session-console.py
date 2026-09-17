@@ -436,7 +436,7 @@ def workflow_states(events):
         if not thread_id:
             continue
         outbound = details.get("status")
-        if outbound in {"no_action", "closed"} or details.get("remove"):
+        if outbound == "closed" or details.get("remove"):
             states.pop(thread_id, None)
             continue
         mapped = OUTBOUND_LIFECYCLE.get(outbound)
