@@ -7,8 +7,8 @@ export function buildCursorCliBackends(command) {
     input: "arg",
     modelArg: "--model",
     modelAliases: {
-      "grok-4.6-low-fast": "grok-4.6[effort=low,fast=true]",
-      "grok-4.6-high-fast": "grok-4.6[effort=high,fast=true]"
+      "grok-4.6-low-fast": "cursor-grok-4.6-low-fast",
+      "grok-4.6-high-fast": "cursor-grok-4.6-high-fast"
     },
     sessionMode: "existing",
     sessionIdFields: ["session_id"],

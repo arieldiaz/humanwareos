@@ -8,6 +8,10 @@ test("registers parallel ask and workspace backends against the secret-safe wrap
   assert.equal(backends[0].config.command, "/runtime/cursor-agent-launch.sh");
   assert.equal(backends[0].config.jsonlDialect, "claude-stream-json");
   assert.equal(backends[0].config.serialize, false);
+  assert.deepEqual(backends[0].config.modelAliases, {
+    "grok-4.6-low-fast": "cursor-grok-4.6-low-fast",
+    "grok-4.6-high-fast": "cursor-grok-4.6-high-fast"
+  });
   assert.deepEqual(backends[0].config.sessionIdFields, ["session_id"]);
   assert.ok(backends[0].config.args.includes("ask"));
   assert.deepEqual(backends[1].config.args.slice(0, 2), ["--trust", "--auto-review"]);
