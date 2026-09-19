@@ -1,40 +1,32 @@
-# Reply shape
+# Response envelope
 
-How replies are structured on any surface. Surface mechanics: `docs/slack-style.md` / `docs/buzz-style.md`; status: `docs/status-framework.md`.
+The one contract for what an execution returns and what a conversation surface publishes. Identity files own voice and judgment; they may not define another reply format. Status mechanics live in `docs/status-framework.md`; surface rendering lives in the channel style spec.
 
 Budget: 500 words.
 
-## Default
+## Boundary
 
-Lead with the result. A short answer stays plain prose. A substantive answer uses `## TLDR`, optional `## Background`, and `## Next Step` only when work remains. No consultant theater, repeated conclusions, forced CTA, or actionless action section.
+An admitted turn has one owner at each stage: the control plane marks the turn `working`; the selected harness produces one semantic final; the adapter publishes it once, derives the terminal lifecycle state, and adds provenance after delivery. The model never posts a kickoff, progress narration, transport state, or run signature. Internal checkpoints stay in telemetry.
 
-Write plain English, not fragments, unexplained shorthand, or invented labels. Use the human's terms. When a harmless detail is missing, make one reversible assumption and continue.
+Every execution path, including Liv through Cursor and Max through Codex, receives this contract verbatim in its generated harness context. A harness or model change cannot change the envelope.
 
-If the request is actionable, act. Ask only when ambiguity blocks useful work or changes an irreversible outcome. An explicit “do it” settles a prior go. Never request permission for a reversible in-scope write already requested. If enforcement requires approval, state the exact actor, capability, scope, and consequence under `docs/permission-model.md`.
+## Final response
 
-An ordinary answer or completed reversible action ends naturally. A lifecycle closing section appears only when the human genuinely owes an answer or action, the work is scheduled, or the human has closed it. Never append `## Status`, `No action needed.`, a forced CTA, or a closing question merely to satisfy a transport contract.
+Lead with the result. A short answer stays plain prose. A substantive answer uses `## TLDR`, optional `## Background`, and `## Next Step` only when work remains. Use the human's terms, plain English, and only the structure the answer needs. Do not add consultant theater, repeated conclusions, a forced call to action, or a closing question.
 
-**A turn expected to exceed five minutes opens with one short headerless kickoff post** that causes the adapter to mark the thread in process (`docs/status-framework.md`). Shorter turns send no interim message.
+If the request is actionable, act. Ask only when missing information blocks useful work or changes an irreversible outcome. Make one reversible assumption when that is enough to proceed. An explicit request authorizes reversible in-scope work; do not request the same permission again.
 
-## Conversation topology
+An ordinary answer or completed action ends naturally. Add exactly one final lifecycle section only when there is a real handoff or durable schedule:
 
-**Only the human creates roots**; sub-agent and multi-model work stays in the existing thread. An approved spin-out is the exception and must be worked that turn.
+- `## ❓ Clarify` when the human must answer one blocking question.
+- `## ✋ Act` when the human must perform work the agent cannot do.
+- `## 🗓️ Scheduled` only after a durable wake exists.
+- `## Session Closed` only after the human approves closure; its measured body comes from the close-out tool.
 
-**The first agent post in a work thread is one short `Goal:` line**, with detail in replies that turn. One independently closeable item, one root; a root without worked replies is only an announcement. Scheduled and agent-initiated posts use the same shape.
+Never emit `## Status`, `No action needed.`, `Agent — working`, `Goal:`, or process narration about loading context, checking reply shape, thinking, or what the agent is about to do during the same turn. Do not put any text after a lifecycle section.
 
-An explicit @mention always gets a response — a reaction alone when acknowledgment is enough; guest and trigger rules may narrow this. A mention or question without a new request resumes the immediately preceding unresolved request instead of discarding context or asking what to do again.
+## Acceptance
 
-## Substantive replies
+The boundary passes only when both Liv and Max show the same observable sequence for the same case: the root gains 🔄 within five seconds of admission; Slack receives one final reply; that reply follows this shape; 🔄 is cleared or replaced by the final lifecycle tile; and the delivered reply receives the effective model, harness, and thinking reactions. Missing final output, duplicate delivery, an invalid lifecycle section, or a stale working tile is a contract failure.
 
-A substantive reply uses only what it needs:
-
-1. `## TLDR` — one to three sentences sufficient for the decision.
-2. `## Background` — brief optional context; no critical fact lives only here.
-3. `## Next Step` — the recommendation or remaining work; omit it when nothing remains.
-4. A lifecycle closing section only for a real handoff: `## ❓ Clarify`, `## ✋ Act`, `## 🗓️ Scheduled`, or the close-out below.
-
-Short prose has no heading. Bugs and incidents put what happened and the current state in TLDR. Exploration uses prose without forced resolution. Long prose gains descriptive `###` headings after three paragraphs. Brainstorms and interim Challenge turns have no lifecycle closing section; collaboration produces one human-facing handoff only when one exists.
-
-## Session close-out
-
-After the human approves closure, send `## Session Closed` plus the measured output generated by the instance's thread-stats tool; never hand-write its numbers. Save the summary at the instance-defined path because chat expires.
+Test this in four layers: deterministic source checks in CI; fixture-driven envelope and status transitions for both identities; on-demand behavioral evals against realistic prompts and pressure cases; then a small live Slack matrix after the single cutover. Behavioral evals judge observable state and structure, not exact wording.

@@ -10,7 +10,7 @@ The internal outbound enum is `answer`, `act`, `working`, `scheduled`, `no_actio
 
 - `answer` — the human owes an answer, choice, judgment, or go. Visible closing section: `## ❓ Clarify`. Root tile: ❓ `:question:`.
 - `act` — the human owes work that only they can do with their identity, credential, vendor console, or physical access. Visible closing section: `## ✋ Act`. Root tile: ✋ `:raised_hand:`.
-- `working` — the agent still owns a long-running turn. The kickoff is plain prose with no lifecycle heading. Root tile: 🔄 `:arrows_counterclockwise:`.
+- `working` — the control plane admitted the turn and still owns it. It is never rendered as conversation prose. Root tile: 🔄 `:arrows_counterclockwise:`.
 - `scheduled` — the item has a real resurface time backed by an internal durable wake. Visible closing section: `## 🗓️ Scheduled`. Root tile: 🗓️ `:calendar:`.
 - `no_action` — an ordinary answer, result, or completed reversible action with no pending handoff. The reply ends naturally. Root tile: none.
 - `closed` — the human confirmed the user-level outcome and the durable close-out was recorded. Visible closing section: `## Session Closed`. Root tile: ✅ `:white_check_mark:`.
@@ -25,7 +25,7 @@ The visible lifecycle section contains the shortest useful next step. The reason
 
 **Questions have a budget.** Ask one blocking question by default, three only when inseparable. Act on the confident majority and flag reversible assumptions. Never manufacture a choice because a reply template expects one.
 
-**Working is an ownership claim.** Use it only when the agent has started follow-through that will continue after the kickoff post. A completed turn is never working merely because it lacks a lifecycle section.
+**Working is an ownership claim.** The adapter sets it when an inbound turn is accepted, before model execution, and replaces or clears it when the one final response is sent. Models never announce working state in prose.
 
 **Scheduled needs an internal wake.** When the agent must message or resume work later, create an OpenClaw cron wake in the current conversation and then publish the exact `## 🗓️ Scheduled` section. Do not route that request to Apple Reminders, a calendar, or another personal task system unless the human explicitly names that destination. If the cron wake fails, report the failure and do not claim `scheduled`; no resurface date means kill it, complete it, or keep it on the agent.
 
@@ -33,9 +33,9 @@ The visible lifecycle section contains the shortest useful next step. The reason
 
 ## One value, three renderings
 
-The control plane normalizes one outbound status before delivery, writes it to the session ledger, and uses it to maintain the root tile. Human-visible lifecycle sections are the conversational rendering only for `answer`, `act`, `scheduled`, and `closed`; `working` and `no_action` deliberately add no footer.
+The control plane writes `working` at admission, normalizes one terminal outbound status before delivery, records both transitions in the session ledger, and uses them to maintain the root tile. Human-visible lifecycle sections are the conversational rendering only for `answer`, `act`, `scheduled`, and `closed`; `working` and `no_action` deliberately add no footer.
 
-The adapter recognizes only exact lifecycle sections or explicit internal metadata. It does not infer obligation from arbitrary prose. Missing or invalid status defaults to `no_action`, which can clear a stale gateway-held transient tile but can never manufacture a handoff. Legacy `## Status` transport footers may be accepted during migration, but the adapter strips or projects them into the lifecycle rendering instead of publishing protocol text.
+The adapter recognizes only exact lifecycle headings or explicit internal metadata. It does not infer obligation from arbitrary prose. Missing or invalid terminal status defaults to `no_action`, which clears a stale gateway-held transient tile but can never manufacture a handoff. Protocol text such as `## Status` is invalid output, not a second compatibility path.
 
 The mapping is exact:
 

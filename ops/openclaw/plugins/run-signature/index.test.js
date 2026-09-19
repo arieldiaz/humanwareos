@@ -6,6 +6,7 @@ import {
   slackApi,
   buildRunReactionNames,
   buildRunSignature,
+  ADMITTED_STATUS,
   createKeyedSerialQueue,
   createToolFailureDeduper,
   planStatusTile,
@@ -18,8 +19,6 @@ import {
   rememberAcpBoundThread,
   boundThreadFromSession,
   sessionBoundThread,
-  acpProjectionDecision,
-  extractPublishedReply,
   isAcpBindingSession,
   resolveBotUserId,
   sessionKeyForRoot,
@@ -29,6 +28,7 @@ import {
   slackRouteFromSessionKey,
   resolveSlackChannelId,
   resolveConfiguredAcpProvenance,
+  resolveDataRoot,
   normalizeThinkingLevel,
   resolveThinkingTile,
   retrySlackRateLimit,
@@ -77,23 +77,6 @@ test("suppresses a synthesized tool warning only after a human final in the same
 
 // --- explicit outbound status ---
 
-test("normalizes legacy Status forms without exposing transport prose", () => {
-  const cases = [
-    ["Human — answer: Approve it.", "answer", "## ❓ Clarify\nApprove it."],
-    ["Human — act: Complete the vendor check.", "act", "## ✋ Act\nComplete the vendor check."],
-    ["Agent — working: Running verification.", "working", ""],
-    ["Scheduled: Resurfaces Monday.", "scheduled", "## 🗓️ Scheduled\nResurfaces Monday."],
-    ["No action needed.", "no_action", ""],
-    ["Session closed.", "closed", "## Session Closed"],
-  ];
-  for (const [body, status, lifecycle] of cases) {
-    const normalized = normalizeOutboundStatus(`## TLDR\nResult.\n\n## Status\n${body}`);
-    assert.equal(normalized.status, status);
-    assert.equal(normalized.content, ["## TLDR\nResult.", lifecycle].filter(Boolean).join("\n\n"));
-    assert.doesNotMatch(normalized.content, /## Status/);
-  }
-});
-
 test("an ordinary reply creates no obligation without inspecting its prose", () => {
   assert.deepEqual(normalizeOutboundStatus("Completed the fix."), {
     status: "no_action",
@@ -111,13 +94,6 @@ test("typed status wins without parsing reply prose", () => {
     status: "working",
     content: "Verification is running.",
   });
-});
-
-test("explicit transport status wins over earlier lifecycle prose", () => {
-  const normalized = normalizeOutboundStatus("## ❓ Clarify\nOld prose\n\n## Status\nNo action needed.");
-  assert.equal(normalized.status, "no_action");
-  assert.match(normalized.content, /## ❓ Clarify/);
-  assert.doesNotMatch(normalized.content, /## Status/);
 });
 
 test("lifecycle headings map directly without being rewritten", () => {
@@ -140,24 +116,6 @@ test("a human ✅ on the root is closed and outranks the outbound status", () =>
   const botOnly = [{ name: "white_check_mark", users: ["UBOT"] }];
   assert.equal(resolveStatusTile("answer", botOnly, "UBOT"), "question");
   assert.equal(resolveStatusTile("answer", [], "UBOT"), "question");
-});
-
-test("each footer value drives its exact root-tile transition", () => {
-  const cases = [
-    ["Human — answer: Decide.", "question"],
-    ["Human — act: Complete it.", "raised_hand"],
-    ["Agent — working: Continuing.", "arrows_counterclockwise"],
-    ["Scheduled: Monday.", "calendar"],
-    ["No action needed.", undefined],
-    ["Session closed.", "white_check_mark"],
-  ];
-  for (const [body, expected] of cases) {
-    const { status } = normalizeOutboundStatus(`Result.\n\n## Status\n${body}`);
-    const lifecycle = resolveStatusTile(status, [], SPEC.botUserIds);
-    const plan = planStatusTile([ownTile("arrows_counterclockwise")], { ...SPEC, lifecycle });
-    assert.equal(addNames(plan)[0], expected === "arrows_counterclockwise" ? undefined : expected);
-    if (expected === "arrows_counterclockwise") assert.equal(plan.unchanged, true);
-  }
 });
 
 // --- tiles ---
@@ -231,6 +189,12 @@ test("first send lays exactly one tile: the lifecycle status", () => {
   const plan = planStatusTile([], { ...SPEC, lifecycle: "question" });
   assert.deepEqual(addNames(plan), ["question"]);
   assert.deepEqual(plan.remove, []);
+});
+
+test("an admitted turn deterministically lays the working tile", () => {
+  assert.equal(ADMITTED_STATUS, "working");
+  const lifecycle = resolveStatusTile(ADMITTED_STATUS, [], SPEC.botUserIds);
+  assert.deepEqual(addNames(planStatusTile([], { ...SPEC, lifecycle })), ["arrows_counterclockwise"]);
 });
 
 test("a correct status tile is a strict no-op", () => {
@@ -650,21 +614,16 @@ test("reads the Slack root from the ACP session row when the send omits threadId
   );
 });
 
-test("drops ACP work narration and keeps the polished reply", () => {
+test("identifies ACP binding sessions without interpreting reply prose", () => {
   assert.equal(isAcpBindingSession("agent:liv:acp:binding:slack:liv:abc"), true);
   assert.equal(isAcpBindingSession("agent:liv:slack:channel:c0b:thread:1.1"), false);
-  assert.deepEqual(acpProjectionDecision("final", "I'll check the plugin next."), { deliver: true, text: "I'll check the plugin next." });
-  assert.equal(acpProjectionDecision("block", "Closing this now.").deliver, false);
-  assert.equal(
-    acpProjectionDecision("final", "Working the Claude cutover, this will take a few minutes.").deliver,
-    true,
-  );
-  const mixed = "I'll orient on the thread.\n\n## TLDR\nDone.\n\n## Status\nNo action needed.";
-  assert.equal(extractPublishedReply(mixed), "## TLDR\nDone.\n\n## Status\nNo action needed.");
-  assert.deepEqual(acpProjectionDecision("final", mixed), {
-    deliver: true,
-    text: mixed,
-  });
+});
+
+test("resolves the canonical data root explicitly or from an agent workspace", () => {
+  const config = { agents: { entries: { liv: { workspace: "/srv/humanware/working/agents/liv" } } } };
+  assert.equal(resolveDataRoot(config, {}, "liv", {}), "/srv/humanware");
+  assert.equal(resolveDataRoot(config, { dataRoot: "/data" }, "liv", {}), "/data");
+  assert.equal(resolveDataRoot({ agents: { entries: { liv: { workspace: "/tmp/liv" } } } }, {}, "liv", {}), undefined);
 });
 
 test("resolves Slack DM destinations from the canonical session route", () => {

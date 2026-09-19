@@ -19,7 +19,7 @@ test("creates a root, then targets the returned root with the first reply", asyn
   });
 
   assert.equal(calls.length, 2);
-  assert.equal(calls[0].message, "Goal: Ship the focused fix.");
+  assert.equal(calls[0].message, "Ship the focused fix.");
   assert.equal(calls[0].topLevel, true);
   assert.equal(calls[0].threadId, undefined);
   assert.equal(calls[1].threadId, ids[0]);

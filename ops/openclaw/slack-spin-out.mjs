@@ -14,7 +14,7 @@ export async function createSlackWorkThread({ accountId, agentId, channel, goal,
     agentId,
     channel: "slack",
     to: `channel:${channel}`,
-    message: `Goal: ${goal}`,
+    message: goal,
     topLevel: true,
     idempotencyKey: `slack-spin-out:${agentId}:${channel}:${crypto.randomUUID()}:root`,
   });
