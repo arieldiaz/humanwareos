@@ -1,10 +1,11 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import {loadSessionEntry} from "./session-store.mjs";
 import { homedir } from "node:os";
 import {
   STRIP_NAME_SET,
+  ADMITTED_STATUS,
   normalizeReactions,
   resolveModelTile,
   resolveHarnessTile,
@@ -30,7 +31,7 @@ export {
   resolveThinkingTile,
   normalizeThinkingLevel,
   normalizeOutboundStatus,
-  renderStatusFooter,
+  ADMITTED_STATUS,
   resolveStatusTile,
   planStatusTile,
   tileKind,
@@ -43,7 +44,6 @@ export {
 const HOME = homedir();
 const STATE_ROOT = process.env.OPENCLAW_STATE_DIR || join(HOME, ".openclaw");
 const FAULT_JOURNAL = `${STATE_ROOT}/run-signature/faults.jsonl`;
-const DATA_ROOT = process.env.HUMANWARE_DATA_ROOT || `${HOME}/humanware-data`;
 const OUTBOUND_EMOJI = {
   answer: "question",
   act: "raised_hand",
@@ -52,8 +52,9 @@ const OUTBOUND_EMOJI = {
   closed: "white_check_mark",
 };
 
-async function recordOutboundStatus({ channel, threadId, status, agent, traceId, sessionKey, runId }) {
+async function recordOutboundStatus({ dataRoot, channel, threadId, status, agent, traceId, sessionKey, runId }) {
   if (!channel || !threadId || !status) return;
+  if (!dataRoot) throw new Error("the canonical Humanware data root is unavailable");
   const ts = new Date().toISOString();
   const event = {
     schemaVersion: 2,
@@ -70,7 +71,7 @@ async function recordOutboundStatus({ channel, threadId, status, agent, traceId,
     details: { channelId: channel, threadId, status, emoji: OUTBOUND_EMOJI[status] },
     sourceRef: {sessionKey: sessionKey ?? null, runId: runId ?? null},
   };
-  const path = `${DATA_ROOT}/evidence/sessions/events/${ts.slice(0, 10)}.jsonl`;
+  const path = join(dataRoot, "evidence", "sessions", "events", `${ts.slice(0, 10)}.jsonl`);
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, `${JSON.stringify(event)}\n`, { mode: 0o600 });
 }
@@ -303,55 +304,6 @@ export function sessionBoundThread(session) {
   return { channel: channel || undefined, rootTs };
 }
 
-const WORK_NARRATION = /^(i['’]ll|i will|i need|next i['’]ll|let me|looking at|closing this|working on|checking|the close path|orienting)\b/i;
-
-export function isWorkNarration(content) {
-  return WORK_NARRATION.test(String(content ?? "").trim());
-}
-
-export function isLongRunKickoff(content) {
-  const source = String(content ?? "").trim();
-  if (!source || /^##\s/m.test(source)) return false;
-  if (isWorkNarration(source)) return false;
-  const lines = source.split(/\n/).filter((line) => line.trim());
-  return lines.length === 1 && source.length < 200;
-}
-
-export function extractPublishedReply(content) {
-  const source = String(content ?? "").trim();
-  if (!source) return "";
-  const parts = source.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
-  const tldr = parts.findLastIndex((part) => /^## TLDR\s*$/i.test(part.split("\n", 1)[0]));
-  if (tldr >= 0) return parts.slice(tldr).join("\n\n");
-  const status = parts.findLastIndex((part) => /^## Status\s*$/i.test(part.split("\n", 1)[0]));
-  if (status >= 0) {
-    let start = status;
-    while (start > 0 && !isWorkNarration(parts[start - 1])) start -= 1;
-    return parts.slice(start).join("\n\n");
-  }
-  let start = -1;
-  for (let i = parts.length - 1; i >= 0; i -= 1) {
-    if (/^##\s/.test(parts[i]) || (!isWorkNarration(parts[i]) && parts[i].length > 80)) {
-      start = i;
-      break;
-    }
-  }
-  if (start >= 0) return parts.slice(start).join("\n\n");
-  const last = parts.at(-1) ?? source;
-  if (isWorkNarration(last) && !isLongRunKickoff(last)) return "";
-  return last;
-}
-
-export function acpProjectionDecision(kind, content) {
-  const source = String(content ?? "").trim();
-  if (kind === "final") return source ? { deliver: true, text: source } : { deliver: false };
-  if (isLongRunKickoff(source)) return { deliver: true, text: source };
-  const published = extractPublishedReply(source);
-  if (!published) return { deliver: false };
-  if (isWorkNarration(published) && !/^##\s/m.test(published)) return { deliver: false };
-  return { deliver: true, text: published };
-}
-
 // Ownership decides what we are allowed to remove, so it cannot be guessed.
 // The send-side hook context does not carry the bot's own user id, so ask
 // Slack once per token and keep it.
@@ -411,6 +363,17 @@ function configuredAgent(config, agentId) {
     return Object.entries(config.agents.entries).find(([key]) => key.toLowerCase() === id)?.[1];
   }
   return (config?.agents?.list ?? []).find((agent) => String(agent?.id ?? "").toLowerCase() === id);
+}
+
+export function resolveDataRoot(config, pluginConfig, agentId, env = process.env) {
+  const explicit = String(pluginConfig?.dataRoot ?? env.HUMANWARE_DATA_ROOT ?? "").trim();
+  if (explicit) return isAbsolute(explicit) ? explicit : undefined;
+  const workspace = String(configuredAgent(config, agentId)?.workspace ?? "").replace(/\/$/, "");
+  const agentsDir = dirname(workspace);
+  const workingDir = dirname(agentsDir);
+  return isAbsolute(workspace) && basename(agentsDir) === "agents" && basename(workingDir) === "working"
+    ? dirname(workingDir)
+    : undefined;
 }
 
 export function resolveConfiguredThinking(config, agentId) {
@@ -561,7 +524,7 @@ export default {
           const accounts = await import(resolveSlackRuntimeModule("accounts"));
           const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
           if (!token) throw new Error(`the claimed account ${accountId ?? "unknown"} has no Slack token`);
-          await maintainStatusTile("no_action", ctx, {
+          await maintainStatusTile(ADMITTED_STATUS, ctx, {
             channel: route.channel,
             rootTs: route.rootTs,
             routeKey: `${route.channel.toLowerCase()}:${route.rootTs}`,
@@ -569,7 +532,7 @@ export default {
             token,
           });
         } catch (error) {
-          api.logger?.error?.(`run-signature could not clear the prior inbound obligation: ${String(error)}`);
+          api.logger?.error?.(`run-signature could not mark the admitted turn working: ${String(error)}`);
         }
       });
     }
@@ -647,19 +610,13 @@ export default {
         api.logger?.info?.(`run-signature suppressed recovered tool warning for run=${event.runId}`);
         return { cancel: true, reason: "the same run already delivered a human final" };
       }
-      let payload = event.payload;
       if (isAcpBindingSession(ctx.sessionKey) && event.kind !== "tool") {
-        const decision = acpProjectionDecision(event.kind, payload?.text);
-        if (!decision.deliver) {
+        if (event.kind !== "final") {
           api.logger?.info?.(`run-signature cancelled ACP ${event.kind} projection`);
-          return { cancel: true, reason: "ACP mid-turn text is not a published post" };
-        }
-        if (decision.text !== String(payload?.text ?? "").trim()) {
-          payload = { ...payload, text: decision.text };
+          return { cancel: true, reason: "only the ACP final is a conversation post" };
         }
       }
-      if (event.kind === "final") toolFailureDeduper.recordHumanFinal({ ...event, payload });
-      return payload !== event.payload ? { payload } : undefined;
+      if (event.kind === "final") toolFailureDeduper.recordHumanFinal(event);
     });
 
     // This hook must never be the reason a reply fails to reach the human, so
@@ -672,7 +629,6 @@ export default {
       if (isExcludedChannel(channel)) return;
       let normalized = normalizeOutboundStatus(redactSlackReferences(event.content), {
         explicitStatus: event.metadata?.outboundStatus,
-        ownerLabel,
       });
       if (normalized.status === "closed") {
         try {
@@ -724,7 +680,7 @@ export default {
       if (pendingClose && event.success && event.messageId) {
         try {
           await recordSessionClose({
-            dataRoot: DATA_ROOT,
+            dataRoot: resolveDataRoot(api.config, api.pluginConfig, pendingClose.agent),
             ...pendingClose,
             closeMessageId: String(event.messageId),
           });
@@ -965,6 +921,7 @@ export default {
           await journalRecovery(channel, rootTs);
           try {
             await recordOutboundStatus({
+              dataRoot: resolveDataRoot(api.config, api.pluginConfig, accountId),
               channel,
               threadId: rootTs,
               status: outboundStatus,

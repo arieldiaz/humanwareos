@@ -9,6 +9,7 @@
     "type": "object",
     "properties": {
       "ownerLabel": {"type": "string", "minLength": 1},
+      "dataRoot": {"type": "string", "pattern": "^/"},
       "excludedChannels": {
         "type": "array",
         "items": {"type": "string", "pattern": "^[A-Z0-9]+$"},

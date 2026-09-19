@@ -44,7 +44,7 @@ Each identity has one default profile, one optional escalation profile, and an a
 
 OpenClaw remains owner of the conversation when it delegates a task to an external harness. The task receives an isolated worktree and a structured handoff containing objective, conversation root, agent identity, decisions, source references, branch, changed files, tests, and unresolved questions.
 
-Short work runs inline and returns results to the owning identity. Work expected to exceed the interactive target is acknowledged promptly, then runs as a durable child task with the escalation profile. A long coding conversation may explicitly bind the thread to a persistent ACP session. Permanent channel-wide ACP bindings are exceptional because they couple delivery, permissions, model choice, and startup behavior to one harness.
+Short work runs inline and returns results to the owning identity. Longer work may run as a durable child task with the escalation profile, while the control plane exposes working state without a model-authored acknowledgement. A long coding conversation may explicitly bind the thread to a persistent ACP session. Permanent channel-wide ACP bindings are exceptional because they couple delivery, permissions, model choice, and startup behavior to one harness.
 
 Switching profiles creates a handoff event; it does not pretend two harness session stores are one transcript. The visible response signature records the effective agent, model, harness, reasoning, and runtime for that message.
 
@@ -60,7 +60,7 @@ The control plane verifies the profile's data and tool scopes before dispatch. S
 
 Every execution path returns one canonical final response to the control plane. The adapter owns surface publication and appends provenance after confirmed delivery. An external harness does not independently call a Slack or Buzz send tool unless the profile explicitly declares that transport and prevents duplicate delivery.
 
-Mid-turn progress is structured telemetry in the session ledger. The session console may render status, selected profile, checkpoints, tool summaries, artifacts, and elapsed time. Conversation adapters render only a bounded acknowledgement, a question that genuinely blocks work, and the final summary; internal narration and hidden harness finals never silently replace the final response.
+Mid-turn progress is structured telemetry in the session ledger. The session console may render status, selected profile, checkpoints, tool summaries, artifacts, and elapsed time. Conversation adapters publish the one final response; internal narration and hidden harness finals never become conversation posts.
 
 ## Health
 

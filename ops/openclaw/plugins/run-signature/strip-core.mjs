@@ -78,66 +78,21 @@ export const OUTBOUND_STATUS_TO_TILE = Object.freeze({
   no_action: undefined,
   closed: "white_check_mark",
 });
+export const ADMITTED_STATUS = "working";
 
 const OUTBOUND_STATUSES = new Set(["answer", "act", "working", "scheduled", "no_action", "closed"]);
-
-function escapePattern(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function parseStatusBody(body, ownerLabel = "Human") {
-  const value = String(body ?? "").trim();
-  if (/^No action needed\.\s*$/i.test(value)) return { status: "no_action" };
-  if (/^Session closed\.\s*$/i.test(value)) return { status: "closed" };
-  const forms = [
-    ["answer", new RegExp(`^${escapePattern(ownerLabel)} — answer:\\s*([\\s\\S]*)$`, "i")],
-    ["act", new RegExp(`^${escapePattern(ownerLabel)} — act:\\s*([\\s\\S]*)$`, "i")],
-    ["working", /^Agent — working:\s*([\s\S]*)$/i],
-    ["scheduled", /^Scheduled:\s*([\s\S]*)$/i],
-  ];
-  for (const [status, pattern] of forms) {
-    const match = value.match(pattern);
-    if (match) return { status, detail: match[1].trim() };
-  }
-}
-
-export function renderStatusFooter(status, detail = "", ownerLabel = "Human") {
-  const next = String(detail ?? "").trim();
-  const body = {
-    answer: `${ownerLabel} — answer:${next ? ` ${next}` : ""}`,
-    act: `${ownerLabel} — act:${next ? ` ${next}` : ""}`,
-    working: `Agent — working:${next ? ` ${next}` : ""}`,
-    scheduled: `Scheduled:${next ? ` ${next}` : ""}`,
-    no_action: "No action needed.",
-    closed: "Session closed.",
-  }[status] ?? "No action needed.";
-  return `## Status\n${body}`;
-}
-
-function renderLifecycleSection(status, detail = "") {
-  const next = String(detail ?? "").trim();
-  const heading = {
-    answer: "## ❓ Clarify",
-    act: "## ✋ Act",
-    scheduled: "## 🗓️ Scheduled",
-    closed: "## Session Closed",
-  }[status];
-  if (!heading) return "";
-  return next ? `${heading}\n${next}` : heading;
-}
-
-const RETIRED_HEADING_STATUS = [
+const LIFECYCLE_HEADING_STATUS = [
   ["answer", /^## ❓ Clarify\s*$/m],
   ["act", /^## ✋ Act\s*$/m],
   ["scheduled", /^## 🗓️ Scheduled\s*$/m],
   ["closed", /^## Session Closed\s*$/m],
 ];
 
-function retiredHeadingStatus(content) {
+function lifecycleHeadingStatus(content) {
   const source = String(content ?? "");
   let status;
   let lastIndex = -1;
-  for (const [name, pattern] of RETIRED_HEADING_STATUS) {
+  for (const [name, pattern] of LIFECYCLE_HEADING_STATUS) {
     const re = new RegExp(pattern.source, "gm");
     let match;
     while ((match = re.exec(source)) !== null) {
@@ -150,25 +105,12 @@ function retiredHeadingStatus(content) {
   return status;
 }
 
-// Status is normalized once and passed to the root-tile planner and ledger.
-// Arbitrary reply prose is never inspected. Typed status wins, lifecycle
-// headings and legacy footers remain compatibility inputs, and absence means
-// no action rather than a manufactured obligation.
-export function normalizeOutboundStatus(content, { explicitStatus, ownerLabel = "Human" } = {}) {
+// Typed status wins. Otherwise only an exact lifecycle heading is semantic;
+// arbitrary prose and retired transport footers never manufacture an obligation.
+export function normalizeOutboundStatus(content, { explicitStatus } = {}) {
   const source = String(content ?? "").trim();
-  const marker = /(?:^|\n)## Status\s*\n/g;
-  let match;
-  let last;
-  while ((match = marker.exec(source)) !== null) last = match;
-  const prefix = last ? source.slice(0, last.index).trim() : source;
-  const parsed = last ? parseStatusBody(source.slice(last.index + last[0].length), ownerLabel) : undefined;
   const typed = OUTBOUND_STATUSES.has(explicitStatus) ? explicitStatus : undefined;
-  const status = typed ?? parsed?.status ?? (!last ? retiredHeadingStatus(source) : undefined) ?? "no_action";
-  if (!last) return { status, content: source };
-  if (!parsed) return { status, content: source };
-  const lifecycle = renderLifecycleSection(status, parsed?.detail);
-  const visible = [prefix, lifecycle].filter(Boolean).join("\n\n");
-  return { status, content: visible || source };
+  return { status: typed ?? lifecycleHeadingStatus(source) ?? "no_action", content: source };
 }
 
 // A ✅ the human placed is the thread's closed state, and a bot cannot remove
