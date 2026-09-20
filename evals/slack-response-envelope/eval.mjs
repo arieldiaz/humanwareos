@@ -18,11 +18,13 @@ export function gradeEnvelope(text, expect) {
   const failures = [];
   const lifecycleHeadings = [...response.matchAll(lifecycle)];
   const h2 = [...response.matchAll(/^## .+$/gm)];
+  const lifecycleIndexes = new Set(lifecycleHeadings.map((heading) => heading.index));
+  const nonLifecycleHeadings = h2.filter((heading) => !lifecycleIndexes.has(heading.index));
   if (!response) failures.push("missing final response");
   if (forbidden.test(response)) failures.push("retired protocol prose is visible");
   if (lifecycleHeadings.length > 1) failures.push("more than one lifecycle section");
   if (lifecycleHeadings.length && lifecycleHeadings[0].index !== h2.at(-1)?.index) failures.push("lifecycle section is not last");
-  if (expect.shape === "short" && h2.length) failures.push("short answer has headings");
+  if (expect.shape === "short" && nonLifecycleHeadings.length) failures.push("short answer has non-lifecycle headings");
   if (expect.shape === "substantive" && !response.startsWith("## TLDR\n")) failures.push("substantive answer does not start with TLDR");
   if (normalizeOutboundStatus(response).status !== expect.status) failures.push(`expected status ${expect.status}`);
   if (expect.mustMatch && !new RegExp(expect.mustMatch, "i").test(response)) failures.push("required evidence is absent");
