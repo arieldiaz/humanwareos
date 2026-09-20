@@ -13,7 +13,7 @@ The internal outbound enum is `answer`, `act`, `working`, `scheduled`, `no_actio
 - `working` — the control plane admitted the turn and still owns it. It is never rendered as conversation prose. Root tile: 🔄 `:arrows_counterclockwise:`.
 - `scheduled` — the item has a real resurface time backed by an internal durable wake. Visible closing section: `## 🗓️ Scheduled`. Root tile: 🗓️ `:calendar:`.
 - `no_action` — an ordinary answer, result, or completed reversible action with no pending handoff. The reply ends naturally. Root tile: none.
-- `closed` — the human confirmed the user-level outcome and the durable close-out was recorded. Visible closing section: `## Session Closed`. Root tile: ✅ `:white_check_mark:`.
+- `closed` — no other lifecycle state applies, the human confirmed the user-level outcome, and the durable close-out was recorded. Visible closing section: `## Session Closed`. Root tile: ✅ `:white_check_mark:`.
 
 The visible lifecycle section contains the shortest useful next step. The reasoning, tradeoff, and evidence belong above it. No status sentence is added when there is no handoff.
 
@@ -46,9 +46,9 @@ The mapping is exact:
 - `no_action` → no tile
 - `closed` → ✅
 
-The human's root message carries at most one adapter-held lifecycle tile. A human-held lifecycle tile owns the state and is never removed or co-reacted by the adapter. Non-lifecycle reactions are never touched. Forward cleanup removes only gateway-held tiles from retired schemes when the thread next sees a send.
+The human's root message carries at most one adapter-held lifecycle tile. Human reactions are never removed. Non-lifecycle reactions are never touched. Forward cleanup removes only gateway-held tiles from retired schemes when the thread next sees a send.
 
-✅ remains the human's decision. Their confirmation in the thread or their own ✅ on the root authorizes the close-out. A human-held ✅ outranks a later agent status until the human reopens the work.
+✅ remains the human's decision, but it never overrides unresolved work, review, clarification, action, or a durable schedule. Their confirmation in the thread or their own ✅ on the root authorizes the close-out only when no other lifecycle state applies.
 
 ## Collaboration
 

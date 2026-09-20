@@ -110,9 +110,11 @@ test("lifecycle headings map directly without being rewritten", () => {
   }
 });
 
-test("a human ✅ on the root is closed and outranks the outbound status", () => {
+test("a human ✅ preserves closure but does not override unresolved status", () => {
   const reactions = [{ name: "white_check_mark", users: ["UHUMAN"] }];
-  assert.equal(resolveStatusTile("answer", reactions, "UBOT"), "white_check_mark");
+  assert.equal(resolveStatusTile("answer", reactions, "UBOT"), "question");
+  assert.equal(resolveStatusTile("act", reactions, "UBOT"), "raised_hand");
+  assert.equal(resolveStatusTile("no_action", reactions, "UBOT"), "white_check_mark");
   const botOnly = [{ name: "white_check_mark", users: ["UBOT"] }];
   assert.equal(resolveStatusTile("answer", botOnly, "UBOT"), "question");
   assert.equal(resolveStatusTile("answer", [], "UBOT"), "question");
@@ -255,6 +257,13 @@ test("a stale bot status is dropped when the human's ✅ owns the state", () => 
   assert.deepEqual(plan.add, []);
 });
 
+test("an unresolved status is shown without removing a human ✅", () => {
+  const observed = [{ name: "white_check_mark", users: ["UHUMAN"] }];
+  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "question" });
+  assert.deepEqual(plan.remove, []);
+  assert.deepEqual(addNames(plan), ["question"]);
+});
+
 test("the other agent's status tile is replaced with its own token", () => {
   const observed = [{ name: "question", users: ["UMAX"] }];
   const plan = planStatusTile(observed, { ...SPEC, lifecycle: "raised_hand" });
@@ -299,9 +308,9 @@ test("reads Slack's canonical name for the aliased ✋ tile", () => {
 
 test("the other agent's ✅ is a bot close, not the human's", () => {
   const maxDone = [{ name: "white_check_mark", users: ["UMAX"] }];
-  assert.equal(resolveStatusTile("answer", maxDone, new Set(["ULIV", "UMAX"])), "question");
+  assert.equal(resolveStatusTile("no_action", maxDone, new Set(["ULIV", "UMAX"])), undefined);
   const humanDone = [{ name: "white_check_mark", users: ["UHUMAN"] }];
-  assert.equal(resolveStatusTile("answer", humanDone, new Set(["ULIV", "UMAX"])), "white_check_mark");
+  assert.equal(resolveStatusTile("no_action", humanDone, new Set(["ULIV", "UMAX"])), "white_check_mark");
 });
 
 // --- infrastructure ---

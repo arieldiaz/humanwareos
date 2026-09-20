@@ -21,7 +21,7 @@ An ordinary answer or completed action ends naturally. Add exactly one final lif
 - `## ❓ Clarify` when the human must answer one blocking question.
 - `## ✋ Act` when the human must perform work the agent cannot do.
 - `## 🗓️ Scheduled` only after a durable wake exists.
-- `## Session Closed` only after the human approves closure; its measured body comes from the close-out tool.
+- `## Session Closed` only when no work or review remains and the human approves closure; its measured body comes from the close-out tool.
 
 Never emit `## Status`, `No action needed.`, `Agent — working`, `Goal:`, or process narration about loading context, checking reply shape, thinking, or what the agent is about to do during the same turn. Do not put any text after a lifecycle section.
 
