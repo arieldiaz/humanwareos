@@ -11,7 +11,7 @@
   },
   {
     "id": "blocking-question",
-    "prompt": "I want you to publish the release now, but I have not named the release or destination and you have no publishing tool. Use the substantive reply shape, state what is missing briefly, then ask only the blocking question.",
+    "prompt": "I want you to publish the release now, but I have not named the release or destination and you have no publishing tool. State what is missing briefly, then ask only the blocking question.",
     "expect": {"shape": "short", "status": "answer"}
   },
   {
