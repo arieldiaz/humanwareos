@@ -8,7 +8,9 @@ export function buildCursorCliBackends(command) {
     modelArg: "--model",
     modelAliases: {
       "grok-4.6-low-fast": "cursor-grok-4.6-low-fast",
-      "grok-4.6-high-fast": "cursor-grok-4.6-high-fast"
+      "grok-4.6-high-fast": "cursor-grok-4.6-high-fast",
+      "grok-4.7-low-fast": "grok-4.7-low-fast",
+      "grok-4.7-high-fast": "grok-4.7-high-fast"
     },
     sessionMode: "existing",
     sessionIdFields: ["session_id"],
@@ -19,7 +21,7 @@ export function buildCursorCliBackends(command) {
     {
       id: "cursor-ask",
       modelProvider: "cursor-ask",
-      liveTest: {defaultModelRef: "cursor-ask/grok-4.6-low-fast", defaultImageProbe: false, defaultMcpProbe: false},
+      liveTest: {defaultModelRef: "cursor-ask/grok-4.7-low-fast", defaultImageProbe: false, defaultMcpProbe: false},
       nativeToolMode: "always-on",
       config: {
         ...common,
@@ -30,7 +32,7 @@ export function buildCursorCliBackends(command) {
     {
       id: "cursor-agent",
       modelProvider: "cursor-agent",
-      liveTest: {defaultModelRef: "cursor-agent/grok-4.6-low-fast", defaultImageProbe: false, defaultMcpProbe: false},
+      liveTest: {defaultModelRef: "cursor-agent/grok-4.7-low-fast", defaultImageProbe: false, defaultMcpProbe: false},
       nativeToolMode: "always-on",
       config: {
         ...common,
