@@ -89,18 +89,18 @@ class SessionConsoleTest(unittest.TestCase):
             _, second_additions = MODULE.build(str(data), str(agents))
             self.assertEqual(second_additions, 0)
 
-    def test_status_set_event_classifies_needs_you_not_idle(self):
+    def test_status_set_event_classifies_on_human_not_idle(self):
         events = [
             {
                 "kind": "status.set",
                 "ts": "2026-08-24T15:00:00Z",
-                "details": {"threadId": "123.45", "status": "answer", "emoji": "question"},
+                "details": {"threadId": "123.45", "status": "act", "emoji": "raised_hand"},
             }
         ]
         workflow = MODULE.workflow_states(events)["123.45"]
         self.assertEqual(workflow["state"], "needs_you")
-        self.assertEqual(workflow["emoji"], "question")
-        self.assertEqual(workflow["outbound"], "answer")
+        self.assertEqual(workflow["emoji"], "raised_hand")
+        self.assertEqual(workflow["outbound"], "act")
         self.assertEqual(
             MODULE.classify({"runStatuses": ["done"], "updatedAt": "2026-08-01T00:00:00Z"}, workflow, datetime.now(timezone.utc)),
             "needs_you",
@@ -120,8 +120,8 @@ class SessionConsoleTest(unittest.TestCase):
         workflow = {"state": "active", "outbound": "working"}
         self.assertIsNone(MODULE.effective_workflow(workflow, ["done"]))
         self.assertEqual(MODULE.effective_workflow(workflow, ["running"]), workflow)
-        answer = {"state": "needs_you", "outbound": "answer"}
-        self.assertEqual(MODULE.effective_workflow(answer, ["done"]), answer)
+        act = {"state": "needs_you", "outbound": "act"}
+        self.assertEqual(MODULE.effective_workflow(act, ["done"]), act)
 
 
 class CanonicalSessionReaderTest(unittest.TestCase):

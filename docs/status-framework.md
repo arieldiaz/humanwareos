@@ -1,70 +1,60 @@
 # Status framework
 
-The shared lifecycle taxonomy for Humanware OS and any instance built on it. Status is control-plane state. Conversation prose shows it only when there is a real handoff, scheduled outcome, or confirmed close.
+Lifecycle is control-plane state. It answers one question: who or what owns the next move?
 
-Budget: 1,800 words. Over it, consolidate — do not extend. Counted in words because these files are not hard-wrapped.
+Budget: 900 words. Over it, consolidate.
 
-## The states
+## Four states
 
-The internal outbound enum is `answer`, `act`, `working`, `scheduled`, `no_action`, or `closed`. The adapter records one value on the session ledger and renders the matching root tile. It never appends a generic `## Status` footer to the human-visible reply.
+The canonical enum has exactly four values:
 
-- `answer` — the human owes an answer, choice, judgment, or go. Visible closing section: `## ❓ Clarify`. Root tile: ❓ `:question:`.
-- `act` — the human owes work that only they can do with their identity, credential, vendor console, or physical access. Visible closing section: `## ✋ Act`. Root tile: ✋ `:raised_hand:`.
-- `working` — the control plane admitted the turn and still owns it. It is never rendered as conversation prose. Root tile: 🔄 `:arrows_counterclockwise:`.
-- `scheduled` — the item has a real resurface time backed by an internal durable wake. Visible closing section: `## 🗓️ Scheduled`. Root tile: 🗓️ `:calendar:`.
-- `no_action` — an ordinary answer, result, or completed reversible action with no pending handoff. The reply ends naturally. Root tile: none.
-- `closed` — the human confirmed the user-level outcome and the durable close-out was recorded. Visible closing section: `## Session Closed`. Root tile: ✅ `:white_check_mark:`.
+- `working` — on the agent now. Root tile: 🔄 `:arrows_counterclockwise:`.
+- `act` — on the human, whether the need is an answer, decision, credential, physical action, or identity-bound step. Root tile: ✋ `:raised_hand:`.
+- `scheduled` — on a durable wake with a real resurface time. Root tile: 🗓️ `:calendar:`.
+- `done` — no next move remains from the current outcome. Root tile: ✅ `:white_check_mark:`.
 
-The visible lifecycle section contains the shortest useful next step. The reasoning, tradeoff, and evidence belong above it. No status sentence is added when there is no handoff.
+A question is content, not a lifecycle phase. Ordinary answers and completed actions are `done`.
 
-## Choosing the state
+## Normal path
 
-**Answer and act name different obligations.** Use `answer` for a blocking question. Use `act` only when the next step genuinely needs the human's hands. Before assigning action, ask whether the agent can do it with available tools and authority. If so, do it.
+The adapter writes `working` when it admits a human turn, before model execution. The model produces one semantic final. The adapter then derives one terminal state:
 
-**An explicit request already supplies authority for reversible in-scope work.** Do not turn it into another approval request. A go is needed only for work that is irreversible, outward-facing, costly, or outside existing authority. When a true go is required, state the recommendation before the question.
+- an exact `## ✋ Act` section means `act`;
+- an exact `## 🗓️ Scheduled` section means `scheduled`;
+- otherwise the delivered final is `done`.
 
-**Questions have a budget.** Ask one blocking question by default, three only when inseparable. Act on the confident majority and flag reversible assumptions. Never manufacture a choice because a reply template expects one.
+The exact `## Session Closed` heading also resolves to `done` and requests the measured durable close transaction. It is not a fifth state.
 
-**Working is an ownership claim.** The adapter sets it when an inbound turn is accepted, before model execution, and replaces or clears it when the one final response is sent. Models never announce working state in prose.
+Typed control-plane state may override the heading when a non-conversation execution path supplies it. Only the four canonical values are valid. There is no legacy parser for retired values or headings.
 
-**Scheduled needs an internal wake.** When the agent must message or resume work later, create an OpenClaw cron wake in the current conversation and then publish the exact `## 🗓️ Scheduled` section. Do not route that request to Apple Reminders, a calendar, or another personal task system unless the human explicitly names that destination. If the cron wake fails, report the failure and do not claim `scheduled`; no resurface date means kill it, complete it, or keep it on the agent.
+The human's root carries at most one lifecycle reaction held by the adapter. On admission, the adapter replaces its prior terminal tile with 🔄. On final delivery, it replaces 🔄 with ✋, 🗓️, or ✅. Reactions outside the lifecycle vocabulary are untouched. A lifecycle reaction placed by the human is never removed by the adapter.
 
-**Completion does not create an ask.** Report the result and stop. Closed is reserved for the human's confirmed thread close and measured close-out, not for a draft, commit, subtask, or ordinary finished turn.
+## Choosing ownership
 
-## One value, three renderings
+Use `act` only when progress truly depends on the human. Before handing work back, use available tools and existing authority for safe in-scope action. A blocking question and a physical task both belong to the same on-human state.
 
-The control plane writes `working` at admission, normalizes one terminal outbound status before delivery, records both transitions in the session ledger, and uses them to maintain the root tile. Human-visible lifecycle sections are the conversational rendering only for `answer`, `act`, `scheduled`, and `closed`; `working` and `no_action` deliberately add no footer.
+Use `scheduled` only after a durable wake exists in the current conversation. If wake creation fails, do not claim the state. Resolve the failure now or return an honest human action.
 
-The adapter recognizes only exact lifecycle headings or explicit internal metadata. It does not infer obligation from arbitrary prose. Missing or invalid terminal status defaults to `no_action`, which clears a stale gateway-held transient tile but can never manufacture a handoff. Protocol text such as `## Status` is invalid output, not a second compatibility path.
+Use `done` for a useful answer, a completed action, a verified terminal result, or a reported failure with no continuing agent-owned work. A new human message reopens the loop and admission moves the thread back to `working`.
 
-The mapping is exact:
+## Visibility
 
-- `answer` → ❓
-- `act` → ✋
-- `working` → 🔄
-- `scheduled` → 🗓️
-- `no_action` → no tile
-- `closed` → ✅
+`working` is never model-authored prose. The control plane exposes it through the root tile and session ledger.
 
-The human's root message carries at most one adapter-held lifecycle tile. A human-held lifecycle tile owns the state and is never removed or co-reacted by the adapter. Non-lifecycle reactions are never touched. Forward cleanup removes only gateway-held tiles from retired schemes when the thread next sees a send.
+Human-visible lifecycle sections appear only when they carry useful information:
 
-✅ remains the human's decision. Their confirmation in the thread or their own ✅ on the root authorizes the close-out. A human-held ✅ outranks a later agent status until the human reopens the work.
+- `## ✋ Act` contains the single next action or blocking question.
+- `## 🗓️ Scheduled` contains the exact resurface time and outcome.
+- `## Session Closed` is generated by the close path after human-requested closure.
 
-## Collaboration
+A normal `done` response ends naturally. The ✅ tile is its status; the model does not append a done footer.
 
-Individual Brainstorm contributions and interim Challenge turns have no human-facing lifecycle section because the phase still owns follow-through. The phase produces one Ariel-facing handoff only when the collaboration contract reaches its stopping point. One thread has one status regardless of how many agents contributed.
+## Collaboration and provenance
 
-When more than one actor shares a thread, the next-step sentence may prefix the owner with 🦋 Liv, 🦊 Max, or 🙋 Ariel. A single-agent thread needs no identity prefix because the author already names the agent.
+One conversation has one lifecycle state regardless of how many agents or harnesses contributed. Internal collaboration does not create extra human-facing states.
 
-## Run signatures and faults
+The adapter appends the effective model, harness, and thinking reactions to each delivered agent message. Models never type those markers. Status, signature, and ledger faults are recorded for operations; cosmetic reaction failure does not duplicate or suppress the final response.
 
-Every visible agent post receives the adapter-owned run signature: resolved model, optional harness, and resolved thinking level. Agents never type it themselves. If the effective thinking value cannot be proved, the adapter omits it and logs `thinking_unknown`; it never guesses.
+## Acceptance
 
-Status, signature, or ledger write failures are journaled for scheduled review, never posted into the affected thread. Delivery succeeds when cosmetic reaction writes fail. The journal and digest are the monitor.
-
-## Changelog
-
-- **2026-08-24** — Restored lifecycle-only visible sections. Status remains one internal value across the ledger and root tile, while ordinary replies again end naturally.
-- **2026-08-24** — The outbound status also writes the session ledger; the menu is a view of that ledger.
-- **2026-08-23** — Replaced competing lifecycle parsers with one normalized outbound value.
-- **2026-08-18** — Moved provenance from the root to per-message run signatures and reduced the root to one lifecycle tile.
+For both Liv and Max, a new admitted turn gains 🔄 within five seconds. Exactly one final response is delivered. The root then carries exactly one canonical terminal tile that matches the reply, and 🔄 is gone. Tests cover all four states, questions folded into `act`, plain-final default to `done`, scheduled-wake evidence, close transactions, and human-held reactions.

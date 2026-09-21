@@ -77,45 +77,49 @@ test("suppresses a synthesized tool warning only after a human final in the same
 
 // --- explicit outbound status ---
 
-test("an ordinary reply creates no obligation without inspecting its prose", () => {
+test("an ordinary reply completes the turn without inspecting its prose", () => {
   assert.deepEqual(normalizeOutboundStatus("Completed the fix."), {
-    status: "no_action",
+    status: "done",
+    closeRequested: false,
     content: "Completed the fix.",
   });
   assert.deepEqual(normalizeOutboundStatus("## Status\nMaybe waiting"), {
-    status: "no_action",
+    status: "done",
+    closeRequested: false,
     content: "## Status\nMaybe waiting",
   });
-  assert.equal(resolveStatusTile(normalizeOutboundStatus("Completed the fix.").status, [], new Set()), undefined);
+  assert.equal(resolveStatusTile(normalizeOutboundStatus("Completed the fix.").status, [], new Set()), "white_check_mark");
 });
 
 test("typed status wins without parsing reply prose", () => {
   assert.deepEqual(normalizeOutboundStatus("Verification is running.", { explicitStatus: "working" }), {
     status: "working",
+    closeRequested: false,
     content: "Verification is running.",
   });
 });
 
 test("lifecycle headings map directly without being rewritten", () => {
   const cases = [
-    ["## ❓ Clarify\nWhich list?", "answer"],
-    ["## ✋ Act\nComplete the identity check.", "act"],
-    ["## 🗓️ Scheduled\nMonday at 9.", "scheduled"],
-    ["## Session Closed", "closed"],
+    ["## ✋ Act\nWhich list?", "act", false],
+    ["## 🗓️ Scheduled\nMonday at 9.", "scheduled", false],
+    ["## Session Closed", "done", true],
   ];
-  for (const [body, status] of cases) {
+  for (const [body, status, closeRequested] of cases) {
     const normalized = normalizeOutboundStatus(body);
     assert.equal(normalized.status, status);
+    assert.equal(normalized.closeRequested, closeRequested);
     assert.equal(normalized.content, body);
   }
+  assert.equal(normalizeOutboundStatus("## ❓ Clarify\nWhich list?").status, "done");
 });
 
-test("a human ✅ on the root is closed and outranks the outbound status", () => {
+test("a human ✅ on the root is done and outranks the outbound status", () => {
   const reactions = [{ name: "white_check_mark", users: ["UHUMAN"] }];
-  assert.equal(resolveStatusTile("answer", reactions, "UBOT"), "white_check_mark");
+  assert.equal(resolveStatusTile("act", reactions, "UBOT"), "white_check_mark");
   const botOnly = [{ name: "white_check_mark", users: ["UBOT"] }];
-  assert.equal(resolveStatusTile("answer", botOnly, "UBOT"), "question");
-  assert.equal(resolveStatusTile("answer", [], "UBOT"), "question");
+  assert.equal(resolveStatusTile("act", botOnly, "UBOT"), "raised_hand");
+  assert.equal(resolveStatusTile("act", [], "UBOT"), "raised_hand");
 });
 
 // --- tiles ---
@@ -186,8 +190,8 @@ const addNames = (plan) => plan.add.map((item) => item.name);
 const removeNames = (plan) => plan.remove.map((item) => item.name);
 
 test("first send lays exactly one tile: the lifecycle status", () => {
-  const plan = planStatusTile([], { ...SPEC, lifecycle: "question" });
-  assert.deepEqual(addNames(plan), ["question"]);
+  const plan = planStatusTile([], { ...SPEC, lifecycle: "raised_hand" });
+  assert.deepEqual(addNames(plan), ["raised_hand"]);
   assert.deepEqual(plan.remove, []);
 });
 
@@ -198,22 +202,22 @@ test("an admitted turn deterministically lays the working tile", () => {
 });
 
 test("a correct status tile is a strict no-op", () => {
-  const plan = planStatusTile([ownTile("question")], { ...SPEC, lifecycle: "question" });
+  const plan = planStatusTile([ownTile("raised_hand")], { ...SPEC, lifecycle: "raised_hand" });
   assert.equal(plan.unchanged, true);
   assert.deepEqual(plan.add, []);
   assert.deepEqual(plan.remove, []);
 });
 
 test("a lifecycle transition swaps the one tile", () => {
-  const plan = planStatusTile([ownTile("question")], { ...SPEC, lifecycle: "raised_hand" });
-  assert.deepEqual(removeNames(plan), ["question"]);
+  const plan = planStatusTile([ownTile("arrows_counterclockwise")], { ...SPEC, lifecycle: "raised_hand" });
+  assert.deepEqual(removeNames(plan), ["arrows_counterclockwise"]);
   assert.deepEqual(addNames(plan), ["raised_hand"]);
 });
 
-test("no action clears a stale working tile", () => {
-  const plan = planStatusTile([ownTile("arrows_counterclockwise")], { ...SPEC, lifecycle: undefined });
+test("done replaces a stale working tile", () => {
+  const plan = planStatusTile([ownTile("arrows_counterclockwise")], { ...SPEC, lifecycle: "white_check_mark" });
   assert.deepEqual(removeNames(plan), ["arrows_counterclockwise"]);
-  assert.deepEqual(plan.add, []);
+  assert.deepEqual(addNames(plan), ["white_check_mark"]);
 });
 
 test("legacy provenance tiles are cleaned up on the next send, per holder", () => {
@@ -226,17 +230,23 @@ test("legacy provenance tiles are cleaned up on the next send, per holder", () =
     { name: "m_gpt_sol", users: ["UMAX"] },
     { name: "question", users: ["ULIV"] },
   ];
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "question" });
-  assert.deepEqual(removeNames(plan).sort(), ["butterfly", "fox_face", "h_cc", "m_fable", "m_gpt_sol", "think_off"]);
+  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "raised_hand" });
+  assert.deepEqual(removeNames(plan).sort(), ["butterfly", "fox_face", "h_cc", "m_fable", "m_gpt_sol", "question", "think_off"]);
   const fox = plan.remove.find((item) => item.name === "fox_face");
   assert.deepEqual(fox.holders, ["UMAX"]);
-  assert.deepEqual(plan.add, []);
+  assert.deepEqual(addNames(plan), ["raised_hand"]);
 });
 
 test("a retired lifecycle tile is dropped, not preserved", () => {
-  const plan = planStatusTile([ownTile("no_entry_sign")], { ...SPEC, lifecycle: "question" });
+  const plan = planStatusTile([ownTile("no_entry_sign")], { ...SPEC, lifecycle: "raised_hand" });
   assert.deepEqual(removeNames(plan), ["no_entry_sign"]);
-  assert.deepEqual(addNames(plan), ["question"]);
+  assert.deepEqual(addNames(plan), ["raised_hand"]);
+});
+
+test("a human-held retired tile does not block the canonical state", () => {
+  const plan = planStatusTile([{name: "question", users: ["UHUMAN"]}], { ...SPEC, lifecycle: "raised_hand" });
+  assert.deepEqual(plan.remove, []);
+  assert.deepEqual(addNames(plan), ["raised_hand"]);
 });
 
 test("a human-held lifecycle tile owns the state; the bot adds nothing beside it", () => {
@@ -275,9 +285,9 @@ test("a status tile shared by human and bot keeps the human copy only", () => {
 test("a human-held provenance tile is never touched", () => {
   const observed = [
     { name: "butterfly", users: ["UHUMAN"] },
-    { name: "question", users: ["ULIV"] },
+    { name: "raised_hand", users: ["ULIV"] },
   ];
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "question" });
+  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "raised_hand" });
   assert.equal(plan.unchanged, true);
 });
 
@@ -285,9 +295,9 @@ test("reactions outside the strip vocabulary never affect the plan", () => {
   const observed = [
     { name: "hourglass_flowing_sand", users: ["ULIV"] },
     { name: "thumbsup", users: ["UHUMAN"] },
-    ownTile("question"),
+    ownTile("raised_hand"),
   ];
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "question" });
+  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "raised_hand" });
   assert.equal(plan.unchanged, true);
 });
 
@@ -297,11 +307,11 @@ test("reads Slack's canonical name for the aliased ✋ tile", () => {
   assert.equal(plan.unchanged, true);
 });
 
-test("the other agent's ✅ is a bot close, not the human's", () => {
+test("the other agent's ✅ is a bot status, not the human's", () => {
   const maxDone = [{ name: "white_check_mark", users: ["UMAX"] }];
-  assert.equal(resolveStatusTile("answer", maxDone, new Set(["ULIV", "UMAX"])), "question");
+  assert.equal(resolveStatusTile("act", maxDone, new Set(["ULIV", "UMAX"])), "raised_hand");
   const humanDone = [{ name: "white_check_mark", users: ["UHUMAN"] }];
-  assert.equal(resolveStatusTile("answer", humanDone, new Set(["ULIV", "UMAX"])), "white_check_mark");
+  assert.equal(resolveStatusTile("act", humanDone, new Set(["ULIV", "UMAX"])), "white_check_mark");
 });
 
 // --- infrastructure ---
