@@ -31,6 +31,7 @@ const BULLET_RE = /^(\s*)([-*+]|•)\s+(.*)$/;
 const ORDERED_RE = /^(\s*)(\d{1,9})[.)]\s+(.*)$/;
 const QUOTE_RE = /^\s{0,3}>\s?(.*)$/;
 const FENCE_RE = /^\s{0,3}(`{3,}|~{3,})\s*(\S*)\s*$/;
+const TABLE_DIVIDER_RE = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/;
 
 // Slack-native tokens we must hand through as structured elements.
 const USER_MENTION_RE = /^<@([A-Z0-9]+)(?:\|[^>]*)?>/;
@@ -200,6 +201,22 @@ function section(markdown, style) {
   return { type: "rich_text_section", elements: parseInline(markdown, style) };
 }
 
+function tableCells(line) {
+  return String(line).trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) =>
+    unescapeSlackEntities(cell.trim())
+      .replace(/\[([^\]]*)\]\([^)]+\)/g, "$1")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/__([^_]+)__/g, "$1")
+      .replace(/`([^`]+)`/g, "$1"));
+}
+
+function alignedTable(lines) {
+  const rows = lines.map(tableCells);
+  const columns = Math.max(...rows.map((row) => row.length));
+  const widths = Array.from({length: columns}, (_, column) => Math.max(...rows.map((row) => (row[column] ?? "").length)));
+  return rows.map((row) => widths.map((width, column) => (row[column] ?? "").padEnd(width)).join(" | ").trimEnd()).join("\n");
+}
+
 /**
  * Convert markdown to Slack blocks.
  * Returns null when the caller should keep the upstream mrkdwn text path.
@@ -237,6 +254,24 @@ export function markdownToSlackRichTextBlocks(markdown, options = {}) {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+
+    if (line.includes("|") && TABLE_DIVIDER_RE.test(lines[index + 1] ?? "")) {
+      flushParagraph();
+      flushQuote();
+      const table = [line];
+      let lookahead = index + 2;
+      while (lookahead < lines.length && lines[lookahead].includes("|") && lines[lookahead].trim()) {
+        table.push(lines[lookahead]);
+        lookahead += 1;
+      }
+      index = lookahead - 1;
+      richElements.push({
+        type: "rich_text_preformatted",
+        elements: [{type: "text", text: unescapeSlackEntities(alignedTable(table))}],
+      });
+      sawStructure = true;
+      continue;
+    }
 
     const fence = FENCE_RE.exec(line);
     if (fence) {

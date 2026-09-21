@@ -5,13 +5,12 @@ from __future__ import annotations
 import urllib.parse
 
 
-STATUS_LABELS = {"answer": "Clarify", "act": "Act", "working": "Working", "scheduled": "Scheduled"}
+STATUS_LABELS = {"act": "On you", "working": "On agent", "scheduled": "Scheduled"}
 REACTION_STATUSES = {
-    "question": "answer",
     "raised_hand": "act",
     "arrows_counterclockwise": "working",
     "calendar": "scheduled",
-    "white_check_mark": "closed",
+    "white_check_mark": "done",
 }
 
 

@@ -418,11 +418,10 @@ def append_events(events_root: str, additions: list[dict]):
 
 
 OUTBOUND_LIFECYCLE = {
-    "answer": ("needs_you", "question"),
     "act": ("needs_you", "raised_hand"),
     "working": ("active", "arrows_counterclockwise"),
     "scheduled": ("scheduled", "calendar"),
-    "closed": ("completed", "white_check_mark"),
+    "done": ("completed", "white_check_mark"),
 }
 
 
@@ -436,7 +435,7 @@ def workflow_states(events):
         if not thread_id:
             continue
         outbound = details.get("status")
-        if outbound in {"no_action", "closed"} or details.get("remove"):
+        if details.get("remove"):
             states.pop(thread_id, None)
             continue
         mapped = OUTBOUND_LIFECYCLE.get(outbound)

@@ -45,11 +45,10 @@ const HOME = homedir();
 const STATE_ROOT = process.env.OPENCLAW_STATE_DIR || join(HOME, ".openclaw");
 const FAULT_JOURNAL = `${STATE_ROOT}/run-signature/faults.jsonl`;
 const OUTBOUND_EMOJI = {
-  answer: "question",
   act: "raised_hand",
   working: "arrows_counterclockwise",
   scheduled: "calendar",
-  closed: "white_check_mark",
+  done: "white_check_mark",
 };
 
 async function recordOutboundStatus({ dataRoot, channel, threadId, status, agent, traceId, sessionKey, runId }) {
@@ -630,7 +629,7 @@ export default {
       let normalized = normalizeOutboundStatus(redactSlackReferences(event.content), {
         explicitStatus: event.metadata?.outboundStatus,
       });
-      if (normalized.status === "closed") {
+      if (normalized.closeRequested) {
         try {
           const route = slackRouteFromSessionKey(ctx.sessionKey);
           const rootTs = String(event.threadId ?? event.replyToId ?? route?.rootTs ?? "");
@@ -644,13 +643,14 @@ export default {
           const agent = String(accountId ?? "").toLowerCase();
           const usage = await loadThreadUsage({ agent, channel, thread: rootTs });
           const summary = closeSummary(normalized.content, ownerLabel);
-          normalized = { status: "closed", content: formatCloseOut({ summary, stats, usage, agent, ownerLabel }) };
+          normalized = { status: "done", closeRequested: true, content: formatCloseOut({ summary, stats, usage, agent, ownerLabel }) };
           pendingCloses.set(ctx.sessionKey, { channel, thread: rootTs, agent, summary, stats, usage, ownerLabel });
         } catch (error) {
           api.logger?.error?.(`run-signature refused an unmeasured session close: ${String(error)}`);
           normalized = {
-            status: "no_action",
-            content: `⚠️ ${String(ctx.accountId ?? "Agent")} could not close this thread durably. The thread remains open; the failure is in the operational log.`,
+            status: "act",
+            closeRequested: false,
+            content: `⚠️ ${String(ctx.accountId ?? "Agent")} could not close this thread durably. The failure is in the operational log.\n\n## ✋ Act\nRetry closure after the operational fault is resolved.`,
           };
         }
       }

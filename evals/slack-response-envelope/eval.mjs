@@ -9,8 +9,8 @@ import {normalizeOutboundStatus} from "../../ops/openclaw/plugins/run-signature/
 
 const root = dirname(fileURLToPath(import.meta.url));
 const cases = JSON.parse(readFileSync(join(root, "cases.json"), "utf8"));
-const lifecycle = /^## (?:❓ Clarify|✋ Act|🗓️ Scheduled|Session Closed)\s*$/gm;
-const forbidden = /(?:^|\n)(?:## Status|Goal:|Agent — working)|No action needed\./m;
+const lifecycle = /^## (?:✋ Act|🗓️ Scheduled|Session Closed)\s*$/gm;
+const forbidden = /(?:^|\n)(?:## Status|## ❓ Clarify|Goal:|Agent — working)|No action needed\./m;
 const sleepState = new Int32Array(new SharedArrayBuffer(4));
 
 export function gradeEnvelope(text, expect) {

@@ -25,7 +25,7 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 - Use one blank line between a heading and its content, as standard Markdown requires. Do not add extra spacer lines.
 - Lists use `- `, never a literal `•`. One bullet is one uninterrupted list item — a hard line break or manual indent inside it kills the hanging indent. Numbers are reserved for steps performed in order; everything else is a bullet.
 - **No decorative emoji in headings.** The exact lifecycle headings from `docs/status-framework.md` are the only exception because their glyph is semantic state.
-- **Tables: fenced code block, space-aligned, ≤60 chars.** Slack has no table primitive; a pipe table renders as literal `|` junk. Use one when comparing 3+ options across several attributes. Over about 6×5, link the source; preview it in a canvas only when asked.
+- **Tables:** write a standard Markdown pipe table. The adapter renders it as aligned preformatted text because Slack has no table primitive. For large tables, link the source rather than forcing the full dataset into chat.
 - **Specialized vocabulary:** `**term** (short plain definition)` at first use in a thread, then append the entry to the instance's glossary. Never silently swap in a simpler word. Do not re-define a term already glossed in the same thread.
 - Visual and interactive review work ships as a viewable HTML artifact plus editable source.
 

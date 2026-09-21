@@ -209,7 +209,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
         let symbol: String
         switch status {
         case "working": symbol = "arrow.triangle.2.circlepath"
-        case "answer": symbol = "questionmark.circle"
         case "act": symbol = "hand.raised"
         case "scheduled": symbol = "calendar"
         default: symbol = "exclamationmark.triangle"

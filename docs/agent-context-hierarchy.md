@@ -28,6 +28,12 @@ The data plane supplies concise non-normative context: current strategy, active 
 
 Task instructions and the live conversation sit nearest the active work but remain beneath this authority stack.
 
+## Skills are procedures
+
+`skills/*/SKILL.md` files are optional procedures invoked for a bounded task. A skill may sequence work, name evidence to inspect, and define a completion condition. It may not establish global policy, copy a domain rule, define reply or lifecycle behavior, select an execution profile, or add standing identity instructions.
+
+The immutable runtime carries one canonical skill directory and projects it into every agent workspace. Agent-local workspace skills are unsupported because they create hidden policy and identity drift. A useful local procedure is either project material in the data plane or a proposed framework skill through review.
+
 ## Three source classes
 
 Every loaded file comes from exactly one source class:

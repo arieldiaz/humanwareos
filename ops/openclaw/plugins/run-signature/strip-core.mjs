@@ -3,8 +3,8 @@
 // ordering rule in another file is the drift this module exists to end.
 
 export const THINKING_TILES = ["think_off", "think_low", "think_medium", "think_high", "think_max", "think_auto"];
-export const LIFECYCLE_NAMES = ["arrows_counterclockwise", "question", "raised_hand", "calendar", "white_check_mark"];
-export const RETIRED_LIFECYCLE_NAMES = ["arrow_forward", "no_entry_sign"];
+export const LIFECYCLE_NAMES = ["arrows_counterclockwise", "raised_hand", "calendar", "white_check_mark"];
+export const RETIRED_LIFECYCLE_NAMES = ["question", "arrow_forward", "no_entry_sign"];
 export const AGENT_NAMES = ["butterfly", "fox_face"];
 export const STRIP_NAMES = [...LIFECYCLE_NAMES, ...RETIRED_LIFECYCLE_NAMES, ...AGENT_NAMES, "h_codex", "h_cc", "h_cursor", "h_opencode", "m_opus", "m_sonnet", "m_haiku", "m_fable", "stars", "m_gpt_sol", "m_gpt_terra", "m_gpt_luna", "m_cursor_auto", "m_grok", "m_qwen_moe", "m_qwen_dense", "m_llama", ...THINKING_TILES];
 export const STRIP_NAME_SET = new Set(STRIP_NAMES);
@@ -71,21 +71,18 @@ export function resolveThinkingTile({ thinkLevel, reasoningLevel, reasoningEffor
 }
 
 export const OUTBOUND_STATUS_TO_TILE = Object.freeze({
-  answer: "question",
   act: "raised_hand",
   working: "arrows_counterclockwise",
   scheduled: "calendar",
-  no_action: undefined,
-  closed: "white_check_mark",
+  done: "white_check_mark",
 });
 export const ADMITTED_STATUS = "working";
 
-const OUTBOUND_STATUSES = new Set(["answer", "act", "working", "scheduled", "no_action", "closed"]);
+const OUTBOUND_STATUSES = new Set(["act", "working", "scheduled", "done"]);
 const LIFECYCLE_HEADING_STATUS = [
-  ["answer", /^## ❓ Clarify\s*$/m],
   ["act", /^## ✋ Act\s*$/m],
   ["scheduled", /^## 🗓️ Scheduled\s*$/m],
-  ["closed", /^## Session Closed\s*$/m],
+  ["done", /^## Session Closed\s*$/m],
 ];
 
 function lifecycleHeadingStatus(content) {
@@ -110,10 +107,14 @@ function lifecycleHeadingStatus(content) {
 export function normalizeOutboundStatus(content, { explicitStatus } = {}) {
   const source = String(content ?? "").trim();
   const typed = OUTBOUND_STATUSES.has(explicitStatus) ? explicitStatus : undefined;
-  return { status: typed ?? lifecycleHeadingStatus(source) ?? "no_action", content: source };
+  return {
+    status: typed ?? lifecycleHeadingStatus(source) ?? "done",
+    closeRequested: /^## Session Closed\s*$/m.test(source),
+    content: source,
+  };
 }
 
-// A ✅ the human placed is the thread's closed state, and a bot cannot remove
+// A ✅ the human placed is the thread's done state, and a bot cannot remove
 // another user's reaction anyway. `botUserIds` is every gateway-controlled bot
 // user id — the other agent's ✅ is a bot close, not a human one.
 export function resolveStatusTile(outboundStatus, rawReactions, botUserIds) {
@@ -159,7 +160,7 @@ export function planStatusTile(rawReactions, { lifecycle, sendingBotId, botUserI
       };
     });
 
-  const humanStatus = entries.some((entry) => entry.kind === "lifecycle" && entry.humanHeld);
+  const humanStatus = entries.some((entry) => LIFECYCLE_NAMES.includes(entry.name) && entry.humanHeld);
   const desired = humanStatus ? undefined : lifecycle;
 
   const remove = entries

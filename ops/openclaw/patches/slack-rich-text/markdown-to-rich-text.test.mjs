@@ -69,6 +69,13 @@ test("code fences and quotes keep their own primitives", () => {
   assert.equal(blocks[0].elements[1].elements[0].text, "const a = 1;");
 });
 
+test("markdown pipe tables become aligned preformatted text", () => {
+  const [block] = markdownToSlackRichTextBlocks("| Capability | State |\n|---|---|\n| [Calendar](https://example.test) | **Built** |\n| Forms | `Next` |");
+  const table = block.elements[0];
+  assert.equal(table.type, "rich_text_preformatted");
+  assert.equal(table.elements[0].text, "Capability | State\nCalendar   | Built\nForms      | Next");
+});
+
 test("dividers split rich_text blocks", () => {
   const blocks = markdownToSlackRichTextBlocks("- a\n\n---\n\n- b");
   assert.deepEqual(blocks.map((block) => block.type), ["rich_text", "divider", "rich_text"]);

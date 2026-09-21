@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync} from "node:fs";
+import {cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync} from "node:fs";
 import {createHash} from "node:crypto";
 import {fileURLToPath} from "node:url";
 import {basename, dirname, join} from "node:path";
@@ -32,6 +32,28 @@ function contentHash(content) {
   return createHash("sha256").update(content).digest("hex");
 }
 
+function treeHash(path) {
+  const hash = createHash("sha256");
+  const visit = (directory, relative = "") => {
+    for (const name of readdirSync(directory).sort()) {
+      const absolute = join(directory, name);
+      const child = relative ? join(relative, name) : name;
+      const stat = lstatSync(absolute);
+      if (stat.isDirectory()) {
+        hash.update(`d:${child}\n`);
+        visit(absolute, child);
+      } else if (stat.isFile()) {
+        hash.update(`f:${child}\n`);
+        hash.update(readFileSync(absolute));
+      } else {
+        fail(`unsupported skill projection entry ${absolute}`);
+      }
+    }
+  };
+  visit(path);
+  return hash.digest("hex");
+}
+
 function projectionMatches(path, expectedHash) {
   if (!pathExists(path)) return false;
   const stat = lstatSync(path);
@@ -45,6 +67,13 @@ function removeExpectedProjection(path, expectedHash) {
   rmSync(path);
 }
 
+function removeExpectedTree(path, expectedHash) {
+  if (!pathExists(path)) return;
+  const stat = lstatSync(path);
+  if (!stat.isDirectory() || stat.isSymbolicLink() || treeHash(path) !== expectedHash) fail(`refusing to remove modified projection ${path}`);
+  rmSync(path, {recursive: true});
+}
+
 function rollback(actions) {
   for (const action of [...actions].reverse()) {
     if (action.kind === "directory") {
@@ -53,6 +82,11 @@ function rollback(actions) {
       } catch (error) {
         if (error.code !== "ENOENT" && error.code !== "ENOTEMPTY") throw error;
       }
+      continue;
+    }
+    if (action.kind === "tree") {
+      if (action.expectedHash) removeExpectedTree(action.path, action.expectedHash);
+      if (action.backup && pathExists(action.backup)) renameSync(action.backup, action.path);
       continue;
     }
     if (action.expectedHash) removeExpectedProjection(action.path, action.expectedHash);
@@ -79,6 +113,23 @@ function installProjection(path, source, backup, actions) {
   actions.push({kind: "projection", path, source, expectedHash, backup: saved});
 }
 
+function installTree(path, source, backup, actions) {
+  const expectedHash = treeHash(source);
+  const matches = pathExists(path) && lstatSync(path).isDirectory() && !lstatSync(path).isSymbolicLink() && treeHash(path) === expectedHash;
+  if (matches) {
+    actions.push({kind: "tree", path, source, expectedHash, unchanged: true});
+    return;
+  }
+  let saved;
+  if (pathExists(path)) {
+    mkdirSync(dirname(backup), {recursive: true});
+    renameSync(path, backup);
+    saved = backup;
+  }
+  cpSync(source, path, {recursive: true});
+  actions.push({kind: "tree", path, source, expectedHash, backup: saved});
+}
+
 export function applyWorkspaceContext({runtimeDir, configPath, backupDir}) {
   if (existsSync(join(backupDir, "manifest.json"))) fail(`backup manifest already exists at ${backupDir}`);
   const config = JSON.parse(readFileSync(configPath, "utf8"));
@@ -94,6 +145,7 @@ export function applyWorkspaceContext({runtimeDir, configPath, backupDir}) {
       const target = join(runtimeDir, "instructions", "openclaw", id, filename);
       if (!existsSync(target)) fail(`missing rendered context ${target}`);
     }
+    if (!existsSync(join(runtimeDir, "instructions", "skills"))) fail("canonical runtime skills are missing");
     if (!existsSync(join(instance.paths.dataRoot, "current", "memory", "index.md"))) fail("current memory index is missing");
     if (!existsSync(join(instance.paths.dataRoot, "current", "strategy", "current.md"))) fail("current strategy is missing");
   }
@@ -109,6 +161,7 @@ export function applyWorkspaceContext({runtimeDir, configPath, backupDir}) {
       for (const filename of CONTEXT_FILES) {
         installProjection(join(workspace, filename), join(runtimeDir, "instructions", "openclaw", id, filename), join(backupDir, "saved", id, filename), actions);
       }
+      installTree(join(workspace, "skills"), join(runtimeDir, "instructions", "skills"), join(backupDir, "saved", id, "skills"), actions);
       const bootstrap = join(workspace, "BOOTSTRAP.md");
       if (pathExists(bootstrap)) {
         const backup = join(backupDir, "saved", id, "BOOTSTRAP.md");
