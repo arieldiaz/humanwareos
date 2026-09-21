@@ -1,0 +1,1 @@
+{"id":"calendar","name":"Calendar","description":"Agent-only calendar administration backed by the canonical Humanware calendar service","configSchema":{"type":"object","required":["endpoint"],"properties":{"endpoint":{"type":"string","pattern":"^http://127\\.0\\.0\\.1:[0-9]+$"}},"additionalProperties":false}}

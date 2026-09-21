@@ -22,9 +22,10 @@ export function normalizeEvent(input, {id = randomUUID(), uid = `${randomUUID()}
   if ((start.kind === "zoned" && start.timeZone !== end.timeZone) || boundaryValue(end) <= boundaryValue(start)) throw new Error("end must be after start in the same time zone");
   if (!Number.isInteger(revision) || revision < 1) throw new Error("revision must be a positive integer");
   return {
-    id: required(id, "id"), uid: required(input.uid ?? uid, "uid"), revision,
+    id: required(id, "id"), calendarId: required(input.calendarId, "calendarId"), uid: required(input.uid ?? uid, "uid"), revision,
     status: input.status ?? "confirmed", title: required(input.title, "title"),
     description: input.description ?? null, location: input.location ?? null, start, end,
+    category: input.category ?? null, color: input.color ?? null,
     recurrence: [...(input.recurrence ?? [])], recurrenceId: input.recurrenceId ? validateBoundary(input.recurrenceId, "recurrenceId") : null,
     attendees: (input.attendees ?? []).map((attendee) => ({email: required(attendee.email, "attendee email").toLowerCase(), name: attendee.name ?? null, role: attendee.role ?? "REQ-PARTICIPANT", response: attendee.response ?? "NEEDS-ACTION"})),
     provenance: input.provenance ?? {kind: "agent"}, createdAt: input.createdAt ?? now, updatedAt: now,
@@ -37,5 +38,6 @@ export function boundaryValue(boundary) {
 
 export function reviseEvent(current, patch, now = new Date().toISOString()) {
   if (patch.uid && patch.uid !== current.uid) throw new Error("event UID is immutable");
+  if (patch.calendarId && patch.calendarId !== current.calendarId) throw new Error("event calendarId is immutable");
   return normalizeEvent({...current, ...patch, uid: current.uid, createdAt: current.createdAt}, {id: current.id, uid: current.uid, revision: current.revision + 1, now});
 }

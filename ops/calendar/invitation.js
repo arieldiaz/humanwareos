@@ -26,6 +26,7 @@ function boundary(item) {
 
 export function normalizeInvitation(ics, envelope) {
   const lines = unfold(ics).map(property).filter(Boolean);
+  if (lines.filter((item) => item.name === "BEGIN" && item.value.toUpperCase() === "VEVENT").length !== 1) throw new Error("invitation must contain exactly one VEVENT");
   const first = (name) => lines.find((item) => item.name === name);
   const method = first("METHOD")?.value?.toUpperCase();
   if (!["REQUEST", "CANCEL"].includes(method)) throw new Error("only REQUEST and CANCEL invitations are supported");
@@ -38,7 +39,7 @@ export function normalizeInvitation(ics, envelope) {
   const recipient = envelope.recipient?.toLowerCase();
   const messageId = envelope.messageId;
   if (!recipient || !messageId) throw new Error("invitation envelope requires recipient and messageId");
-  const operationId = `invite:${createHash("sha256").update([messageId, uid, recurrenceId?.value ?? "", sequence, method].join("\0")).digest("hex")}`;
+  const operationId = `invite:${createHash("sha256").update([recipient, messageId, uid, recurrenceId?.value ?? "", sequence, method].join("\0")).digest("hex")}`;
   return {
     action: method === "CANCEL" ? "cancel" : "import", operationId, sourceRevision: sequence,
     event: {

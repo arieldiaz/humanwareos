@@ -38,6 +38,8 @@ export function renderICalendar(events, {calendarId, name = "Calendar", prodId =
     if (event.recurrenceId) lines.push(temporal("RECURRENCE-ID", event.recurrenceId));
     if (event.description) lines.push(`DESCRIPTION:${escapeText(event.description)}`);
     if (event.location) lines.push(`LOCATION:${escapeText(event.location)}`);
+    if (event.category) lines.push(`CATEGORIES:${escapeText(event.category)}`);
+    if (event.color) lines.push(`COLOR:${event.color}`);
     for (const rule of event.recurrence ?? []) lines.push(rule);
     for (const attendee of event.attendees ?? []) lines.push(`ATTENDEE;ROLE=${attendee.role};PARTSTAT=${attendee.response}${attendee.name ? `;CN=${escapeText(attendee.name)}` : ""}:mailto:${attendee.email}`);
     if (event.status === "cancelled") lines.push("STATUS:CANCELLED");
