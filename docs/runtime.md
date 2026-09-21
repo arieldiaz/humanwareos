@@ -32,7 +32,7 @@ Rollback reselects the previous runtime build. It does not reset source reposito
 
 Deployment and cutover commands run in a foreground operator shell or through a reviewed supervisor that is explicitly one-shot. `launchctl submit` is prohibited for deployments and cutovers because it creates an inferred keepalive job that may respawn a completed command indefinitely. Before any gateway-impacting cutover, the entrypoint requires a fresh, single-use operator approval scoped to the instance and exact action. The approval expires within 30 minutes and records the approver, reason, initiating session and thread, pull request, and whether active sessions may be interrupted. A shared data-plane restart freeze blocks cutover absolutely. Without that freeze, active sessions still block cutover unless the approval explicitly overrides draining. The approval is consumed immediately before the gateway stops and copied into the deployment report. Missing, malformed, expired, reused, or unscoped authority fails closed. An already-active pair of source revisions remains a successful no-op and needs no restart approval.
 
-Production post-deploy canaries are non-disruptive. They may probe channels and run bounded synthetic turns with stable session keys, but they never restart the production gateway. Restart recovery is tested against a shadow or isolated gateway with no user sessions.
+Production post-deploy canaries are non-disruptive. They may probe channels and run bounded synthetic turns with stable session keys, but they never restart the production gateway. Restart recovery follows [Session recovery](session-recovery.md) and is tested against a shadow or isolated gateway with no user sessions.
 
 ## Source checkouts and worktrees
 

@@ -42,6 +42,7 @@ The rule above guards the memory door. These four guard the spec door. The human
 - `docs/runtime.md` — immutable builds, activation, rollback, drift, and reboot readiness.
 - `docs/domain-surface.md` — the public/private domain frontend and its ownership boundary.
 - `docs/channel-runtime.md` — replaceable channels and selectable model/harness execution profiles.
+- `docs/session-recovery.md` — restart recovery authority, effect uncertainty, reauthorization, and origin-bound delivery.
 
 An instance pins a Humanware OS revision and supplies typed overlays rather than copied framework files. Instance facts live in `AGENTS-instance.md` and `docs/*-instance.md`; those files may not restate a generic rule.
 
