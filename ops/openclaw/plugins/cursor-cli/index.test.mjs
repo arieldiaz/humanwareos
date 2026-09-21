@@ -10,7 +10,9 @@ test("registers parallel ask and workspace backends against the secret-safe wrap
   assert.equal(backends[0].config.serialize, false);
   assert.deepEqual(backends[0].config.modelAliases, {
     "grok-4.6-low-fast": "cursor-grok-4.6-low-fast",
-    "grok-4.6-high-fast": "cursor-grok-4.6-high-fast"
+    "grok-4.6-high-fast": "cursor-grok-4.6-high-fast",
+    "grok-4.7-low-fast": "grok-4.7-low-fast",
+    "grok-4.7-high-fast": "grok-4.7-high-fast"
   });
   assert.deepEqual(backends[0].config.sessionIdFields, ["session_id"]);
   assert.ok(backends[0].config.args.includes("ask"));
