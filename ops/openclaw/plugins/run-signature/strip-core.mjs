@@ -113,9 +113,9 @@ export function normalizeOutboundStatus(content, { explicitStatus } = {}) {
   return { status: typed ?? lifecycleHeadingStatus(source) ?? "no_action", content: source };
 }
 
-// A ✅ the human placed is the thread's closed state, and a bot cannot remove
-// another user's reaction anyway. `botUserIds` is every gateway-controlled bot
-// user id — the other agent's ✅ is a bot close, not a human one.
+// A human ✅ preserves closure only when the outbound turn has no unresolved
+// lifecycle state. `botUserIds` is every gateway-controlled bot user id — the
+// other agent's ✅ is a bot close, not a human one.
 export function resolveStatusTile(outboundStatus, rawReactions, botUserIds) {
   const bots = botUserIds instanceof Set ? botUserIds : new Set([botUserIds].filter(Boolean));
   const reactions = normalizeReactions(rawReactions);
@@ -123,7 +123,9 @@ export function resolveStatusTile(outboundStatus, rawReactions, botUserIds) {
     item?.name === "white_check_mark" &&
     Array.isArray(item?.users) &&
     item.users.some((user) => !bots.has(user)));
-  return humanDone ? "white_check_mark" : OUTBOUND_STATUS_TO_TILE[outboundStatus];
+  return humanDone && ["no_action", "closed"].includes(outboundStatus)
+    ? "white_check_mark"
+    : OUTBOUND_STATUS_TO_TILE[outboundStatus];
 }
 
 export function tileKind(name) {
@@ -143,8 +145,9 @@ export function tileKind(name) {
 // Forward cleanup rides along: any gateway-held tile from the retired
 // provenance-strip era is removed the next time its thread sees a send, each
 // with the token that holds it. A tile a human holds is never touched, and a
-// human-held lifecycle tile owns the state outright — the bot adds nothing
-// beside it. Reactions outside the strip vocabulary are never touched.
+// human reactions remain untouched. An unresolved lifecycle state may appear
+// beside a human ✅ rather than being falsely suppressed. Reactions outside the
+// strip vocabulary are never touched.
 export function planStatusTile(rawReactions, { lifecycle, sendingBotId, botUserIds }) {
   const bots = botUserIds instanceof Set ? botUserIds : new Set([...(botUserIds ?? []), sendingBotId].filter(Boolean));
   const entries = normalizeReactions(rawReactions)
@@ -160,7 +163,7 @@ export function planStatusTile(rawReactions, { lifecycle, sendingBotId, botUserI
     });
 
   const humanStatus = entries.some((entry) => entry.kind === "lifecycle" && entry.humanHeld);
-  const desired = humanStatus ? undefined : lifecycle;
+  const desired = humanStatus && (!lifecycle || lifecycle === "white_check_mark") ? undefined : lifecycle;
 
   const remove = entries
     .filter((entry) => entry.botHolders.length && entry.name !== desired)
