@@ -96,6 +96,13 @@ export class GoogleWorkspaceClient {
     const token = await requestJson(TOKEN_ENDPOINT, {method: "POST", headers: {"content-type": "application/x-www-form-urlencoded"}, body}, this.fetchImpl);
     return token.access_token;
   }
+  async authStatus() {
+    const pending = this.pending;
+    if (pending && !pending.done) return {state: "waiting_for_google"};
+    if (pending?.error) return {state: "failed", diagnostic: pending.error.message};
+    const refreshToken = await runTokenCommand(this.config.tokenCommand, "get", undefined, this.spawnImpl);
+    return {state: refreshToken ? "authorized" : "not_authorized"};
+  }
   async createSurvey(survey) {
     const accessToken = await this.accessToken();
     const result = await requestJson(`${SCRIPT_ENDPOINT}/${encodeURIComponent(this.config.scriptDeploymentId)}:run`, {method: "POST", headers: {authorization: `Bearer ${accessToken}`, "content-type": "application/json"}, body: JSON.stringify({function: "createSurvey", parameters: [survey], devMode: false})}, this.fetchImpl);
@@ -104,11 +111,60 @@ export class GoogleWorkspaceClient {
   }
 }
 
-const surveySchema = {type: "object", required: ["title", "questions"], properties: {title: {type: "string", minLength: 1}, description: {type: "string"}, confirmationMessage: {type: "string"}, spreadsheetTitle: {type: "string"}, questions: {type: "array", minItems: 1, items: {type: "object", required: ["type", "title"], properties: {type: {type: "string", enum: ["text", "paragraph", "multipleChoice", "checkbox", "scale"]}, title: {type: "string", minLength: 1}, helpText: {type: "string"}, required: {type: "boolean"}, choices: {type: "array", items: {type: "string"}}, lower: {type: "integer", minimum: 0, maximum: 10}, upper: {type: "integer", minimum: 1, maximum: 10}, lowerLabel: {type: "string"}, upperLabel: {type: "string"}}, additionalProperties: false}}}, additionalProperties: false};
+export const surveySchema = {
+  type: "object",
+  required: ["title", "questions"],
+  properties: {
+    title: {type: "string", minLength: 1},
+    description: {type: "string"},
+    confirmationMessage: {type: "string"},
+    spreadsheetTitle: {type: "string"},
+    questions: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        required: ["type", "title"],
+        properties: {
+          type: {type: "string", enum: ["section", "text", "paragraph", "multipleChoice", "checkbox", "scale"]},
+          id: {type: "string", minLength: 1},
+          title: {type: "string", minLength: 1},
+          helpText: {type: "string"},
+          required: {type: "boolean"},
+          choices: {
+            type: "array",
+            items: {
+              oneOf: [
+                {type: "string"},
+                {
+                  type: "object",
+                  required: ["label", "goToSection"],
+                  properties: {
+                    label: {type: "string", minLength: 1},
+                    goToSection: {type: "string", minLength: 1},
+                  },
+                  additionalProperties: false,
+                },
+              ],
+            },
+          },
+          maxSelections: {type: "integer", minimum: 1},
+          allowOther: {type: "boolean"},
+          lower: {type: "integer", minimum: 0, maximum: 10},
+          upper: {type: "integer", minimum: 1, maximum: 10},
+          lowerLabel: {type: "string"},
+          upperLabel: {type: "string"},
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  additionalProperties: false,
+};
 
 export default {id: "google-workspace", register(api) {
   const client = new GoogleWorkspaceClient(api.pluginConfig);
   api.registerTool({name: "google_workspace_authorize", description: "Start Google Workspace authorization. Returns a Google consent URL; credentials and authorization codes never enter chat.", parameters: {type: "object", properties: {}, additionalProperties: false}, async execute() { try { return text({consentUrl: await client.authorize(), redirectUri: client.redirectUri()}); } catch (error) { return text(error.message, true); } }});
-  api.registerTool({name: "google_workspace_auth_status", description: "Check whether the current Google consent flow completed.", parameters: {type: "object", properties: {}, additionalProperties: false}, async execute() { const pending = client.pending; return text({state: !pending ? "not_started" : pending.error ? "failed" : pending.done ? "authorized" : "waiting_for_google", diagnostic: pending?.error?.message}); }});
+  api.registerTool({name: "google_workspace_auth_status", description: "Check whether Google Workspace authorization is available in protected storage or a consent flow is still pending.", parameters: {type: "object", properties: {}, additionalProperties: false}, async execute() { try { return text(await client.authStatus()); } catch (error) { return text(error.message, true); } }});
   api.registerTool({name: "google_workspace_create_survey", description: "Create a Google Form and atomically link a new Google Sheets response destination.", parameters: surveySchema, async execute(_id, survey) { try { return text(await client.createSurvey(survey)); } catch (error) { return text(error.message, true); } }});
 }};

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {EventEmitter} from "node:events";
 import test from "node:test";
-import plugin, {GOOGLE_SCOPES, GoogleWorkspaceClient, runTokenCommand} from "./index.js";
+import plugin, {GOOGLE_SCOPES, GoogleWorkspaceClient, runTokenCommand, surveySchema} from "./index.js";
 
 function fakeSpawn({stdout = "", stderr = "", code = 0, inspectInput} = {}) {
   return (_command, args) => {
@@ -28,6 +28,15 @@ test("uses only scopes required by the Apps Script implementation", () => {
   assert.deepEqual(GOOGLE_SCOPES, ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/forms", "https://www.googleapis.com/auth/spreadsheets"]);
 });
 
+test("survey schema supports sections, conditional routing, checkbox limits, and other answers", () => {
+  const question = surveySchema.properties.questions.items;
+  assert.ok(question.properties.type.enum.includes("section"));
+  assert.equal(question.properties.maxSelections.minimum, 1);
+  assert.equal(question.properties.allowOther.type, "boolean");
+  const routedChoice = question.properties.choices.items.oneOf[1];
+  assert.deepEqual(routedChoice.required, ["label", "goToSection"]);
+});
+
 test("passes refresh tokens to protected storage on stdin", async () => {
   let observed;
   const output = await runTokenCommand(["secret-bridge", "google-workspace"], "put", "refresh-token", fakeSpawn({stdout: "ok\n", inspectInput: (value) => { observed = value; }}));
@@ -52,4 +61,14 @@ test("refreshes access and invokes configured Apps Script deployment", async () 
 test("fails closed when protected credentials are absent", async () => {
   const client = new GoogleWorkspaceClient({clientIdEnv: "CLIENT_ID", clientSecretEnv: "CLIENT_SECRET", tokenCommand: ["secret-bridge"], scriptDeploymentId: "deployment"}, {env: {}, spawnImpl: fakeSpawn({stdout: "refresh-token\n"})});
   await assert.rejects(client.accessToken(), /CLIENT_ID is not available/);
+});
+
+test("reports stored authorization after process restart", async () => {
+  const client = new GoogleWorkspaceClient({tokenCommand: ["secret-bridge"]}, {spawnImpl: fakeSpawn({stdout: "refresh-token\n"})});
+  assert.deepEqual(await client.authStatus(), {state: "authorized"});
+});
+
+test("reports absent authorization from protected storage", async () => {
+  const client = new GoogleWorkspaceClient({tokenCommand: ["secret-bridge"]}, {spawnImpl: fakeSpawn()});
+  assert.deepEqual(await client.authStatus(), {state: "not_authorized"});
 });
