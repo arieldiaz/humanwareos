@@ -62,6 +62,10 @@ Every execution path returns one canonical final response to the control plane. 
 
 Mid-turn progress is structured telemetry in the session ledger. The session console may render status, selected profile, checkpoints, tool summaries, artifacts, and elapsed time. Conversation adapters publish the one final response; internal narration and hidden harness finals never become conversation posts.
 
+### Conversation lifecycle fence
+
+The control plane persists `open → closing → closed`. Closing begins before the close reply, fences model admission and delivery, and becomes closed only after confirmed delivery; failure restores open and eligible completions. Closed targets turn completion and settle work into `intentional_non_delivery`, preserve the outcome, and mark both handled. Retired children set `suppressCompletionDelivery` and create no settle wake. A yielded multi-child parent has one visible owner: requester-settle. Only a human message reopens; it never revives work created before the last close. Internal events, agent messages, retries, and restarts cannot reopen. The fence survives restart and is checked before admission and delivery.
+
 ## Health
 
 Health is measured per boundary: adapter connection, control-plane stability, identity routing, profile availability, headless model authentication, workspace access, tool policy, and delivery. One optional harness or channel may be degraded without marking the agent core unavailable. A canary names the selected identity and profile, effective reasoning and fast mode, first-response latency, and delivered provenance so a healthy native check cannot mask a broken ACP route.
