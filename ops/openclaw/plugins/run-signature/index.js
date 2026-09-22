@@ -24,6 +24,7 @@ import {
   recordSessionClose,
 } from "./session-close.mjs";
 import { startSlackWorkThread } from "../../slack-spin-out.mjs";
+import { ConversationFenceStore, conversationFenceRoute, findDeliveredConversationClose, isHumanSlackUserProfile } from "./conversation-fence.mjs";
 
 export {
   normalizeReactions,
@@ -488,10 +489,65 @@ export default {
     const rootCache = new Map();
     const acpBoundThreads = new Map();
     const botIdCache = new Map();
+    const humanUserCache = new Map();
     const faultedRoots = new Set();
     const pendingCloses = new Map();
     const serializeRunStrip = createKeyedSerialQueue();
     const threadOwnershipConfig = api.pluginConfig?.threadOwnership;
+    const conversationFences = new ConversationFenceStore();
+
+    const reconcileInterruptedCloses = async () => {
+      const accounts = await import(resolveSlackRuntimeModule("accounts"));
+      for (const { route, fence } of conversationFences.listClosing()) {
+        try {
+          const accountId = fence.closeAccountId;
+          const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
+          if (!token) throw new Error(`the closing account ${accountId ?? "unknown"} has no Slack token`);
+          const botUserId = await resolveBotUserId(token, botIdCache);
+          if (!botUserId) throw new Error(`the closing account ${accountId ?? "unknown"} has no Slack user id`);
+          const messages = (await slackApi("conversations.replies", token, { channel: route.channel, ts: route.threadId, limit: 1000 })).messages ?? [];
+          const delivered = findDeliveredConversationClose(messages, fence, { botUserId });
+          if (delivered) {
+            await conversationFences.commitClose(route, fence.closeToken, { messageId: String(delivered.ts), deliveredAt: Number.parseFloat(delivered.ts) * 1000 });
+            api.logger?.info?.(`run-signature recovered delivered session close for ${route.channel}:${route.threadId}`);
+          } else {
+            await conversationFences.abortClose(route, fence.closeToken);
+            api.logger?.warn?.(`run-signature reopened interrupted undelivered session close for ${route.channel}:${route.threadId}`);
+          }
+        } catch (error) {
+          api.logger?.error?.(`run-signature retained unresolved interrupted close for ${route.channel}:${route.threadId}: ${String(error)}`);
+        }
+      }
+    };
+
+    api.on("gateway_start", reconcileInterruptedCloses);
+
+    const isHumanSlackInbound = async (event, ctx) => {
+      if (event.senderIsOwner === true) return true;
+      const senderId = String(event.senderId ?? ctx.senderId ?? "").trim();
+      if (!senderId) return false;
+      const accounts = await import(resolveSlackRuntimeModule("accounts"));
+      const accountIds = Object.keys(api.config?.channels?.slack?.accounts ?? {});
+      const botUserIds = new Set();
+      for (const accountId of accountIds) {
+        const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
+        if (!token) continue;
+        const botUserId = await resolveBotUserId(token, botIdCache);
+        if (botUserId) botUserIds.add(botUserId);
+      }
+      if (botUserIds.has(senderId)) return false;
+      if (humanUserCache.has(senderId)) return humanUserCache.get(senderId);
+      const accountId = event.accountId ?? ctx.accountId;
+      const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
+      if (!token) return false;
+      try {
+        const humanAuthored = isHumanSlackUserProfile((await slackApi("users.info", token, { user: senderId }))?.user);
+        humanUserCache.set(senderId, humanAuthored);
+        return humanAuthored;
+      } catch {
+        return false;
+      }
+    };
 
     api.registerTool?.((context) => {
       if (context.messageChannel !== "slack") return;
@@ -574,14 +630,26 @@ export default {
         })
       : undefined;
 
-    if (threadOwnership) {
-      api.on("inbound_claim", async (event, ctx) => {
+    api.on("inbound_claim", async (event, ctx) => {
+      const route = rememberInboundThreadRoot(event, ctx, rootCache);
+      if (route && !isExcludedChannel(route.channel)) {
+        const humanAuthored = await isHumanSlackInbound(event, ctx);
+        if (humanAuthored) {
+          await conversationFences.reopenFromHuman({ channel: route.channel, threadId: route.rootTs }, {
+            messageId: String(event.messageId ?? ctx.messageId ?? "") || undefined,
+            receivedAt: event.timestamp,
+          });
+        } else if (conversationFences.shouldSuppress({ channel: route.channel, threadId: route.rootTs })) {
+          api.logger?.info?.(`run-signature fenced non-human inbound for closed conversation ${route.channel}:${route.rootTs}`);
+          return { handled: true };
+        }
+      }
+      if (threadOwnership) {
         const claim = await threadOwnership.claim(event, ctx);
         if (claim.handled) {
           api.logger?.info?.(`thread ownership handled inbound for ${event.accountId ?? ctx.accountId ?? "unknown"}: ${claim.reason}; owner=${claim.owner ?? "none"}`);
           return {handled: true};
         }
-        const route = rememberInboundThreadRoot(event, ctx, rootCache);
         if (!route || isExcludedChannel(route.channel)) return;
         const accountId = event.accountId ?? ctx.accountId;
         try {
@@ -598,8 +666,18 @@ export default {
         } catch (error) {
           api.logger?.error?.(`run-signature could not mark the admitted turn working: ${String(error)}`);
         }
-      });
-    }
+      }
+    });
+
+    api.on("before_agent_run", (_event, ctx) => {
+      const route = conversationFenceRoute({ sessionKey: ctx.sessionKey });
+      if (!route || !conversationFences.shouldSuppress(route)) return;
+      return {
+        outcome: "block",
+        reason: "conversation lifecycle fence is closing or closed",
+        category: "conversation_closed",
+      };
+    });
 
     // Seed the last-resort fallback from the previous process's snapshot, so
     // the first reply after a restart still carries tiles. Live events win.
@@ -694,12 +772,18 @@ export default {
       let normalized = normalizeOutboundStatus(redactSlackReferences(event.content), {
         explicitStatus: event.metadata?.outboundStatus,
       });
+      const sessionRoute = slackRouteFromSessionKey(ctx.sessionKey);
+      const rootTs = String(event.threadId ?? event.replyToId ?? sessionRoute?.rootTs ?? "");
+      const fenceRoute = conversationFenceRoute({ channel, threadId: rootTs, sessionKey: ctx.sessionKey });
       if (normalized.closeRequested) {
+        let closing;
         try {
-          const route = slackRouteFromSessionKey(ctx.sessionKey);
-          const rootTs = String(event.threadId ?? event.replyToId ?? route?.rootTs ?? "");
-          if (!channel || !rootTs) throw new Error("the canonical Slack thread root is unavailable");
+          if (!fenceRoute) throw new Error("the canonical Slack thread root is unavailable");
           const accountId = ctx.accountId ?? event.metadata?.accountId ?? ctx.sessionKey?.match(/^agent:([^:]+)/)?.[1];
+          closing = await conversationFences.beginClosing(fenceRoute, { accountId });
+          if (!closing.accepted) {
+            return { cancel: true, cancelReason: `conversation close was already ${closing.reason}` };
+          }
           const accounts = await import(resolveSlackRuntimeModule("accounts"));
           const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
           if (!token) throw new Error("the sending Slack account has no resolved token");
@@ -709,8 +793,10 @@ export default {
           const usage = await loadThreadUsage({ agent, channel, thread: rootTs });
           const summary = closeSummary(normalized.content, ownerLabel);
           normalized = { status: "done", closeRequested: true, content: formatCloseOut({ summary, stats, usage, agent, ownerLabel }) };
-          pendingCloses.set(ctx.sessionKey, { channel, thread: rootTs, agent, summary, stats, usage, ownerLabel });
+          await conversationFences.armClose(fenceRoute, closing.token, { content: normalized.content });
+          pendingCloses.set(ctx.sessionKey, { channel, thread: rootTs, agent, summary, stats, usage, ownerLabel, token: closing.token, content: normalized.content });
         } catch (error) {
+          if (closing?.accepted && fenceRoute) await conversationFences.abortClose(fenceRoute, closing.token).catch(() => {});
           api.logger?.error?.(`run-signature refused an unmeasured session close: ${String(error)}`);
           normalized = {
             status: "act",
@@ -719,15 +805,21 @@ export default {
           };
         }
       }
+      if (!normalized.closeRequested && fenceRoute && conversationFences.shouldSuppress(fenceRoute)) {
+        api.logger?.info?.(`run-signature intentionally suppressed delivery to ${channel}:${rootTs}`);
+        return { cancel: true, cancelReason: "conversation lifecycle fence is closing or closed" };
+      }
       const outbound = {
         ...event,
         content: normalized.content,
         metadata: { ...event.metadata, outboundStatus: normalized.status },
       };
-      try {
-        await signAndMark(outbound, ctx);
-      } catch (error) {
-        api.logger?.error?.(`run-signature hook failed, delivering anyway: ${String(error)}`);
+      if (!normalized.closeRequested) {
+        try {
+          await signAndMark(outbound, ctx);
+        } catch (error) {
+          api.logger?.error?.(`run-signature hook failed, delivering anyway: ${String(error)}`);
+        }
       }
       if (normalized.content !== event.content) return { content: normalized.content };
     });
@@ -742,20 +834,37 @@ export default {
         api.logger?.error?.(`run-signature message_sent hook failed: ${String(error)}`);
       }
       const pendingClose = pendingCloses.get(ctx.sessionKey);
-      if (pendingClose && event.success && event.messageId) {
+      const isPendingCloseEvent = pendingClose && (event.content === pendingClose.content || /(?:^|\n)## Session Closed(?:\n|$)/u.test(String(event.content ?? "")));
+      if (isPendingCloseEvent && event.success && event.messageId) {
         try {
+          const route = { channel: pendingClose.channel, threadId: pendingClose.thread };
+          const committed = await conversationFences.commitClose(route, pendingClose.token, { messageId: String(event.messageId) });
           await recordSessionClose({
             dataRoot: resolveDataRoot(api.config, api.pluginConfig, pendingClose.agent),
             ...pendingClose,
             closeMessageId: String(event.messageId),
           });
+          if (committed.committed) {
+            const accounts = await import(resolveSlackRuntimeModule("accounts"));
+            const token = accounts.resolveSlackAccount({ cfg: api.config, accountId: pendingClose.agent })?.botToken;
+            if (token) await maintainStatusTile("done", ctx, {
+              channel: pendingClose.channel,
+              rootTs: pendingClose.thread,
+              routeKey: `${pendingClose.channel.toLowerCase()}:${pendingClose.thread}`,
+              accountId: pendingClose.agent,
+              token,
+            });
+          }
         } catch (error) {
           api.logger?.error?.(`run-signature could not record delivered session close: ${String(error)}`);
           await appendFaultJournal({ channel: pendingClose.channel, rootTs: pendingClose.thread, reason: `delivered close was not recorded: ${String(error)}` });
         } finally {
           pendingCloses.delete(ctx.sessionKey);
         }
-      } else if (pendingClose && event.success === false) {
+      } else if (isPendingCloseEvent && event.success === false) {
+        await conversationFences.abortClose({ channel: pendingClose.channel, threadId: pendingClose.thread }, pendingClose.token).catch((error) => {
+          api.logger?.error?.(`run-signature could not remove a failed close fence: ${String(error)}`);
+        });
         pendingCloses.delete(ctx.sessionKey);
       }
     });
