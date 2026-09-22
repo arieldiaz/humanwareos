@@ -200,6 +200,10 @@ export function createToolFailureDeduper({ now = () => Date.now(), retentionMs =
   };
 }
 
+export function resolveProjectedOutboundStatus(explicitStatus, sessionActive) {
+  return explicitStatus ?? (sessionActive ? "working" : undefined);
+}
+
 export async function retrySlackRateLimit(task, { attempts = 4, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
@@ -492,6 +496,7 @@ export default {
     const humanUserCache = new Map();
     const faultedRoots = new Set();
     const pendingCloses = new Map();
+    const activeSessions = new Set();
     const serializeRunStrip = createKeyedSerialQueue();
     const threadOwnershipConfig = api.pluginConfig?.threadOwnership;
     const conversationFences = new ConversationFenceStore();
@@ -671,13 +676,16 @@ export default {
 
     api.on("before_agent_run", (_event, ctx) => {
       const route = conversationFenceRoute({ sessionKey: ctx.sessionKey });
-      if (!route || !conversationFences.shouldSuppress(route)) return;
-      return {
-        outcome: "block",
-        reason: "conversation lifecycle fence is closing or closed",
-        category: "conversation_closed",
-      };
+      if (route && conversationFences.shouldSuppress(route)) {
+        return {
+          outcome: "block",
+          reason: "conversation lifecycle fence is closing or closed",
+          category: "conversation_closed",
+        };
+      }
+      if (ctx.sessionKey) activeSessions.add(ctx.sessionKey);
     });
+    api.on("agent_end", (_event, ctx) => activeSessions.delete(ctx.sessionKey));
 
     // Seed the last-resort fallback from the previous process's snapshot, so
     // the first reply after a restart still carries tiles. Live events win.
@@ -746,7 +754,6 @@ export default {
     };
 
     const toolFailureDeduper = createToolFailureDeduper();
-
     api.on("reply_payload_sending", async (event, ctx) => {
       if (toolFailureDeduper.shouldSuppress(event)) {
         api.logger?.info?.(`run-signature suppressed recovered tool warning for run=${event.runId}`);
@@ -758,6 +765,7 @@ export default {
           return { cancel: true, reason: "only the ACP final is a conversation post" };
         }
       }
+      if (event.kind === "final") activeSessions.delete(ctx.sessionKey);
       if (event.kind === "final") toolFailureDeduper.recordHumanFinal(event);
     });
 
@@ -770,7 +778,7 @@ export default {
       // Guest channels keep plain guest prose and carry no operational state.
       if (isExcludedChannel(channel)) return;
       let normalized = normalizeOutboundStatus(redactSlackReferences(event.content), {
-        explicitStatus: event.metadata?.outboundStatus,
+        explicitStatus: resolveProjectedOutboundStatus(event.metadata?.outboundStatus, activeSessions.has(ctx.sessionKey)),
       });
       const sessionRoute = slackRouteFromSessionKey(ctx.sessionKey);
       const rootTs = String(event.threadId ?? event.replyToId ?? sessionRoute?.rootTs ?? "");
