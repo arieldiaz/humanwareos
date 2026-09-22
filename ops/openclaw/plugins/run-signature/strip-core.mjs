@@ -102,13 +102,13 @@ function lifecycleHeadingStatus(content) {
   return status;
 }
 
-// Typed status wins. Otherwise only an exact lifecycle heading is semantic;
-// arbitrary prose and retired transport footers never manufacture an obligation.
+// Typed status wins. A final normally returns the conversational turn to the
+// human; only an exact close heading may manufacture completion.
 export function normalizeOutboundStatus(content, { explicitStatus } = {}) {
   const source = String(content ?? "").trim();
   const typed = OUTBOUND_STATUSES.has(explicitStatus) ? explicitStatus : undefined;
   return {
-    status: typed ?? lifecycleHeadingStatus(source) ?? "done",
+    status: typed ?? lifecycleHeadingStatus(source) ?? "act",
     closeRequested: /^## Session Closed\s*$/m.test(source),
     content: source,
   };
