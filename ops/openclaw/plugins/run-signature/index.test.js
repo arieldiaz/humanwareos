@@ -32,6 +32,7 @@ import {
   normalizeThinkingLevel,
   resolveThinkingTile,
   retrySlackRateLimit,
+  resolveProjectedOutboundStatus,
   resolveSlackRuntimeModule,
   saveAgentProvenance,
   loadAgentProvenance,
@@ -120,6 +121,12 @@ test("typed status wins without parsing reply prose", () => {
     closeRequested: false,
     content: "Verification is running.",
   });
+});
+
+test("sends from an active run stay working unless they carry a typed status", () => {
+  assert.equal(resolveProjectedOutboundStatus(undefined, true), "working");
+  assert.equal(resolveProjectedOutboundStatus(undefined, false), undefined);
+  assert.equal(resolveProjectedOutboundStatus("scheduled", true), "scheduled");
 });
 
 test("lifecycle headings map directly without being rewritten", () => {

@@ -8,21 +8,27 @@ import { fileURLToPath } from "node:url";
 
 const patchPath = fileURLToPath(new URL("./patch-2026.9.1-cli-commentary-projection.mjs", import.meta.url));
 const parserFixture = `function supportsCliJsonlToolEvents() { return true; }
-function parse(params, parts) {
+function parse(params, events) {
 \tlet assistantText = "", pendingClaudeText = "";
 \tconst classifyClaudeCommentary = Boolean(params.onCommentaryText) && supportsCliJsonlToolEvents(params);
-\tfor (const [kind, value] of parts) {
-\t\tif (kind === "text") classifyClaudeCommentary ? pendingClaudeText += value : assistantText += value;
-\t\tif (kind === "tool" && classifyClaudeCommentary) {
-\t\t\tconst commentary = pendingClaudeText.trim();
-\t\t\tpendingClaudeText = "";
-\t\t\tif (commentary) params.onCommentaryText?.(commentary);
+\tconst flushPendingClaudeAssistantText = () => { assistantText += pendingClaudeText; pendingClaudeText = ""; };
+\tconst flushPendingClaudeCommentaryText = () => {
+\t\tconst commentary = pendingClaudeText.trim();
+\t\tpendingClaudeText = "";
+\t\tif (commentary) params.onCommentaryText?.(commentary);
+\t};
+\tfor (const evt of events) {
+\t\tconst isToolUseBlockStart = evt.type === "content_block_start" && evt.content_block?.type === "tool_use";
+\t\tif (classifyClaudeCommentary) {
+\t\t\tif (isToolUseBlockStart) flushPendingClaudeCommentaryText();
+\t\t\telse if (evt.type === "content_block_start" || evt.type === "message_stop") flushPendingClaudeAssistantText();
 \t\t}
+\t\tif (evt.type === "text") classifyClaudeCommentary ? pendingClaudeText += evt.value : assistantText += evt.value;
 \t}
-\treturn assistantText + pendingClaudeText;
+\treturn assistantText;
 }`;
 
-test("projects CLI pre-tool text as commentary without changing terminal answers", () => {
+test("projects non-terminal CLI text blocks as commentary without changing terminal answers", () => {
   const dist = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-commentary-"));
   const file = path.join(dist, "cli-live-session-registry-fixture.js");
   fs.writeFileSync(file, parserFixture);
@@ -30,12 +36,19 @@ test("projects CLI pre-tool text as commentary without changing terminal answers
   apply();
   const patched = fs.readFileSync(file, "utf8");
   const parse = Function(`${patched}; return parse;`)();
-  const turn = [["text", "Checking context."], ["tool"], ["text", "## TLDR\nThe answer."]];
-  assert.equal(parse({}, turn), "## TLDR\nThe answer.");
+  const block = (type = "text") => ({ type: "content_block_start", content_block: { type } });
+  const text = (value) => ({ type: "text", value });
+  const stop = { type: "message_stop" };
+  const noToolTurn = [block(), text("I'll match Liv's voice."), block(), text("## TLDR\nThe answer."), stop];
   const commentary = [];
-  assert.equal(parse({ onCommentaryText: (text) => commentary.push(text) }, turn), "## TLDR\nThe answer.");
-  assert.deepEqual(commentary, ["Checking context."]);
-  assert.equal(parse({}, [["text", "A short answer."]]), "A short answer.");
+  assert.equal(parse({ onCommentaryText: (value) => commentary.push(value) }, noToolTurn), "## TLDR\nThe answer.");
+  assert.deepEqual(commentary, ["I'll match Liv's voice."]);
+  assert.equal(parse({}, noToolTurn), "## TLDR\nThe answer.");
+  const toolTurn = [block(), text("Checking context."), block("tool_use"), block(), text("## TLDR\nThe answer."), stop];
+  const toolCommentary = [];
+  assert.equal(parse({ onCommentaryText: (value) => toolCommentary.push(value) }, toolTurn), "## TLDR\nThe answer.");
+  assert.deepEqual(toolCommentary, ["Checking context."]);
+  assert.equal(parse({}, [block(), text("A short answer."), stop]), "A short answer.");
   apply();
   assert.equal(fs.readFileSync(file, "utf8"), patched);
 });
