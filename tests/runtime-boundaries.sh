@@ -41,6 +41,8 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -f "$RUNTIME/current/framework/ops/session-console/build-session-console.py" ]
 [ -f "$RUNTIME/current/framework/ops/lib/openclaw_sessions.py" ]
 [ -f "$RUNTIME/current/framework/ops/menubar/thread_status.py" ]
+[ -f "$RUNTIME/current/framework/ops/calendar/service.js" ]
+[ -f "$RUNTIME/current/framework/ops/email-intake/service.mjs" ]
 [ "$(grep -c 'fileURLToPath(import.meta.url)' "$RUNTIME/current/framework/ops/openclaw/patches/patch-2026.7.1-slack-rich-text.mjs")" -eq 1 ]
 [ -f "$DATA/artifacts/manifests/data-plane.json" ]
 [ -f "$DATA/operations/control/restart-freeze.json" ]
