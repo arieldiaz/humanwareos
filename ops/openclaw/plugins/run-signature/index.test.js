@@ -77,18 +77,18 @@ test("suppresses a synthesized tool warning only after a human final in the same
 
 // --- explicit outbound status ---
 
-test("an ordinary reply completes the turn without inspecting its prose", () => {
+test("an ordinary reply hands the conversational turn back to the human", () => {
   assert.deepEqual(normalizeOutboundStatus("Completed the fix."), {
-    status: "done",
+    status: "act",
     closeRequested: false,
     content: "Completed the fix.",
   });
   assert.deepEqual(normalizeOutboundStatus("## Status\nMaybe waiting"), {
-    status: "done",
+    status: "act",
     closeRequested: false,
     content: "## Status\nMaybe waiting",
   });
-  assert.equal(resolveStatusTile(normalizeOutboundStatus("Completed the fix.").status, [], new Set()), "white_check_mark");
+  assert.equal(resolveStatusTile(normalizeOutboundStatus("Completed the fix.").status, [], new Set()), "raised_hand");
 });
 
 test("typed status wins without parsing reply prose", () => {
@@ -111,7 +111,7 @@ test("lifecycle headings map directly without being rewritten", () => {
     assert.equal(normalized.closeRequested, closeRequested);
     assert.equal(normalized.content, body);
   }
-  assert.equal(normalizeOutboundStatus("## ❓ Clarify\nWhich list?").status, "done");
+  assert.equal(normalizeOutboundStatus("## ❓ Clarify\nWhich list?").status, "act");
 });
 
 test("a human ✅ on the root is done and outranks the outbound status", () => {
@@ -133,6 +133,7 @@ test("maps the configured model and harness tiles", () => {
   assert.equal(resolveModelTile("ollama/llama3.3:70b"), ":m_llama:");
   assert.equal(resolveModelTile("cursor/auto"), ":m_cursor_auto:");
   assert.equal(resolveModelTile("cursor/cursor-grok-4.6-high"), ":m_grok:");
+  assert.equal(resolveModelTile("cursor-agent/grok-4.7-low-fast"), ":m_grok:");
   assert.equal(resolveModelTile("mystery"), undefined);
   assert.equal(resolveHarnessTile({ harnessId: "codex" }), ":h_codex:");
   assert.equal(resolveHarnessTile({ provider: "claude-cli" }), ":h_cc:");

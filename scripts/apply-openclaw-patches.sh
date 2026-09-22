@@ -26,6 +26,7 @@ case "$OPENCLAW_VERSION" in
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-prompt-annotation-race.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.7.1-slack-rich-text.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-manual-cancel-notify.mjs"
+    "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-cli-commentary-projection.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-slack-response-reliability.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-slack-ack-reliability.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-codex-runtime-reliability.mjs"

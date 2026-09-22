@@ -14,6 +14,8 @@ Instance-owned declarative configuration lives one level up:
 
 ## 2026.9.1 reliability patches
 
+`patch-2026.9.1-cli-commentary-projection.mjs` keeps CLI pre-tool narration out of the final channel reply even when the surface has no live-commentary listener. OpenClaw already recognizes text before a tool call as commentary, but stock 2026.9.1 enables that classification only when a listener exists; on Slack it therefore concatenates the commentary and terminal answer, including malformed boundaries such as `context.## TLDR`. The patch makes classification independent of observation: a listener receives commentary when present, otherwise it is discarded, while tool-free answers and the terminal assistant message are unchanged.
+
 `patch-2026.9.1-prompt-annotation-race.mjs` allows the native Codex prompt mirror to preserve compatible `__openclaw` metadata added after the user admission was recorded. It still rejects content changes, non-metadata changes, terminal evidence, and conflicting provenance. This closes the race that made prompt mirroring fail and then left settled-turn finalization without its captured context.
 
 `patch-2026.9.1-codex-runtime-reliability.mjs` gives Codex process inspection the existing ten-second startup budget instead of silently falling back to two seconds, and uses the same bounded budget while registering a newly spawned app-server process. It reduces false process-inspection and orphan-cleanup failures during transient host load without weakening PID identity checks or allowing unbounded waits. `codex-plugin-root.mjs` selects the exact installed 2026.9.1 plugin generation and fails closed if discovery is ambiguous.
