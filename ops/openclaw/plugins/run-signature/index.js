@@ -520,15 +520,9 @@ export default {
             const clearScaffold = async ({ messageIds }) => {
               try {
                 const actions = await import(resolveSlackRuntimeModule("actions"));
-                const botUserId = await resolveBotUserId(token, botIdCache);
-                if (!botUserId) return;
                 const opts = { cfg: api.config, accountId, token };
                 for (const messageId of messageIds) {
-                  const observed = normalizeReactions(await retrySlackRateLimit(() => actions.listSlackReactions(channel, messageId, opts)));
-                  for (const reaction of observed) {
-                    if (!STRIP_NAME_SET.has(reaction?.name) || !reaction?.users?.includes(botUserId)) continue;
-                    await tolerantWrite(() => retrySlackRateLimit(() => actions.removeSlackReaction(channel, messageId, reaction.name, opts)));
-                  }
+                  await retrySlackRateLimit(() => actions.removeOwnSlackReactions(channel, messageId, opts));
                 }
               } catch (error) {
                 api.logger?.warn?.(`run-signature could not clear scaffold reactions: ${String(error)}`);
