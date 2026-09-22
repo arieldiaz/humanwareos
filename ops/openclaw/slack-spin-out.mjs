@@ -1,66 +1,97 @@
-#!/usr/bin/env node
+const MAX_ROOT_LENGTH = 160;
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+export function normalizeWorkThreadTitle(value) {
+  const title = String(value ?? "").replace(/\s+/gu, " ").trim();
+  if (!title) throw new Error("title is required");
+  if (title.length <= MAX_ROOT_LENGTH) return title;
+  return `${title.slice(0, MAX_ROOT_LENGTH - 1).trimEnd()}…`;
+}
 
-const execFileAsync = promisify(execFile);
+function messageId(result) {
+  return result?.messageId ?? result?.message?.id ?? result?.result?.messageId;
+}
 
-export async function createSlackWorkThread({ accountId, agentId, channel, goal, detail, send }) {
-  if (!accountId || !agentId || !channel || !goal || !detail) {
-    throw new Error("accountId, agentId, channel, goal, and detail are required");
+function sessionKey(result) {
+  return result?.key ?? result?.sessionKey ?? result?.result?.key;
+}
+
+function runId(result) {
+  return result?.runId ?? result?.result?.runId;
+}
+
+export async function startSlackWorkThread({
+  accountId,
+  agentId,
+  channel,
+  title,
+  detail,
+  group,
+  parentSessionKey,
+  operationId,
+  send,
+  prepareScaffold,
+  setStatus,
+  createSession,
+}) {
+  if (!accountId || !agentId || !channel || !detail || !operationId) {
+    throw new Error("accountId, agentId, channel, detail, and operationId are required");
   }
+  const rootText = normalizeWorkThreadTitle(title);
   const root = await send({
     accountId,
     agentId,
     channel: "slack",
     to: `channel:${channel}`,
-    message: goal,
+    message: rootText,
     topLevel: true,
-    idempotencyKey: `slack-spin-out:${agentId}:${channel}:${crypto.randomUUID()}:root`,
+    idempotencyKey: `work-thread:${operationId}:root`,
   });
-  if (!root?.messageId) throw new Error("Slack root send returned no messageId");
+  const rootMessageId = messageId(root);
+  if (!rootMessageId) throw new Error("Slack root send returned no messageId");
   const reply = await send({
     accountId,
     agentId,
     channel: "slack",
     to: `channel:${channel}`,
-    message: detail,
-    threadId: String(root.messageId),
-    idempotencyKey: `slack-spin-out:${agentId}:${channel}:${root.messageId}:detail`,
+    message: String(detail).trim(),
+    threadId: String(rootMessageId),
+    idempotencyKey: `work-thread:${operationId}:detail`,
   });
-  if (!reply?.messageId) throw new Error("Slack detail reply returned no messageId");
-  return { rootMessageId: String(root.messageId), replyMessageId: String(reply.messageId) };
-}
-
-async function gatewaySend(params) {
-  const { stdout } = await execFileAsync(
-    "openclaw",
-    ["gateway", "call", "send", "--params", JSON.stringify(params), "--json"],
-    { timeout: 60_000, maxBuffer: 1024 * 1024 },
-  );
-  return JSON.parse(stdout);
-}
-
-function parseArgs(argv) {
-  const args = {};
-  for (let index = 0; index < argv.length; index += 2) {
-    const key = argv[index]?.replace(/^--/, "");
-    const value = argv[index + 1];
-    if (!key || value === undefined) throw new Error(`invalid argument: ${argv[index] ?? ""}`);
-    args[key] = value;
+  const replyMessageId = messageId(reply);
+  if (!replyMessageId) throw new Error("Slack detail reply returned no messageId");
+  await prepareScaffold({ channel, messageIds: [String(rootMessageId), String(replyMessageId)] });
+  await setStatus({ channel, rootMessageId: String(rootMessageId), status: "working" });
+  try {
+    const task = [
+      "Begin this work now.",
+      `Use Slack channel ${channel}, thread root ${rootMessageId} for material progress, questions, and the final result.`,
+      "The root and detailed brief are already posted; do not repeat or recreate them.",
+      "",
+      String(detail).trim(),
+    ].join("\n");
+    const session = await createSession({
+      agentId,
+      label: rootText,
+      ...(group?.trim() ? { category: group.trim() } : {}),
+      thinkingLevel: "high",
+      task,
+      ...(parentSessionKey ? { parentSessionKey } : {}),
+      idempotencyKey: `work-thread:${operationId}:session`,
+    });
+    const childSessionKey = sessionKey(session);
+    const childRunId = runId(session);
+    if (!childSessionKey || session?.runStarted === false || !childRunId) {
+      throw new Error(session?.runError?.message ?? session?.runError ?? "work session did not start");
+    }
+    return {
+      rootMessageId: String(rootMessageId),
+      replyMessageId: String(replyMessageId),
+      childSessionKey: String(childSessionKey),
+      runId: String(childRunId),
+      thinkingLevel: "high",
+    };
+  } catch (error) {
+    await setStatus({ channel, rootMessageId: String(rootMessageId), status: "act" });
+    throw error;
   }
-  return args;
-}
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const args = parseArgs(process.argv.slice(2));
-  const result = await createSlackWorkThread({
-    accountId: args.account,
-    agentId: args.agent,
-    channel: args.channel,
-    goal: args.goal,
-    detail: args.detail,
-    send: gatewaySend,
-  });
-  process.stdout.write(`${JSON.stringify(result)}\n`);
 }

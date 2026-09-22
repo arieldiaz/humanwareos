@@ -18,6 +18,10 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 
 **Never type the run signature.** Where the gateway appends one, typing it duplicates it.
 
+## Work threads
+
+When substantial work gets its own thread, use the atomic work-thread tool. Give it a short one-line title and the complete brief. It posts only the title at the root, puts the brief in reply one, marks the root working, and starts the durable high-reasoning session immediately. Do not rebuild this sequence with separate message, spawn, and later session-patch calls.
+
 ## Mechanics
 
 - `## Heading` for sections. Bold is a label, not a heading. Never a single `*` — that is italic.

@@ -23,6 +23,7 @@ import {
   measureSlackThread,
   recordSessionClose,
 } from "./session-close.mjs";
+import { startSlackWorkThread } from "../../slack-spin-out.mjs";
 
 export {
   normalizeReactions,
@@ -491,6 +492,76 @@ export default {
     const pendingCloses = new Map();
     const serializeRunStrip = createKeyedSerialQueue();
     const threadOwnershipConfig = api.pluginConfig?.threadOwnership;
+
+    api.registerTool?.((context) => {
+      if (context.messageChannel !== "slack") return;
+      const channel = String(context.nativeChannelId ?? "").replace(/^channel:/i, "").toUpperCase();
+      const agentId = String(context.agentId ?? "").toLowerCase();
+      const accountId = context.agentAccountId ?? agentId;
+      if (!channel || !agentId || !accountId) return;
+      return {
+        name: "start_work_thread",
+        description: "Start substantial Slack work in its normal shape with one call: one short single-line root, the full brief as the first reply, a working status, and a durable high-reasoning session that begins immediately. Use this instead of separate message and sessions_spawn calls.",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "detail"],
+          properties: {
+            title: { type: "string", minLength: 1, description: "Short one-line root title." },
+            detail: { type: "string", minLength: 1, description: "Complete work brief for reply one and the work session." },
+            group: { type: "string", description: "Optional dashboard group." },
+          },
+        },
+        async execute(toolCallId, args) {
+          try {
+            const accounts = await import(resolveSlackRuntimeModule("accounts"));
+            const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
+            if (!token) throw new Error(`Slack account ${accountId} has no bot token`);
+            const clearScaffold = async ({ messageIds }) => {
+              try {
+                const actions = await import(resolveSlackRuntimeModule("actions"));
+                const botUserId = await resolveBotUserId(token, botIdCache);
+                if (!botUserId) return;
+                const opts = { cfg: api.config, accountId, token };
+                for (const messageId of messageIds) {
+                  const observed = normalizeReactions(await retrySlackRateLimit(() => actions.listSlackReactions(channel, messageId, opts)));
+                  for (const reaction of observed) {
+                    if (!STRIP_NAME_SET.has(reaction?.name) || !reaction?.users?.includes(botUserId)) continue;
+                    await tolerantWrite(() => retrySlackRateLimit(() => actions.removeSlackReaction(channel, messageId, reaction.name, opts)));
+                  }
+                }
+              } catch (error) {
+                api.logger?.warn?.(`run-signature could not clear scaffold reactions: ${String(error)}`);
+              }
+            };
+            const result = await startSlackWorkThread({
+              accountId,
+              agentId,
+              channel,
+              title: args.title,
+              detail: args.detail,
+              group: args.group,
+              parentSessionKey: context.sessionKey,
+              operationId: toolCallId,
+              send: (params) => api.runtime.gateway.request("send", params),
+              prepareScaffold: clearScaffold,
+              setStatus: ({ rootMessageId, status }) => maintainStatusTile(status, context, {
+                channel,
+                rootTs: rootMessageId,
+                routeKey: `${channel.toLowerCase()}:${rootMessageId}`,
+                accountId,
+                token,
+              }),
+              createSession: (params) => api.runtime.gateway.request("sessions.create", params),
+            });
+            return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
+          } catch (error) {
+            return { content: [{ type: "text", text: String(error?.message ?? error) }], isError: true };
+          }
+        },
+      };
+    }, { name: "start_work_thread" });
+
     const threadOwnership = threadOwnershipConfig?.enabled === true
       ? createThreadOwnershipRuntime({
           accounts: threadOwnershipConfig.accounts,

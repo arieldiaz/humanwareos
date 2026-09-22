@@ -57,6 +57,29 @@ test("registers transport hooks without semantic collaboration hooks", () => {
   assert.ok(hooks.includes("message_sent"));
 });
 
+test("registers one atomic Slack work-thread tool with the normal high-reasoning path", () => {
+  const tools = [];
+  runSignaturePlugin.register({
+    config: {},
+    on() {},
+    registerTool(factory, options) {
+      tools.push({ factory, options });
+    },
+  });
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].options.name, "start_work_thread");
+  assert.equal(tools[0].factory({ messageChannel: "discord", agentId: "max" }), undefined);
+  const tool = tools[0].factory({
+    messageChannel: "slack",
+    nativeChannelId: "C123",
+    agentId: "max",
+    agentAccountId: "max",
+  });
+  assert.equal(tool.name, "start_work_thread");
+  assert.deepEqual(tool.parameters.required, ["title", "detail"]);
+  assert.match(tool.description, /durable high-reasoning session/);
+});
+
 test("suppresses a synthesized tool warning only after a human final in the same run", () => {
   let current = 1_000;
   const deduper = createToolFailureDeduper({ now: () => current, retentionMs: 10_000 });
