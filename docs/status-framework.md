@@ -36,17 +36,17 @@ Use `act` whenever a delivered reply returns the conversation to the human. Befo
 
 Use `scheduled` only after a durable wake exists in the current conversation. If wake creation fails, do not claim the state. Resolve the failure now or return an honest human action.
 
-Use `done` only for explicit whole-thread closure. A completed answer or action can still invite review, correction, or a next request, so delivery alone never manufactures closure. A new human message reopens the loop and admission moves the thread back to `working`.
+Use `done` for explicit whole-thread closure. The sole automatic exception is an email intake receipt backed by a domain service's mechanically verified, already completed idempotent record operation. That machine receipt may start at `done` without an agent run or human reconfirmation. Email prose and agent claims are not verification. A completed conversational answer or action can still invite review, correction, or a next request, so delivery alone never manufactures closure. A new human message reopens the loop and admission moves the thread back to `working`.
 
 ## Visibility
 
-`working` is never model-authored prose. The control plane exposes it through the root tile and session ledger. [The response envelope](reply-shape.md) owns visible lifecycle sections. A normal reply ends naturally and carries ✋ without an action footer; ✅ appears only through the explicit close path.
+`working` is never model-authored prose. The control plane exposes it through the root tile and session ledger. [The response envelope](reply-shape.md) owns visible lifecycle sections. A normal reply ends naturally and carries ✋ without an action footer; ✅ follows the closure rules above.
 
 ## Collaboration and provenance
 
 One conversation has one lifecycle state regardless of how many agents or harnesses contributed. Internal collaboration does not create extra human-facing states.
 
-The adapter appends the effective model, harness, and thinking reactions to each delivered agent message. Models never type those markers. Status, signature, and ledger faults are recorded for operations; cosmetic reaction failure does not duplicate or suppress the final response.
+The adapter appends the effective model, harness, and thinking reactions to each delivered agent message, never to machine receipt roots. Models never type those markers. Status, signature, and ledger faults are recorded for operations; cosmetic reaction failure does not duplicate or suppress the final response.
 
 ## Acceptance
 
