@@ -10,8 +10,8 @@ const candidates = fs
 
 const classificationBefore = `\tconst classifyClaudeCommentary = Boolean(params.onCommentaryText) && supportsCliJsonlToolEvents(params);`;
 const classificationAfter = `\t// humanware:project-cli-pretool-commentary\n\tconst classifyClaudeCommentary = supportsCliJsonlToolEvents(params);`;
-const boundaryBefore = `\t\tif (classifyClaudeCommentary) {\n\t\t\tif (isToolUseBlockStart) flushPendingClaudeCommentaryText();\n\t\t\telse if (evt.type === "content_block_start" || evt.type === "message_stop") flushPendingClaudeAssistantText();\n\t\t}`;
-const boundaryAfter = `\t\tif (classifyClaudeCommentary) {\n\t\t\tif (isToolUseBlockStart || (evt.type === "content_block_start" && pendingClaudeText)) flushPendingClaudeCommentaryText();\n\t\t\telse if (evt.type === "message_stop") flushPendingClaudeAssistantText();\n\t\t}`;
+const boundaryBefore = `\t\t\tif (classifyClaudeCommentary) {\n\t\t\t\tif (isToolUseBlockStart) flushPendingClaudeCommentaryText();\n\t\t\t\telse if (evt.type === "content_block_start" || evt.type === "message_stop") flushPendingClaudeAssistantText();\n\t\t\t}`;
+const boundaryAfter = `\t\t\tif (classifyClaudeCommentary) {\n\t\t\t\tif (isToolUseBlockStart || (evt.type === "content_block_start" && pendingClaudeText)) flushPendingClaudeCommentaryText();\n\t\t\t\telse if (evt.type === "message_stop") flushPendingClaudeAssistantText();\n\t\t\t}`;
 
 let patched = 0;
 let alreadyPatched = 0;

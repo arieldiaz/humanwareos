@@ -19,10 +19,10 @@ function parse(params, events) {
 \t};
 \tfor (const evt of events) {
 \t\tconst isToolUseBlockStart = evt.type === "content_block_start" && evt.content_block?.type === "tool_use";
-\t\tif (classifyClaudeCommentary) {
-\t\t\tif (isToolUseBlockStart) flushPendingClaudeCommentaryText();
-\t\t\telse if (evt.type === "content_block_start" || evt.type === "message_stop") flushPendingClaudeAssistantText();
-\t\t}
+\t\t\tif (classifyClaudeCommentary) {
+\t\t\t\tif (isToolUseBlockStart) flushPendingClaudeCommentaryText();
+\t\t\t\telse if (evt.type === "content_block_start" || evt.type === "message_stop") flushPendingClaudeAssistantText();
+\t\t\t}
 \t\tif (evt.type === "text") classifyClaudeCommentary ? pendingClaudeText += evt.value : assistantText += evt.value;
 \t}
 \treturn assistantText;
