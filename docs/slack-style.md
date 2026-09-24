@@ -20,7 +20,9 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 
 ## Work threads
 
-When substantial work gets its own thread, use the atomic work-thread tool. Give it a short one-line title and the complete brief. It posts only the title at the root, puts the brief in reply one, marks the root working, and starts the durable high-reasoning session immediately. Do not rebuild this sequence with separate message, spawn, and later session-patch calls.
+Every agent-created new channel thread uses the durable sender: a whitespace-normalized title of at most 160 characters at the root, then the complete body and attachments in that thread. Scheduled sends use the job name; conversational sends use the supplied title or existing session label, falling back to “Update” without a title-generation run. Existing-thread replies and DMs are unchanged. Root and body share queue custody, but only body delivery completes the intent.
+
+When substantial work gets its own thread, use the atomic work-thread tool with a title and complete brief. It delegates publication to that same sender, then marks the root working and starts the durable high-reasoning session. Do not rebuild publication with separate sends or session-patch calls.
 
 ## Mechanics
 
