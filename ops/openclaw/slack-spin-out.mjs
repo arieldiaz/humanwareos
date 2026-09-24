@@ -1,11 +1,4 @@
-const MAX_ROOT_LENGTH = 160;
-
-export function normalizeWorkThreadTitle(value) {
-  const title = String(value ?? "").replace(/\s+/gu, " ").trim();
-  if (!title) throw new Error("title is required");
-  if (title.length <= MAX_ROOT_LENGTH) return title;
-  return `${title.slice(0, MAX_ROOT_LENGTH - 1).trimEnd()}…`;
-}
+import { normalizeWorkThreadTitle } from "./slack-channel-thread.mjs";
 
 function messageId(result) {
   return result?.messageId ?? result?.message?.id ?? result?.result?.messageId;
@@ -37,28 +30,19 @@ export async function startSlackWorkThread({
     throw new Error("accountId, agentId, channel, detail, and operationId are required");
   }
   const rootText = normalizeWorkThreadTitle(title);
-  const root = await send({
+  const publication = await send({
     accountId,
     agentId,
     channel: "slack",
     to: `channel:${channel}`,
-    message: rootText,
-    topLevel: true,
-    idempotencyKey: `work-thread:${operationId}:root`,
-  });
-  const rootMessageId = messageId(root);
-  if (!rootMessageId) throw new Error("Slack root send returned no messageId");
-  const reply = await send({
-    accountId,
-    agentId,
-    channel: "slack",
-    to: `channel:${channel}`,
+    title: rootText,
     message: String(detail).trim(),
-    threadId: String(rootMessageId),
-    idempotencyKey: `work-thread:${operationId}:detail`,
+    topLevel: true,
+    idempotencyKey: `work-thread:${operationId}:publication`,
   });
-  const replyMessageId = messageId(reply);
-  if (!replyMessageId) throw new Error("Slack detail reply returned no messageId");
+  const rootMessageId = publication?.threadId ?? publication?.result?.threadId;
+  const replyMessageId = messageId(publication);
+  if (!rootMessageId || !replyMessageId) throw new Error("Slack publication returned no root/body identity");
   await prepareScaffold({ channel, messageIds: [String(rootMessageId), String(replyMessageId)] });
   await setStatus({ channel, rootMessageId: String(rootMessageId), status: "working" });
   try {
