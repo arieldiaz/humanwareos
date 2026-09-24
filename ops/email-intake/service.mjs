@@ -1,3 +1,4 @@
+import {ownerAuthority} from "./owner-session.mjs";
 import {randomUUID} from "node:crypto";
 import {address, classify, digest, handlingTransition, instant, normalizeMessage, normalizeReceipt, required} from "./model.mjs";
 import {assertIntakeRepository} from "./repository.mjs";
@@ -21,7 +22,7 @@ export function correlate(repository, message, windowMs) {
 
 export class EmailIntakeService {
   constructor({repository, routes, intakeChannelId, maxBytes, subjectWindowMs,
-    assessQuick = () => null, verifiedReceipt = () => null,
+    authenticateOwner = () => null, assessQuick = () => null, verifiedReceipt = () => null,
     authenticateSlack = () => null, resolveDestination = () => null,
     now = () => new Date().toISOString(), newId = randomUUID}) {
     this.repository = assertIntakeRepository(repository);
@@ -29,7 +30,7 @@ export class EmailIntakeService {
     this.intakeChannelId = required(intakeChannelId, "intake channel");
     if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error("maxBytes must be positive");
     if (!Number.isSafeInteger(subjectWindowMs) || subjectWindowMs <= 0) throw new Error("subjectWindowMs must be positive");
-    Object.assign(this, {maxBytes, subjectWindowMs, assessQuick, verifiedReceipt, authenticateSlack, resolveDestination, now, newId});
+    Object.assign(this, {maxBytes, subjectWindowMs, authenticateOwner, assessQuick, verifiedReceipt, authenticateSlack, resolveDestination, now, newId});
   }
 
   receive(input) {
@@ -42,20 +43,22 @@ export class EmailIntakeService {
     // The first accepted immutable message wins by recipient + Message-ID.
     return repository.atomic(`email:${message.key}`, message.key, () => {
       const receipt = normalizeReceipt(sync(this.verifiedReceipt(message)), message.key);
+      const authority = !receipt && message.automatic === "none" ? ownerAuthority(sync(this.authenticateOwner(message)), message) : null;
       const receiptKey = receipt ? digest([message.recipient, receipt.domain, receipt.operationId]) : null;
       const priorReceipt = receiptKey ? repository.receipt(receiptKey) : null;
       if (priorReceipt && priorReceipt.receipt.resourceId !== receipt.resourceId) throw new Error("domain receipt identity conflict");
-      const current = priorReceipt ? repository.read(priorReceipt.intakeId) : correlate(repository, message, this.subjectWindowMs);
+      const correlated = priorReceipt ? repository.read(priorReceipt.intakeId) : correlate(repository, message, this.subjectWindowMs);
+      const current = correlated && (correlated.authority?.principal ?? null) === (authority?.principal ?? null) ? correlated : null;
       const time = instant(this.now());
-      const classification = classify({receipt, assessment: receipt || message.automatic !== "none" ? null : sync(this.assessQuick(message)), automatic: message.automatic});
-      // A follow-up remains mail context. It never becomes a new execution command.
+      const classification = authority ? {intakeClass: "owner_session", state: "working", lifecycle: "working"} : classify({receipt, assessment: receipt || message.automatic !== "none" ? null : sync(this.assessQuick(message)), automatic: message.automatic});
+      // Only independently authenticated owner follow-ups can enqueue another turn.
       const conversation = current ? {...current, revision: current.revision + 1, updatedAt: time,
         lastReceivedAt: message.receivedAt > current.lastReceivedAt ? message.receivedAt : current.lastReceivedAt,
       } : {
         schemaVersion: 1, intakeId: required(this.newId(), "intake ID"), revision: 1,
         recipient: message.recipient, sender: message.sender, subjectKey: message.subjectKey,
         owner, ...classification, createdAt: time, updatedAt: time, lastReceivedAt: message.receivedAt,
-        intakeThread: null, promotion: null, wake: null, receipt, failure: null,
+        intakeThread: null, authority, promotion: null, wake: null, receipt, failure: null,
       };
       repository.save(conversation, current?.revision ?? 0);
       repository.addMessage(message, conversation.intakeId);
@@ -67,6 +70,7 @@ export class EmailIntakeService {
       if (!current && classification.intakeClass === "quick") {
         repository.enqueue({key: `quick:${message.key}`, intakeId: conversation.intakeId, kind: "quick_dispatch", payload: {messageKey: message.key, owner, scope: "bounded_quick", allowEmailReply: message.automatic === "none"}});
       }
+      if (authority) repository.enqueue({key: `owner:${message.key}`, intakeId: conversation.intakeId, kind: "owner_dispatch", payload: {messageKey: message.key, principal: authority.principal}});
       return conversation;
     });
   }
