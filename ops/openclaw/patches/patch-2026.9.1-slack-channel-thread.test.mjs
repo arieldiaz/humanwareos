@@ -223,3 +223,18 @@ test("copied storage: real SQLite custody, restart checkpoint, completion replay
     assert.ok(await storage.D(recoveryId, stateDir));
   } finally { fs.rmSync(stateDir, { recursive: true, force: true }); }
 });
+
+test("copied recovery cannot recreate a gateway caller's process-local authority", { skip: !rehearsal }, async () => {
+  const context = vm.createContext({
+    resolveMaxRetries: () => 10, resolveAttemptCount: () => 1,
+    resolveCompletedOwnerBeforeRecovery: async () => "continue",
+    needsUnknownSendReconciliation: () => false,
+  });
+  vm.runInContext(extract(readBundle("delivery-queue-recovery-CAUTn65F.js"), "drainQueuedEntry"), context);
+  const result = await context.drainQueuedEntry({
+    entry: { id: "queue", slackChannelThread: { rootMessageId: "1.0", liveAuthorityOnly: true } },
+    log: { info() {} },
+    deliver() { assert.fail("recovery dispatched without live authority"); },
+  });
+  assert.equal(result, "failed");
+});

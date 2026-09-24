@@ -116,9 +116,18 @@ edit(recovery, '\t\tif (reconciliation?.status === "sent") try {', `		if (reconc
 			return drainQueuedEntry({ ...opts, entry: bodyEntry });
 		}
 		if (reconciliation?.status === "sent") try {`);
+edit(recovery, '\tconst payloadOutcomes = [];\n\tconst messageSentEvents = [];\n\tlet postSendState;', `	// Gateway runtime authority is process-local and cannot be recreated by recovery.
+	// Reconciliation above may observe success; another dispatch needs the live caller.
+	if (entry.slackChannelThread?.liveAuthorityOnly) {
+		opts.log.info("Slack thread delivery is awaiting its live runtime authority");
+		return "failed";
+	}
+	const payloadOutcomes = [];
+	const messageSentEvents = [];
+	let postSendState;`);
 edit(recovery, '\t\t\tconst result = buildReconciledSentResult(entry, reconciliation);', '\t\t\tconst result = buildReconciledSentResult(entry, reconciliation);\n\t\t\tif (entry.slackChannelThread) recordSlackThreadBodyResult(entry.id, { ...result, threadId: entry.threadId, threadTs: entry.threadId }, opts.stateDir, entry.platformSendAttemptId);');
 edit(gateway, '//#region src/gateway/server-methods/send.ts', 'import { planSlackChannelThread } from "./humanware-slack-channel-thread.mjs";\n//#region src/gateway/server-methods/send.ts');
-edit(gateway, '\t\t\t\t\tconst send = await sendDurableMessageBatchCore({', `					const newSlackThread = planSlackChannelThread({ channel, to: deliveryTarget, session: outboundSession, payloads: outboundPayloads, replyToId, threadId: outboundRoute?.threadId ?? threadId });
+edit(gateway, '\t\t\t\t\tconst send = await sendDurableMessageBatchCore({', `					const newSlackThread = planSlackChannelThread({ channel, to: deliveryTarget, session: outboundSession, title: request.title ?? (providedSessionKey ? loadGatewaySessionEntry(providedSessionKey).entry?.label : void 0), payloads: outboundPayloads, replyToId, threadId: outboundRoute?.threadId ?? threadId });
 					const send = await sendDurableMessageBatchCore({`);
 edit("delivery-queue-sqlite-UMkZG5_l.js", '\tconst requestedRetention = loadDeliveryQueueEntry(queueName, id, stateDir)?.completionRetention;', '\tconst completedThreadEntry = loadDeliveryQueueEntry(queueName, id, stateDir);\n\tconst requestedRetention = completedThreadEntry?.completionRetention;');
 edit("delivery-queue-sqlite-UMkZG5_l.js", '\t\tentry: projectDeliveryQueueTerminalEntry({\n\t\t\tid,\n\t\t\tretryCount: 0\n\t\t}, now, "completed", retention),', `		entry: {
@@ -135,7 +144,7 @@ edit(schema, 'const SendParamsSchema = closedObject({\n\tto: NonEmptyString,', '
 edit(gateway, '\t\t"conversationId",\n\t\t"pollId"', '\t\t"conversationId",\n\t\t"threadId",\n\t\t"threadTs",\n\t\t"pollId"');
 edit(gateway, '\t\tconst replyToId = normalizeOptionalString(request.replyToId);\n\t\tconst threadId = normalizeOptionalString(request.threadId);', '\t\tconst replyToId = request.topLevel ? void 0 : normalizeOptionalString(request.replyToId);\n\t\tconst threadId = request.topLevel ? void 0 : normalizeOptionalString(request.threadId);');
 edit(gateway, '\t\t\t\t\t\tcurrentSessionKey: providedSessionKey,', '\t\t\t\t\t\tcurrentSessionKey: request.topLevel ? void 0 : providedSessionKey,');
-edit(gateway, '\t\t\t\t\t\tpayloads: outboundPayloads,', '\t\t\t\t\t\ttitle: request.title ?? (providedSessionKey ? loadGatewaySessionEntry(providedSessionKey).entry?.label : void 0),\n\t\t\t\t\t\t...newSlackThread ? { deliveryIntentId: `slack-send:${accountId}:${deliveryTarget}:${idem}`, reusePendingDeliveryIntent: true, completionRetention: { idPrefix: "slack-send:", maxAgeMs: 86400000, maxEntries: 2000 } } : {},\n\t\t\t\t\t\tpayloads: outboundPayloads,');
+edit(gateway, '\t\t\t\t\t\tpayloads: outboundPayloads,', '\t\t\t\t\t\ttitle: request.title ?? (providedSessionKey ? loadGatewaySessionEntry(providedSessionKey).entry?.label : void 0),\n\t\t\t\t\t\t...newSlackThread ? { slackChannelThread: { ...newSlackThread, liveAuthorityOnly: hasAgentRuntimeAuthority }, deliveryIntentId: `slack-send:${accountId}:${deliveryTarget}:${idem}`, reusePendingDeliveryIntent: true, completionRetention: { idPrefix: "slack-send:", maxAgeMs: 86400000, maxEntries: 2000 } } : {},\n\t\t\t\t\t\tpayloads: outboundPayloads,');
 edit(gateway, '\t\t\t\t\tconst result = (send.status === "sent" ? send.results : []).at(-1);', '\t\t\t\t\tconst delivered = (send.status === "sent" ? send.results : []).at(-1);\n\t\t\t\t\tconst result = delivered ? { ...delivered, threadId: delivered.threadId ?? delivered.threadTs } : delivered;');
 // Validate every anchor before touching any bundle. Reapplying verifies every edit.
 const helper = fs.readFileSync(fileURLToPath(new URL("../slack-channel-thread.mjs", import.meta.url)), "utf8");
