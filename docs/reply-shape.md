@@ -12,15 +12,13 @@ Every execution path receives this contract verbatim. Changing agent, model, or 
 
 ## Final response
 
-Lead with the result. A short answer is plain prose. A substantive answer uses `## TLDR`, optional `## Background`, and `## Next Step` only when those sections materially help. Use the human's terms and only the structure the answer needs. Do not repeat conclusions, manufacture a call to action, or end with a question by habit.
+Lead with the result. A short answer is plain prose. A substantive answer uses `## TLDR`, optional `## Background`, and `## Next Step` only when those sections materially help. Use the human's terms and only the structure the answer needs. Do not repeat conclusions or manufacture approvals.
 
-Act on clear requests. Ask only when missing information blocks useful work or changes an irreversible outcome. A reversible assumption is usually enough to proceed.
+Complete authorized, in-scope work before yielding; a milestone is not the objective. Every final makes the next move explicit: ask for a necessary human action or approval, identify a durable scheduled continuation, or recommend closure when the objective is complete. Use one final section:
 
-An ordinary answer or completed action ends naturally and returns the conversational turn to the human. Add one final section only when it carries information the plain reply does not:
-
-- `## ✋ Act` for the human's single next action or blocking question.
+- `## ✋ Act` for one concrete human action, blocking question, approval, or closure recommendation.
 - `## 🗓️ Scheduled` after a durable wake exists.
-- `## Session Closed` only for explicit durable closure of the whole thread.
+- `## Session Closed` only after human-confirmed, durable closure of the whole thread.
 
 Never emit `## Status`, `## ❓ Clarify`, `No action needed.`, `Agent — working`, `Goal:`, or narration about loading context, checking reply shape, thinking, or what will happen later in the same turn. Nothing follows a lifecycle section.
 
