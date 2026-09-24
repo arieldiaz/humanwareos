@@ -112,7 +112,7 @@ if [ -d "$INSTANCE_DIR/services" ]; then
   for service_package in "$BUILD_DIR"/config/services/*/package.json; do
     [ -f "$service_package" ] || continue
     if [ "$("$JQ" -r '.humanwareRuntime // false' "$service_package")" = true ]; then
-      npm --prefix "$(dirname "$service_package")" ci --omit=dev --ignore-scripts --no-audit --no-fund
+      npm --prefix "$(dirname "$service_package")" ci --omit=dev --ignore-scripts --no-audit --no-fund >&2
     fi
   done
 fi

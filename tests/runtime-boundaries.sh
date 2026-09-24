@@ -53,6 +53,21 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 "$JQ" -e '.mutableStateIncluded == false and .dataRoot == $root' --arg root "$DATA" "$RUNTIME/current/manifest.json" >/dev/null
 "$FRAMEWORK/scripts/validate-instance.sh" "$FRAMEWORK" "$INSTANCE" >/dev/null
 
+# Runtime dependency setup must preserve the builder's parseable build-record stdout and
+# must not run lifecycle scripts in the immutable staging directory.
+mkdir -p "$INSTANCE/services/runtime-fixture"
+cat > "$INSTANCE/services/runtime-fixture/package.json" <<'PACKAGE'
+{"name":"runtime-fixture","version":"1.0.0","humanwareRuntime":true,"scripts":{"install":"touch install-script-ran"}}
+PACKAGE
+cat > "$INSTANCE/services/runtime-fixture/package-lock.json" <<'LOCK'
+{"name":"runtime-fixture","version":"1.0.0","lockfileVersion":3,"requires":true,"packages":{"":{"name":"runtime-fixture","version":"1.0.0","hasInstallScript":true}}}
+LOCK
+DEPENDENCY_OUTPUT=$("$FRAMEWORK/scripts/build-runtime.sh" "$FRAMEWORK" "$INSTANCE")
+DEPENDENCY_BUILD=$(printf '%s\n' "$DEPENDENCY_OUTPUT" | sed -n 's/^build-runtime: built //p')
+[ -d "$DEPENDENCY_BUILD" ]
+[ -f "$DEPENDENCY_BUILD/config/services/runtime-fixture/package-lock.json" ]
+[ ! -e "$DEPENDENCY_BUILD/config/services/runtime-fixture/install-script-ran" ]
+
 mkdir -p "$INSTANCE/memory"
 printf '%s\n' "must not be tracked" > "$INSTANCE/memory/example.md"
 git -C "$INSTANCE" add memory/example.md
