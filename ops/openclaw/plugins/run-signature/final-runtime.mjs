@@ -101,13 +101,16 @@ export class FinalRuntime {
       throw error;
     } finally { this.active.delete(params.runId); }
   }
-  async fail(key, error) {
+  async fail(key, error, {abandon = false} = {}) {
     await this.state(async state => {
       const turn = state.turns[key];
-      if (!turn || ['sent', 'delivered', 'failed'].includes(turn.phase)) return;
-      turn.phase = 'failed';
+      if (!turn || ['sent', 'failed', 'superseded'].includes(turn.phase)) return;
+      // A send error does not prove the durable queue failed to publish. Keep
+      // its reservation recoverable under the same transport key.
+      if (abandon || !['reserved', 'queued', 'delivered'].includes(turn.phase)) turn.phase = 'failed';
       turn.failure = String(error.message ?? error);
       await this.fault(turn, turn.failure);
+      if (turn.phase === 'delivered') return;
       if (state.conversations[turn.conversation]?.owner === key) {
         await this.record({...turn, status: turn.previous ?? null, recovery: true});
         await this.project(turn.previous, turn);
@@ -157,11 +160,16 @@ export class FinalRuntime {
   async recover() {
     const turns = await this.state(state => Object.values(state.turns));
     for (const turn of turns) {
-      if (turn.phase === 'delivered') await this.finish(turn.key);
-      else if (turn.phase === 'queued' && Date.now() - turn.startedAt >= 86400000)
-        await this.fail(turn.key, new Error('Delivery receipt retention expired; reconcile before retrying'));
-      else if (['reserved', 'queued'].includes(turn.phase)) await this.deliver(turn.key);
-      else if (turn.phase === 'running') await this.fail(turn.key, new Error('Execution interrupted before final reservation'));
+      try {
+        if (turn.phase === 'delivered') await this.finish(turn.key);
+        else if (turn.phase === 'queued' && Date.now() - turn.startedAt >= 86400000)
+          await this.fail(turn.key, new Error('Delivery receipt retention expired; reconcile before retrying'), {abandon: true});
+        else if (['reserved', 'queued'].includes(turn.phase)) await this.deliver(turn.key);
+        else if (turn.phase === 'running') await this.fail(turn.key, new Error('Execution interrupted before final reservation'));
+      } catch (error) {
+        // One unavailable transport must not prevent recovery of other turns.
+        await this.fail(turn.key, error);
+      }
     }
   }
 }

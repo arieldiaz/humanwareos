@@ -120,3 +120,52 @@ test('host attachments survive final delivery without duplicating tool-sent medi
   await runtime.run(params, async () => ({assistantTexts: [wire()], toolMediaUrls: ['first.png','sent.png'], messagingToolSentMediaUrls: ['sent.png']}), 'codex');
   assert.deepEqual(sends[0].mediaUrls, ['first.png']);
 });
+
+test('uncertain delivery retains the reserved decision for receipt recovery without model replay', async t => {
+  const {runtime, params, sends, projections} = await fixture(t);
+  const send = runtime.send;
+  let executions = 0;
+  runtime.send = async () => {throw new Error('Send outcome unknown; queue retains custody');};
+  await assert.rejects(runtime.run(params, async () => {
+    executions++;
+    return {assistantTexts: [wire()]};
+  }, 'codex'));
+  const reserved = await runtime.state(state => Object.values(state.turns)[0]);
+  assert.equal(reserved.phase, 'queued');
+  assert.deepEqual(projections, ['working', undefined]);
+  runtime.send = send;
+  await runtime.recover();
+  assert.equal(executions, 1);
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].key, reserved.key);
+  assert.equal(sends[0].envelope.message, decodeFinal(wire()).message);
+  assert.equal(projections.at(-1), 'act');
+  await runtime.recover();
+  assert.equal(sends.length, 1);
+});
+test('one still-uncertain send cannot block another conversation recovery', async t => {
+  const {runtime, params, sends} = await fixture(t);
+  const send = runtime.send;
+  runtime.send = async () => {throw new Error('Transport unavailable');};
+  for (const run of [params, {...params, runId: 'r2', sessionKey: params.sessionKey.replace('c123', 'c456')}])
+    await assert.rejects(runtime.run(run, async () => ({assistantTexts: [wire()]}), 'codex'));
+  runtime.send = async turn => {
+    if (turn.runId === 'r1') throw new Error('Still uncertain');
+    return send(turn);
+  };
+  await runtime.recover();
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].runId, 'r2');
+  const phases = await runtime.state(state => Object.values(state.turns).map(turn => turn.phase));
+  assert.deepEqual(phases, ['queued', 'sent']);
+});
+test('expired uncertain receipts require reconciliation and never cause a fresh send', async t => {
+  const {runtime, params, sends} = await fixture(t);
+  runtime.send = async () => {throw new Error('Unknown send');};
+  await assert.rejects(runtime.run(params, async () => ({assistantTexts: [wire()]}), 'codex'));
+  await runtime.state(state => {Object.values(state.turns)[0].startedAt = Date.now() - 86400001;});
+  runtime.send = async turn => {sends.push(turn); return {messageId: 'unexpected'};};
+  await runtime.recover();
+  assert.equal(sends.length, 0);
+  assert.equal(await runtime.state(state => Object.values(state.turns)[0].phase), 'failed');
+});
