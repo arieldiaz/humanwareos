@@ -29,9 +29,9 @@ case "$OPENCLAW_VERSION" in
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-conversation-lifecycle-fence.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-cli-commentary-projection.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-slack-response-reliability.mjs"
-    "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-final-envelope.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-codex-runtime-reliability.mjs"
     "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-slack-channel-thread.mjs"
+    "$NODE_BIN" "$PATCH_DIR/patch-2026.9.1-final-envelope.mjs"
     ;;
   *)
     echo "Unsupported OpenClaw version $OPENCLAW_VERSION; review runtime patches before activation." >&2

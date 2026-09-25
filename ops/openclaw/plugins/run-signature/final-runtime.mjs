@@ -158,6 +158,8 @@ export class FinalRuntime {
     const turns = await this.state(state => Object.values(state.turns));
     for (const turn of turns) {
       if (turn.phase === 'delivered') await this.finish(turn.key);
+      else if (turn.phase === 'queued' && Date.now() - turn.startedAt >= 86400000)
+        await this.fail(turn.key, new Error('Delivery receipt retention expired; reconcile before retrying'));
       else if (['reserved', 'queued'].includes(turn.phase)) await this.deliver(turn.key);
       else if (turn.phase === 'running') await this.fail(turn.key, new Error('Execution interrupted before final reservation'));
     }

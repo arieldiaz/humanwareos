@@ -567,3 +567,15 @@ test('agent reaction calls cannot add, remove, or clear lifecycle tiles', () => 
     assert.equal(guard({toolName: 'message', params: {action: 'react', emoji}}, {}).block, true);
   assert.equal(guard({toolName: 'message', params: {action: 'react', emoji: 'thumbsup'}}, {}), undefined);
 });
+
+test('final publication uses the supported durable sender with stable queue custody', async () => {
+  const {sendFinalEnvelope} = await import('./index.js');
+  const calls = [];
+  const turn = {key: 'conversation:run', accountId: 'max', sessionKey: 'session', route: {channel: 'C123', threadId: 'root'}, envelope: {message: 'Unchanged.'}};
+  const sdk = {buildOutboundSessionContext: params => params, sendDurableMessageBatch: async params => {calls.push(params); return {status: 'sent', results: [{messageId: 'receipt'}]};}};
+  assert.equal((await sendFinalEnvelope({}, turn, sdk)).messageId, 'receipt');
+  assert.equal(calls[0].deliveryIntentId, 'humanware-final:conversation:run');
+  assert.equal(calls[0].durability, 'required');
+  assert.equal(calls[0].requireUnknownSendReconciliation, true);
+  assert.equal(calls[0].payloads[0].text, 'Unchanged.');
+});

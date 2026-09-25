@@ -45,9 +45,9 @@ test "$(sed -n '4p' "$TMP/modern.log")" = "patch-2026.9.1-manual-cancel-notify.m
 test "$(sed -n '5p' "$TMP/modern.log")" = "patch-2026.9.1-conversation-lifecycle-fence.mjs"
 test "$(sed -n '6p' "$TMP/modern.log")" = "patch-2026.9.1-cli-commentary-projection.mjs"
 test "$(sed -n '7p' "$TMP/modern.log")" = "patch-2026.9.1-slack-response-reliability.mjs"
-test "$(sed -n '8p' "$TMP/modern.log")" = "patch-2026.9.1-final-envelope.mjs"
-test "$(sed -n '9p' "$TMP/modern.log")" = "patch-2026.9.1-codex-runtime-reliability.mjs"
-test "$(sed -n '10p' "$TMP/modern.log")" = "patch-2026.9.1-slack-channel-thread.mjs"
+test "$(sed -n '10p' "$TMP/modern.log")" = "patch-2026.9.1-final-envelope.mjs"
+test "$(sed -n '8p' "$TMP/modern.log")" = "patch-2026.9.1-codex-runtime-reliability.mjs"
+test "$(sed -n '9p' "$TMP/modern.log")" = "patch-2026.9.1-slack-channel-thread.mjs"
 test "$(wc -l < "$TMP/modern.log" | tr -d ' ')" = "10"
 test "$(sed -n '1p' "$TMP/env.log")" = "$TMP/openclaw|$TMP/openclaw/dist"
 if PATCH_LOG="$TMP/unsupported.log" TEST_OPENCLAW_VERSION=2026.9.2 OPENCLAW_PACKAGE_ROOT="$TMP/openclaw" HUMANWARE_OPENCLAW_PATCH_DIR="$TMP/patches" NODE_BIN="$TMP/node" "$ROOT/scripts/apply-openclaw-patches.sh"; then

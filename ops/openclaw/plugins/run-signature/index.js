@@ -429,6 +429,27 @@ function tolerantWrite(task) {
   });
 }
 
+export function loadCoreSdk(name) {
+  return import(join(process.env.OPENCLAW_PACKAGE_ROOT || '/opt/homebrew/lib/node_modules/openclaw', 'dist', 'plugin-sdk', `${name}.js`));
+}
+
+export async function sendFinalEnvelope(config, turn, sdk) {
+  sdk ??= await loadCoreSdk('channel-outbound');
+  const id = `humanware-final:${turn.key}`;
+  const sent = await sdk.sendDurableMessageBatch({
+    cfg: config, channel: 'slack', accountId: turn.accountId,
+    to: `channel:${turn.route.channel}`, threadId: turn.route.threadId,
+    session: sdk.buildOutboundSessionContext({cfg: config, agentId: turn.accountId, sessionKey: turn.sessionKey}),
+    payloads: [{text: turn.envelope.message, ...(turn.mediaUrls?.length ? {mediaUrls: turn.mediaUrls} : {})}],
+    deliveryIntentId: id, reusePendingDeliveryIntent: true,
+    durability: 'required', queuePolicy: 'required', requireUnknownSendReconciliation: true,
+    completionRetention: {idPrefix: 'humanware-final:', maxAgeMs: 86400000, maxEntries: 2000},
+    mirror: {sessionKey: turn.sessionKey, agentId: turn.accountId, text: turn.envelope.message, idempotencyKey: id},
+  });
+  if (sent.status !== 'sent') throw sent.error ?? new Error(`Final send ${sent.status}`);
+  return sent.results.at(-1);
+}
+
 export default {
   id: "run-signature",
   name: "Run Signature",
@@ -467,24 +488,11 @@ export default {
         channel: turn.route.channel, threadId: turn.route.threadId, status: turn.status,
         agent: turn.accountId, sessionKey: turn.sessionKey, runId: turn.runId, recovery: turn.recovery}),
       fault: (turn, reason) => appendFaultJournal({runId: turn.runId, channel: turn.route.channel, rootTs: turn.route.threadId, reason}),
-      send: turn => api.runtime.gateway.request('send', {
-        channel: 'slack', accountId: turn.accountId, agentId: turn.accountId,
-        to: `channel:${turn.route.channel}`, threadId: turn.route.threadId,
-        sessionKey: turn.sessionKey, message: turn.envelope.message,
-        ...(turn.mediaUrls?.length ? {mediaUrls: turn.mediaUrls} : {}),
-        idempotencyKey: `humanware-final:${turn.key}`,
-      }),
+      send: turn => sendFinalEnvelope(api.config, turn),
       wakes: async sessionKey => {
-        const jobs = [];
-        let offset = 0;
-        do {
-          const result = await api.runtime.gateway.request('cron.list', {includeDisabled: false, limit: 100, offset});
-          jobs.push(...(result.jobs ?? []).filter(job => job.sessionKey === sessionKey));
-          if (result.nextOffset == null) break;
-          if (result.nextOffset <= offset) throw new Error('Scheduler pagination did not advance');
-          offset = result.nextOffset;
-        } while (true);
-        return jobs;
+        const sdk = await loadCoreSdk('cron-store-runtime');
+        const store = await sdk.loadCronStore(sdk.resolveCronStorePath(api.config?.cron?.store));
+        return (store.jobs ?? []).filter(job => job.sessionKey === sessionKey);
       },
       close: async (turn, messageId) => {
         const closing = await conversationFences.beginClosing(turn.route, {accountId: turn.accountId});

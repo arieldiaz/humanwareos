@@ -43,5 +43,7 @@ export function applyFinalBoundaries(core, codex) {
   for (const edit of edits) if (edit.source !== edit.next) fs.writeFileSync(edit.file, edit.next);
   return {patched: edits.filter(e => e.source !== e.next).length, checked: edits.length};
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href)
-  console.log(JSON.stringify(applyFinalBoundaries(process.env.OPENCLAW_CORE_DIST || path.join(process.env.OPENCLAW_PACKAGE_ROOT || '/opt/homebrew/lib/node_modules/openclaw', 'dist'), resolveCodexPluginDist())));
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  const core = process.env.OPENCLAW_CORE_DIST || path.join(process.env.OPENCLAW_PACKAGE_ROOT || '/opt/homebrew/lib/node_modules/openclaw', 'dist');
+  console.log(JSON.stringify(applyFinalBoundaries(core, resolveCodexPluginDist())));
+}

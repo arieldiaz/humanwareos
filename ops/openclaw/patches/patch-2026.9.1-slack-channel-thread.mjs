@@ -23,7 +23,7 @@ const helperImport = 'import { planSlackChannelThread, slackThreadBodyEntry, sla
 for (const [file, region] of [[delivery, "src/infra/outbound/deliver-queue-admission.ts"], [storage, "src/infra/delivery-queue-sqlite-claim.ts"], [reconciliation, "src/infra/outbound/deliver-payload.ts"]]) {
   edit(file, `//#region ${region}`, helperImport + `//#region ${region}`);
 }
-const custodyImport = 'import { checkpointSlackThreadRoot, recoverSlackThreadRoot, recordSlackThreadBodyResult, completedSlackThreadResults } from "./delivery-queue-storage-BmsyhVaX.js";\n';
+const custodyImport = 'import { checkpointSlackThreadRoot, recoverSlackThreadRoot, recordSlackThreadBodyResult, completedSlackThreadResults, recordFinalEnvelopeReceipt, completedFinalEnvelopeResults } from "./delivery-queue-storage-BmsyhVaX.js";\n';
 for (const [file, anchor] of [[delivery, 'import "./src-vebZIeLe.js";'], [recovery, 'import { t as formatErrorMessage } from "./errors-u9zSVTak.js";']]) edit(file, anchor, custodyImport + anchor);
 edit(storage, '/** Persist a delivery entry before attempting send. Returns the entry ID. */', `// humanware:slack-channel-thread queue custody; never a side journal.
 export function checkpointSlackThreadRoot(id, rootMessageId, stateDir, claimId) {
@@ -41,6 +41,17 @@ export function completedSlackThreadResults(id, stateDir) {
 	if (findDeliveryIntentOwner(id, stateDir)?.status !== "completed") return [];
 	const entry = loadDeliveryQueueEntry(OUTBOUND_DELIVERY_QUEUE_NAME, id, stateDir, "all");
 	return entry?.slackChannelThread?.result ? [entry.slackChannelThread.result] : [];
+}
+// Thread replies share the same queue custody and bounded receipt as root/body publication.
+export function recordFinalEnvelopeReceipt(id, result, stateDir, claimId) {
+ if (!id?.startsWith("humanware-final:")) return;
+ if (!claimId) throw new Error("Final receipt requires queue custody");
+ updateQueuedDelivery(id, stateDir, entry => ({...entry, finalEnvelopeReceipt: {channel: result.channel, messageId: result.messageId}}), claimId);
+}
+export function completedFinalEnvelopeResults(id, stateDir) {
+ if (!id?.startsWith("humanware-final:") || findDeliveryIntentOwner(id, stateDir)?.status !== "completed") return [];
+ const receipt = loadDeliveryQueueEntry(OUTBOUND_DELIVERY_QUEUE_NAME, id, stateDir, "all")?.finalEnvelopeReceipt;
+ return receipt ? [receipt] : [];
 }
 /** Persist a delivery entry before attempting send. Returns the entry ID. */`);
 edit(storage, '\t\tthreadId: params.threadId,\n\t\treply: params.reply,', '\t\tslackChannelThread: params.slackChannelThread,\n\t\tthreadId: params.threadId,\n\t\treply: params.reply,');
@@ -60,10 +71,10 @@ edit(delivery, '\tconst params = {\n\t\t...currentParams,\n\t\t...reply ? { repl
 		} : {}
 	};`);
 edit(delivery, '\t\t...custody,\n\t\tpayloads', '\t\t...custody,\n\t\tslackChannelThread: entry.slackChannelThread,\n\t\tpayloads');
-edit(delivery, 'if (params.reusePendingDeliveryIntent && isReusablePreparedDeliveryOwner(owner)) return [];', 'if (params.reusePendingDeliveryIntent && isReusablePreparedDeliveryOwner(owner)) return completedSlackThreadResults(params.deliveryIntentId);');
+edit(delivery, 'if (params.reusePendingDeliveryIntent && isReusablePreparedDeliveryOwner(owner)) return [];', 'if (params.reusePendingDeliveryIntent && isReusablePreparedDeliveryOwner(owner)) return [...completedSlackThreadResults(params.deliveryIntentId), ...completedFinalEnvelopeResults(params.deliveryIntentId)];');
 edit(delivery, '\tlet platformSendStarted = false;\n\tlet platformSendRoute;', '\tlet rootPending = Boolean(params.slackChannelThread && !params.slackChannelThread.rootMessageId && params.payloads.length > 0);\n\tlet platformSendStarted = false;\n\tlet platformSendRoute;');
 edit(delivery, '\t\t\tawait params.onPlatformSendStart?.(route);', '\t\t\tif (!rootPending) await params.onPlatformSendStart?.(route);');
-edit(delivery, '\t\t\tdeliveredResults.push(result);\n\t\t\tif (queueId', '\t\t\tdeliveredResults.push(result);\n\t\t\tif (params.slackChannelThread) recordSlackThreadBodyResult(platformQueueId, result, platformQueueStateDir, producerClaimId);\n\t\t\tif (queueId');
+edit(delivery, '\t\t\tdeliveredResults.push(result);\n\t\t\tif (queueId', '\t\t\tdeliveredResults.push(result);\n\t\t\trecordFinalEnvelopeReceipt(platformQueueId, result, platformQueueStateDir, producerClaimId);\n\t\t\tif (params.slackChannelThread) recordSlackThreadBodyResult(platformQueueId, result, platformQueueStateDir, producerClaimId);\n\t\t\tif (queueId');
 edit(delivery, '\t\tconst results = await deliverOutboundPayloadsCore(wrappedParams);', `		if (rootPending) {
 			if (!platformQueueId || !producerClaimId) throw new Error("Slack thread publication requires durable queue custody");
 			const rootHandler = await createChannelHandler({
@@ -125,13 +136,14 @@ edit(recovery, '\tconst payloadOutcomes = [];\n\tconst messageSentEvents = [];\n
 	const payloadOutcomes = [];
 	const messageSentEvents = [];
 	let postSendState;`);
-edit(recovery, '\t\t\tconst result = buildReconciledSentResult(entry, reconciliation);', '\t\t\tconst result = buildReconciledSentResult(entry, reconciliation);\n\t\t\tif (entry.slackChannelThread) recordSlackThreadBodyResult(entry.id, { ...result, threadId: entry.threadId, threadTs: entry.threadId }, opts.stateDir, entry.platformSendAttemptId);');
+edit(recovery, '\t\t\tconst result = buildReconciledSentResult(entry, reconciliation);', '\t\t\tconst result = buildReconciledSentResult(entry, reconciliation);\n\t\t\trecordFinalEnvelopeReceipt(entry.id, result, opts.stateDir, entry.platformSendAttemptId);\n\t\t\tif (entry.slackChannelThread) recordSlackThreadBodyResult(entry.id, { ...result, threadId: entry.threadId, threadTs: entry.threadId }, opts.stateDir, entry.platformSendAttemptId);');
 edit(gateway, '//#region src/gateway/server-methods/send.ts', 'import { planSlackChannelThread } from "./humanware-slack-channel-thread.mjs";\n//#region src/gateway/server-methods/send.ts');
 edit(gateway, '\t\t\t\t\tconst send = await sendDurableMessageBatchCore({', `					const newSlackThread = planSlackChannelThread({ channel, to: deliveryTarget, session: outboundSession, title: request.title ?? (providedSessionKey ? loadGatewaySessionEntry(providedSessionKey).entry?.label : void 0), payloads: outboundPayloads, replyToId, threadId: outboundRoute?.threadId ?? threadId });
 					const send = await sendDurableMessageBatchCore({`);
 edit("delivery-queue-sqlite-UMkZG5_l.js", '\tconst requestedRetention = loadDeliveryQueueEntry(queueName, id, stateDir)?.completionRetention;', '\tconst completedThreadEntry = loadDeliveryQueueEntry(queueName, id, stateDir);\n\tconst requestedRetention = completedThreadEntry?.completionRetention;');
 edit("delivery-queue-sqlite-UMkZG5_l.js", '\t\tentry: projectDeliveryQueueTerminalEntry({\n\t\t\tid,\n\t\t\tretryCount: 0\n\t\t}, now, "completed", retention),', `		entry: {
 			...projectDeliveryQueueTerminalEntry({ id, retryCount: 0 }, now, "completed", retention),
+			...completedThreadEntry?.finalEnvelopeReceipt ? {finalEnvelopeReceipt: completedThreadEntry.finalEnvelopeReceipt} : {},
 			// Retain only publication identities inside the existing bounded receipt.
 			...completedThreadEntry?.slackChannelThread?.result ? { slackChannelThread: {
 				rootMessageId: completedThreadEntry.slackChannelThread.rootMessageId,
