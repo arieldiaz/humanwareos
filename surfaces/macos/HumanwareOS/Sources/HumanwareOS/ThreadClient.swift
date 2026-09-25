@@ -41,7 +41,7 @@ struct ThreadSnapshot {
     var count: Int { groups.reduce(0) { $0 + $1.threads.count } }
     var activeCount: Int {
         groups
-            .filter { $0.status != "scheduled" && $0.status != "done" }
+            .filter { $0.status != "scheduled" && $0.status != "closed" }
             .reduce(0) { $0 + $1.threads.count }
     }
 }

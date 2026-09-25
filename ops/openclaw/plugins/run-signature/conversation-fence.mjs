@@ -75,7 +75,7 @@ export function findDeliveredConversationClose(messages, fence, { botUserId } = 
     const deliveredAt = Number.parseFloat(String(message?.ts ?? "")) * 1000;
     if (!Number.isFinite(deliveredAt) || deliveredAt < startedAt || message?.user !== botUserId) return false;
     const text = String(message?.text ?? "");
-    return (fence.closeContentHash && conversationContentHash(text) === fence.closeContentHash) || /(?:^|\n)## Session Closed(?:\n|$)/u.test(text);
+    return (fence.closeContentHash && conversationContentHash(text) === fence.closeContentHash);
   });
 }
 

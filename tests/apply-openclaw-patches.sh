@@ -36,7 +36,7 @@ if PATCH_LOG="$TMP/failure.log" FAIL_PATCH_B=1 OPENCLAW_PACKAGE_ROOT="$TMP/openc
   exit 1
 fi
 
-touch "$TMP/patches/patch-2026.7.1-prompt-boilerplate.mjs" "$TMP/patches/patch-2026.7.1-slack-rich-text.mjs" "$TMP/patches/patch-2026.9.1-prompt-annotation-race.mjs" "$TMP/patches/patch-2026.9.1-manual-cancel-notify.mjs" "$TMP/patches/patch-2026.9.1-conversation-lifecycle-fence.mjs" "$TMP/patches/patch-2026.9.1-cli-commentary-projection.mjs" "$TMP/patches/patch-2026.9.1-slack-response-reliability.mjs" "$TMP/patches/patch-2026.9.1-slack-ack-reliability.mjs" "$TMP/patches/patch-2026.9.1-codex-runtime-reliability.mjs" "$TMP/patches/patch-2026.9.1-slack-channel-thread.mjs"
+touch "$TMP/patches/patch-2026.7.1-prompt-boilerplate.mjs" "$TMP/patches/patch-2026.7.1-slack-rich-text.mjs" "$TMP/patches/patch-2026.9.1-prompt-annotation-race.mjs" "$TMP/patches/patch-2026.9.1-manual-cancel-notify.mjs" "$TMP/patches/patch-2026.9.1-conversation-lifecycle-fence.mjs" "$TMP/patches/patch-2026.9.1-cli-commentary-projection.mjs" "$TMP/patches/patch-2026.9.1-slack-response-reliability.mjs" "$TMP/patches/patch-2026.9.1-final-envelope.mjs" "$TMP/patches/patch-2026.9.1-codex-runtime-reliability.mjs" "$TMP/patches/patch-2026.9.1-slack-channel-thread.mjs"
 PATCH_LOG="$TMP/modern.log" PATCH_ENV_LOG="$TMP/env.log" TEST_OPENCLAW_VERSION=2026.9.1 OPENCLAW_PACKAGE_ROOT="$TMP/openclaw" HUMANWARE_OPENCLAW_PATCH_DIR="$TMP/patches" NODE_BIN="$TMP/node" "$ROOT/scripts/apply-openclaw-patches.sh"
 test "$(sed -n '1p' "$TMP/modern.log")" = "patch-2026.7.1-prompt-boilerplate.mjs"
 test "$(sed -n '2p' "$TMP/modern.log")" = "patch-2026.9.1-prompt-annotation-race.mjs"
@@ -45,9 +45,9 @@ test "$(sed -n '4p' "$TMP/modern.log")" = "patch-2026.9.1-manual-cancel-notify.m
 test "$(sed -n '5p' "$TMP/modern.log")" = "patch-2026.9.1-conversation-lifecycle-fence.mjs"
 test "$(sed -n '6p' "$TMP/modern.log")" = "patch-2026.9.1-cli-commentary-projection.mjs"
 test "$(sed -n '7p' "$TMP/modern.log")" = "patch-2026.9.1-slack-response-reliability.mjs"
-test "$(sed -n '8p' "$TMP/modern.log")" = "patch-2026.9.1-slack-ack-reliability.mjs"
-test "$(sed -n '9p' "$TMP/modern.log")" = "patch-2026.9.1-codex-runtime-reliability.mjs"
-test "$(sed -n '10p' "$TMP/modern.log")" = "patch-2026.9.1-slack-channel-thread.mjs"
+test "$(sed -n '10p' "$TMP/modern.log")" = "patch-2026.9.1-final-envelope.mjs"
+test "$(sed -n '8p' "$TMP/modern.log")" = "patch-2026.9.1-codex-runtime-reliability.mjs"
+test "$(sed -n '9p' "$TMP/modern.log")" = "patch-2026.9.1-slack-channel-thread.mjs"
 test "$(wc -l < "$TMP/modern.log" | tr -d ' ')" = "10"
 test "$(sed -n '1p' "$TMP/env.log")" = "$TMP/openclaw|$TMP/openclaw/dist"
 if PATCH_LOG="$TMP/unsupported.log" TEST_OPENCLAW_VERSION=2026.9.2 OPENCLAW_PACKAGE_ROOT="$TMP/openclaw" HUMANWARE_OPENCLAW_PATCH_DIR="$TMP/patches" NODE_BIN="$TMP/node" "$ROOT/scripts/apply-openclaw-patches.sh"; then

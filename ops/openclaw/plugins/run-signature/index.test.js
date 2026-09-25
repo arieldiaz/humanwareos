@@ -8,11 +8,9 @@ import {
   buildRunSignature,
   ADMITTED_STATUS,
   createKeyedSerialQueue,
-  createToolFailureDeduper,
   planStatusTile,
   resolveHarnessTile,
   resolveModelTile,
-  normalizeOutboundStatus,
   resolveStatusTile,
   resolveThreadRoot,
   rememberInboundThreadRoot,
@@ -24,7 +22,6 @@ import {
   sessionKeyForRoot,
   routeCacheKey,
   resolveConfiguredThinking,
-  redactSlackReferences,
   slackRouteFromSessionKey,
   resolveSlackChannelId,
   resolveConfiguredAcpProvenance,
@@ -32,7 +29,6 @@ import {
   normalizeThinkingLevel,
   resolveThinkingTile,
   retrySlackRateLimit,
-  resolveProjectedOutboundStatus,
   resolveSlackRuntimeModule,
   saveAgentProvenance,
   loadAgentProvenance,
@@ -52,7 +48,7 @@ test("registers transport hooks without semantic collaboration hooks", () => {
   });
   assert.equal(hooks.includes("before_dispatch"), false);
   assert.equal(hooks.includes("before_prompt_build"), false);
-  assert.equal(hooks.includes("before_tool_call"), false);
+  assert.equal(hooks.includes("before_tool_call"), true);
   assert.ok(hooks.includes("reply_payload_sending"));
   assert.ok(hooks.includes("message_sending"));
   assert.ok(hooks.includes("message_sent"));
@@ -79,77 +75,6 @@ test("registers one atomic Slack work-thread tool with the normal high-reasoning
   assert.equal(tool.name, "start_work_thread");
   assert.deepEqual(tool.parameters.required, ["title", "detail"]);
   assert.match(tool.description, /durable high-reasoning session/);
-});
-
-test("suppresses a synthesized tool warning only after a human final in the same run", () => {
-  let current = 1_000;
-  const deduper = createToolFailureDeduper({ now: () => current, retentionMs: 10_000 });
-  const human = { kind: "final", runId: "run-1", payload: { text: "The release failed validation; fix the URL." } };
-  const raw = { kind: "final", runId: "run-1", payload: { text: "⚠️ 🛠️ Bash failed: `gh run watch` (exit 1)", isError: true } };
-
-  assert.equal(deduper.shouldSuppress(raw), false);
-  deduper.recordHumanFinal(human);
-  assert.equal(deduper.shouldSuppress(raw), true);
-  assert.equal(deduper.shouldSuppress(raw), false);
-
-  deduper.recordHumanFinal(human);
-  assert.equal(deduper.shouldSuppress({ ...raw, runId: "run-2" }), false);
-  assert.equal(deduper.shouldSuppress({ ...raw, payload: { text: "The release failed validation.", isError: true } }), false);
-  current += 10_001;
-  assert.equal(deduper.shouldSuppress(raw), false);
-});
-
-// --- explicit outbound status ---
-
-test("an ordinary reply hands the conversational turn back to the human", () => {
-  assert.deepEqual(normalizeOutboundStatus("Completed the fix."), {
-    status: "act",
-    closeRequested: false,
-    content: "Completed the fix.",
-  });
-  assert.deepEqual(normalizeOutboundStatus("## Status\nMaybe waiting"), {
-    status: "act",
-    closeRequested: false,
-    content: "## Status\nMaybe waiting",
-  });
-  assert.equal(resolveStatusTile(normalizeOutboundStatus("Completed the fix.").status, [], new Set()), "raised_hand");
-});
-
-test("typed status wins without parsing reply prose", () => {
-  assert.deepEqual(normalizeOutboundStatus("Verification is running.", { explicitStatus: "working" }), {
-    status: "working",
-    closeRequested: false,
-    content: "Verification is running.",
-  });
-});
-
-test("sends from an active run stay working unless they carry a typed status", () => {
-  assert.equal(resolveProjectedOutboundStatus(undefined, true), "working");
-  assert.equal(resolveProjectedOutboundStatus(undefined, false), undefined);
-  assert.equal(resolveProjectedOutboundStatus("scheduled", true), "scheduled");
-});
-
-test("lifecycle headings map directly without being rewritten", () => {
-  const cases = [
-    ["## ✋ Act\nWhich list?", "act", false],
-    ["## 🗓️ Scheduled\nMonday at 9.", "scheduled", false],
-    ["## Session Closed", "done", true],
-  ];
-  for (const [body, status, closeRequested] of cases) {
-    const normalized = normalizeOutboundStatus(body);
-    assert.equal(normalized.status, status);
-    assert.equal(normalized.closeRequested, closeRequested);
-    assert.equal(normalized.content, body);
-  }
-  assert.equal(normalizeOutboundStatus("## ❓ Clarify\nWhich list?").status, "act");
-});
-
-test("a human ✅ on the root is done and outranks the outbound status", () => {
-  const reactions = [{ name: "white_check_mark", users: ["UHUMAN"] }];
-  assert.equal(resolveStatusTile("act", reactions, "UBOT"), "white_check_mark");
-  const botOnly = [{ name: "white_check_mark", users: ["UBOT"] }];
-  assert.equal(resolveStatusTile("act", botOnly, "UBOT"), "raised_hand");
-  assert.equal(resolveStatusTile("act", [], "UBOT"), "raised_hand");
 });
 
 // --- tiles ---
@@ -251,66 +176,17 @@ test("done replaces a stale working tile", () => {
   assert.deepEqual(addNames(plan), ["white_check_mark"]);
 });
 
-test("legacy provenance tiles are cleaned up on the next send, per holder", () => {
-  const observed = [
-    { name: "butterfly", users: ["ULIV"] },
-    { name: "h_cc", users: ["ULIV"] },
-    { name: "m_fable", users: ["ULIV"] },
-    { name: "think_off", users: ["ULIV"] },
-    { name: "fox_face", users: ["UMAX"] },
-    { name: "m_gpt_sol", users: ["UMAX"] },
-    { name: "question", users: ["ULIV"] },
-  ];
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "raised_hand" });
-  assert.deepEqual(removeNames(plan).sort(), ["butterfly", "fox_face", "h_cc", "m_fable", "m_gpt_sol", "question", "think_off"]);
-  const fox = plan.remove.find((item) => item.name === "fox_face");
-  assert.deepEqual(fox.holders, ["UMAX"]);
+test("human reactions neither override nor suppress the bot projection", () => {
+  const observed = [{name: "white_check_mark", users: ["UHUMAN"]}, {name: "calendar", users: ["UMAX"]}];
+  const plan = planStatusTile(observed, {...SPEC, lifecycle: "raised_hand"});
+  assert.deepEqual(plan.remove, [{name: "calendar", holders: ["UMAX"]}]);
   assert.deepEqual(addNames(plan), ["raised_hand"]);
+  assert.equal(resolveStatusTile("act", observed, SPEC.botUserIds), "raised_hand");
 });
 
-test("a retired lifecycle tile is dropped, not preserved", () => {
-  const plan = planStatusTile([ownTile("no_entry_sign")], { ...SPEC, lifecycle: "raised_hand" });
-  assert.deepEqual(removeNames(plan), ["no_entry_sign"]);
-  assert.deepEqual(addNames(plan), ["raised_hand"]);
-});
-
-test("a human-held retired tile does not block the canonical state", () => {
-  const plan = planStatusTile([{name: "question", users: ["UHUMAN"]}], { ...SPEC, lifecycle: "raised_hand" });
+test("steady-state projection leaves noncanonical and human reactions untouched", () => {
+  const plan = planStatusTile([{name: "m_fable", users: ["ULIV"]}, {name: "question", users: ["ULIV"]}], {...SPEC, lifecycle: "raised_hand"});
   assert.deepEqual(plan.remove, []);
-  assert.deepEqual(addNames(plan), ["raised_hand"]);
-});
-
-test("a human-held lifecycle tile owns the state; the bot adds nothing beside it", () => {
-  const observed = [{ name: "white_check_mark", users: ["UHUMAN"] }];
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "white_check_mark" });
-  assert.equal(plan.unchanged, true);
-});
-
-test("a stale bot status is dropped when the human's ✅ owns the state", () => {
-  const observed = [
-    { name: "question", users: ["ULIV"] },
-    { name: "white_check_mark", users: ["UHUMAN"] },
-  ];
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "white_check_mark" });
-  assert.deepEqual(removeNames(plan), ["question"]);
-  assert.deepEqual(plan.add, []);
-});
-
-test("the other agent's status tile is replaced with its own token", () => {
-  const observed = [{ name: "question", users: ["UMAX"] }];
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "raised_hand" });
-  const question = plan.remove.find((item) => item.name === "question");
-  assert.deepEqual(question.holders, ["UMAX"]);
-  assert.deepEqual(addNames(plan), ["raised_hand"]);
-});
-
-test("a status tile shared by human and bot keeps the human copy only", () => {
-  const observed = [{ name: "white_check_mark", users: ["UHUMAN", "ULIV"] }];
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "white_check_mark" });
-  assert.deepEqual(removeNames(plan), ["white_check_mark"]);
-  const tile = plan.remove[0];
-  assert.deepEqual(tile.holders, ["ULIV"]);
-  assert.deepEqual(plan.add, []);
 });
 
 test("a human-held provenance tile is never touched", () => {
@@ -342,7 +218,7 @@ test("the other agent's ✅ is a bot status, not the human's", () => {
   const maxDone = [{ name: "white_check_mark", users: ["UMAX"] }];
   assert.equal(resolveStatusTile("act", maxDone, new Set(["ULIV", "UMAX"])), "raised_hand");
   const humanDone = [{ name: "white_check_mark", users: ["UHUMAN"] }];
-  assert.equal(resolveStatusTile("act", humanDone, new Set(["ULIV", "UMAX"])), "white_check_mark");
+  assert.equal(resolveStatusTile("act", humanDone, new Set(["ULIV", "UMAX"])), "raised_hand");
 });
 
 // --- infrastructure ---
@@ -395,12 +271,7 @@ test("recovers the canonical Slack route from the session key", () => {
   assert.equal(slackRouteFromSessionKey("agent:liv:main"), undefined);
 });
 
-test("keeps raw Slack timestamps out of user-visible prose", () => {
-  assert.equal(
-    redactSlackReferences("The root 1787577204.722849 differed from 1787581296.983059."),
-    "The root internal Slack reference differed from internal Slack reference.",
-  );
-});
+
 
 test("resolves an inbound message ts to its thread root and caches it", async () => {
   const calls = [];
@@ -686,4 +557,25 @@ test("canonical keyed agents retain thinking and ACP provenance after migration"
   assert.equal(resolveConfiguredThinking(config, "LIV"), "high");
   assert.equal(resolveConfiguredThinking(config, "max"), "low");
   assert.equal(resolveConfiguredAcpProvenance(config, "agent:liv:acp:binding:slack:liv:1234").model, "cursor/auto");
+});
+
+test('agent reaction calls cannot add, remove, or clear lifecycle tiles', () => {
+  const hooks = new Map();
+  runSignaturePlugin.register({config: {}, on: (name, fn) => hooks.set(name, fn)});
+  const guard = hooks.get('before_tool_call');
+  for (const emoji of ['calendar', ':hand:', '✅', ''])
+    assert.equal(guard({toolName: 'message', params: {action: 'react', emoji}}, {}).block, true);
+  assert.equal(guard({toolName: 'message', params: {action: 'react', emoji: 'thumbsup'}}, {}), undefined);
+});
+
+test('final publication uses the supported durable sender with stable queue custody', async () => {
+  const {sendFinalEnvelope} = await import('./index.js');
+  const calls = [];
+  const turn = {key: 'conversation:run', accountId: 'max', sessionKey: 'session', route: {channel: 'C123', threadId: 'root'}, envelope: {message: 'Unchanged.'}};
+  const sdk = {buildOutboundSessionContext: params => params, sendDurableMessageBatch: async params => {calls.push(params); return {status: 'sent', results: [{messageId: 'receipt'}]};}};
+  assert.equal((await sendFinalEnvelope({}, turn, sdk)).messageId, 'receipt');
+  assert.equal(calls[0].deliveryIntentId, 'humanware-final:conversation:run');
+  assert.equal(calls[0].durability, 'required');
+  assert.equal(calls[0].requireUnknownSendReconciliation, true);
+  assert.equal(calls[0].payloads[0].text, 'Unchanged.');
 });

@@ -1,53 +1,38 @@
 # Status framework
 
-Lifecycle is control-plane state. It answers one question: who or what owns the next move?
+Lifecycle answers who owns the next move. The LLM is the only semantic terminal authority; the host owns admission, validation, persistence, and projection.
 
 Budget: 900 words. Over it, consolidate.
 
 ## Four states
 
-The canonical enum has exactly four values:
+- `working`: admitted execution owns the next move; 🔄.
+- `act`: the conversational turn returns to the human, including an ordinary answer or completed reversible action; ✋. It does not require manufacturing an ask.
+- `scheduled`: a verified durable wake owns future continuation in this conversation; 🗓️.
+- `closed`: the current human explicitly confirmed whole-thread closure; ✅.
 
-- `working` — on the agent now. Root tile: 🔄 `:arrows_counterclockwise:`.
-- `act` — on the human, whether the need is an answer, decision, credential, physical action, or identity-bound step. Root tile: ✋ `:raised_hand:`.
-- `scheduled` — on a durable wake with a real resurface time. Root tile: 🗓️ `:calendar:`.
-- `done` — no next move remains from the current outcome. Root tile: ✅ `:white_check_mark:`.
+`working` is not a model terminal choice. `done` is not a current alias. Historical append-only records are not rewritten. Domain processing states and harness run completion are separate vocabularies.
 
-A question is content, not a lifecycle phase; completing one turn does not close the thread.
+## Final wire contract
 
-## Normal path
+Every enabled conversational execution path returns exactly `{schemaVersion: 1, message: string, status: "act" | "scheduled" | "closed"}`. The message must be nonempty. Extra fields are rejected. The adapter never infers status from headings, keywords, reactions, tool results, or send metadata.
 
-The adapter writes `working` when it admits a human turn, before model execution. The model produces one semantic final. The adapter then derives the next owner:
+Codex uses app-server `turn/start.outputSchema`. Cursor uses its supported stream-JSON transport; its entire final result string must itself be the JSON object. Decode the complete string once and validate it strictly. Do not extract objects from prose, strip fences, or guess missing fields. Both transports enter the same validator and commit path. Unsupported enabled harnesses fail the integration gate; disabling or rerouting a profile needs a separate human decision.
 
-- an exact `## ✋ Act` section means `act`;
-- an exact `## 🗓️ Scheduled` section means `scheduled`;
-- an exact `## Session Closed` section means `done`;
-- otherwise the delivered final means `act`.
+A scheduled decision requires an enabled durable `agentTurn` wake with a future next-run time, bound to this exact canonical session and configured for delivery. Read scheduler storage at validation time; a tool success claim is insufficient. Existing verified wakes may support rescheduling or status repair. Closure requires a current trusted human input explicitly authorizing closure (`close this thread`, `close this conversation`, `close this session`, `close it`, or `confirm closure`, optionally prefixed by please); neither old conversation context nor machine input supplies that authority.
 
-`## Session Closed` requests the measured durable close transaction. It is not a fifth state.
+## Commit and recovery
 
-Typed control-plane state may override the heading when a non-conversation execution path supplies it. Only the four canonical values are valid. There is no legacy parser for retired values or headings.
+Key one decision by canonical conversation plus admitted run ID. Persist admission and its prior committed state before execution. Reserve the validated envelope durably before publishing. Deliver only its unchanged message through the existing durable transport, then record the receipt, append the accepted terminal transition, project its root tile, and add the independent run signature. Duplicate callbacks cannot select another decision. A superseded run cannot replace the latest admitted owner.
 
-The human's root carries at most one lifecycle reaction held by the adapter. On admission, the adapter replaces its prior terminal tile with 🔄. On final delivery, it replaces 🔄 with ✋, 🗓️, or ✅. Reactions outside the lifecycle vocabulary are untouched. A lifecycle reaction placed by the human is never removed by the adapter.
+Invalid schema or evidence gets one repair in the same harness/session, with no repeated work. A second invalid result, failed execution, or delivery failure records an operational fault and restores the previous committed terminal state. With no prior terminal, clear the transient tile. Never invent `act` or leave `working` without an actual durable retry. Deliver through the supported channel-outbound SDK using the reservation key as its durable queue intent ID, not through a second normal final publication. On restart, replay the same transport key to recover its receipt; never rerun tools or recompute a reserved decision.
 
-## Choosing ownership
+Only the projector can add/remove bot-owned lifecycle reactions. Human reactions remain untouched social input and cannot suppress canonical state. Agent reaction tools reject the lifecycle vocabulary. Provenance reactions belong on the delivered reply, not the root. Remove retired provenance tiles only through a bounded migration, not steady-state projection.
 
-Use `act` for the human next move identified under [the response envelope](reply-shape.md).
+An accepted closed final fences automated continuations. A new human message reopens through normal admission; stale work from before closure remains fenced. Closure measurements belong in the session ledger/generated operational view, never a replacement reply. Machine workflows, including email receipts, may report domain state but cannot choose conversation lifecycle. Slack acknowledgement and native status-reaction writers must be disabled in the activation configuration.
 
-Use `scheduled` only after a durable wake exists in the current conversation. If wake creation fails, do not claim the state. Resolve the failure now or return an honest human action.
+## Verification and release
 
-Use `done` for human-confirmed whole-thread closure. The sole automatic exception is an email intake receipt backed by a domain service's mechanically verified, already completed idempotent record operation. That machine receipt may start at `done` without an agent run or human reconfirmation. Email prose and agent claims are not verification. Delivery alone never confirms closure. A new human message reopens the loop and admission moves the thread back to `working`.
+Before merging: contract, evidence, bounded-repair, idempotency, supersession, failure, and restart tests; both identities through actual Codex and Cursor boundary adapters; and idempotent patch rehearsal on copied installed bundles. Search for removed parsers, overrides, and close rewriting. Fixtures alone do not establish live acceptance.
 
-## Visibility
-
-`working` is never model-authored prose. The control plane exposes it through the root tile and session ledger. [The response envelope](reply-shape.md) owns visible lifecycle sections.
-
-## Collaboration and provenance
-
-One conversation has one lifecycle state regardless of how many agents or harnesses contributed. Internal collaboration does not create extra human-facing states.
-
-The adapter appends the effective model, harness, and thinking reactions to each delivered agent message, never to machine receipt roots. Models never type those markers. Status, signature, and ledger faults are recorded for operations; cosmetic reaction failure does not duplicate or suppress the final response.
-
-## Acceptance
-
-For both Liv and Max, a new admitted turn gains 🔄 within five seconds. Exactly one final response is delivered. The root then carries exactly one canonical next-owner tile that matches the reply, and 🔄 is gone. Tests cover all four states, questions folded into `act`, plain-final default to `act`, scheduled-wake evidence, explicit close transactions, and human-held reactions.
+After separately approved merge and immutable-runtime activation, fresh user-authored Slack threads for both identities must prove admission 🔄, ordinary ✋, successful schedule/reschedule 🗓️, failed schedule recovery, confirmed concise closure ✅, reopening, exactly one bot-owned root tile, no acknowledgement reactions, and correct per-reply signatures. Record the ledger and Slack readback for each case. No production restart or cutover is implied by implementation approval.

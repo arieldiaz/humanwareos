@@ -24,7 +24,6 @@ Focused verification: run the adjacent patch test and `../slack-channel-thread.t
 
 `patch-2026.9.1-codex-runtime-reliability.mjs` gives Codex process inspection the existing ten-second startup budget instead of silently falling back to two seconds, and uses the same bounded budget while registering a newly spawned app-server process. It reduces false process-inspection and orphan-cleanup failures during transient host load without weakening PID identity checks or allowing unbounded waits. `codex-plugin-root.mjs` selects the exact installed 2026.9.1 plugin generation and fails closed if discovery is ambiguous.
 
-`patch-2026.9.1-slack-ack-reliability.mjs` restores the configured acknowledgement emoji for explicit mentions when Slack uses `message_tool_only` source delivery. Stock 2026.9.1 suppresses that acknowledgement unless status reactions are also enabled, despite `ackReactionScope: "group-all"`; the patch keeps unmentioned tool-only traffic quiet while allowing explicit mentions and records Slack API failures at warning level instead of verbose-only output.
 
 `patch-2026.9.1-manual-cancel-notify.mjs` prevents an agent-requested `process kill` from enqueueing a background-exec failure merely because the cancelled process emitted partial output. The initiating turn already observes the cancellation; converting its expected SIGTERM into a later heartbeat event falsely reopens completed work. Unexpected signals and other failed background exits keep their existing notification behavior. The patch is version-scoped, idempotent, fails closed when the bundle shape changes, and requires a gateway restart after application.
 
@@ -172,3 +171,5 @@ lines. `rich_text` text is raw, not mrkdwn, so HTML entities are unescaped and
 mentions become `user`/`channel` elements.
 
 Same rules: idempotent, fails closed, restart the gateway after applying.
+
+`patch-2026.9.1-final-envelope.mjs` routes CLI and harness finals through the shared lifecycle contract and attaches Codex’s native output schema. Patch rehearsal uses copied bundles only; activation requires both the plugin and all three host-boundary anchors.

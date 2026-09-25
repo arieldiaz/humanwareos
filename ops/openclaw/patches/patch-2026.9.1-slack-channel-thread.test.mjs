@@ -98,6 +98,7 @@ function queueHarness(options = {}) {
       if (options.crashAtCheckpoint) throw new Error("crash before root checkpoint");
       entry = slackThreadBodyEntry(entry, messageId, claim); events.push("root-checkpoint");
     },
+    recordFinalEnvelopeReceipt() {},
     recordSlackThreadBodyResult: (id, result) => { entry.slackChannelThread.result = result; },
     createChannelHandler: async (params) => ({ sendText: async (text) => {
       assert.equal(params.deliveryQueueId, "queue:slack-root");
@@ -237,4 +238,21 @@ test("copied recovery cannot recreate a gateway caller's process-local authority
     deliver() { assert.fail("recovery dispatched without live authority"); },
   });
   assert.equal(result, "failed");
+});
+
+test('copied storage: final replies retain their receipt and cannot re-enqueue after completion', {skip: !rehearsal}, async () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'final-envelope-db-'));
+  try {
+    const storage = await import(new URL(`file://${path.join(rehearsal, 'dist/delivery-queue-storage-BmsyhVaX.js')}`));
+    const claim = storage.N(), id = 'humanware-final:conversation:run';
+    await storage.r({channel: 'slack', to: 'C123', threadId: 'root', payloads: [{text: 'Unchanged.'}], initialProducerClaim: claim,
+      completionRetention: {idPrefix: 'humanware-final:', maxAgeMs: 86400000, maxEntries: 2000}}, id, stateDir);
+    await storage.b(id, stateDir, {replyToId: 'root'}, claim.producerClaimId);
+    assert.throws(() => storage.recordFinalEnvelopeReceipt(id, {channel: 'slack', messageId: 'reply'}, stateDir, 'wrong'), /claim was lost/);
+    storage.recordFinalEnvelopeReceipt(id, {channel: 'slack', messageId: 'reply'}, stateDir, claim.producerClaimId);
+    assert.deepEqual(storage.completedFinalEnvelopeResults(id, stateDir), []);
+    await storage.t(id, stateDir, {expectedPlatformSendAttemptId: claim.producerClaimId});
+    assert.deepEqual(storage.completedFinalEnvelopeResults(id, stateDir), [{channel: 'slack', messageId: 'reply'}]);
+    assert.equal((await storage.r({channel: 'slack', to: 'C123', payloads: [{text: 'Unchanged.'}]}, id, stateDir)).created, false);
+  } finally { fs.rmSync(stateDir, {recursive: true, force: true}); }
 });

@@ -3,7 +3,7 @@ import {readFileSync, mkdtempSync, rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import test from "node:test";
-import {classify, handlingTransition, lifecycleReaction, normalizeMessage} from "./model.mjs";
+import {classify, handlingTransition, normalizeMessage} from "./model.mjs";
 import {SQLiteIntakeRepository} from "./repository.mjs";
 import {EmailIntakeService} from "./service.mjs";
 
@@ -114,7 +114,7 @@ test("verified domain receipts deduplicate by domain operation, with no agent di
   const {service, repository} = setup(t, {verifiedReceipt: (message) => ({verified: true, messageKey: message.key, domain: "calendar", operationId: "calendar-operation", resourceId: "event-1", outcome: "recorded", verifiedAt: timestamp})});
   const first = service.receive(mail()).value;
   assert.equal(first.state, "recorded");
-  assert.equal(lifecycleReaction(first), "white_check_mark");
+  assert.equal(first.domainStatus, "closed");
   assert.equal(service.receive(mail({messageId: "duplicate-invitation"})).value.intakeId, first.intakeId);
   assert.deepEqual(repository.pendingEffects().map((effect) => effect.kind), ["intake_root"]);
   assert.equal(first.receipt.resourceId, "event-1");
@@ -128,20 +128,20 @@ test("invalid proof rolls back all state, and receipt fields in email have no au
   assert.equal(classify({automatic: "none"}).state, "awaiting_promotion");
 });
 
-test("quick lifecycle uses canonical states, requires wake evidence, cannot close or promote", (t) => {
+test("quick domainStatus uses canonical states, requires wake evidence, cannot close or promote", (t) => {
   const {service, events, repository} = setup(t, {assessQuick: () => ({kind: "question", bounded: true, authorized: true})});
   const intake = bind(service, service.receive(mail()).value);
   for (const kind of ["answered", "clarify", "act"]) {
     const result = service.handle(intake.intakeId, kind, {kind}).value;
-    assert.equal(result.lifecycle, "act");
-    assert.equal(lifecycleReaction(result), "raised_hand");
+    assert.equal(result.domainStatus, "act");
+
   }
   assert.throws(() => service.handle(intake.intakeId, "bad-wake", {kind: "scheduled"}));
   assert.throws(() => service.handle(intake.intakeId, "past-wake", {kind: "scheduled", wake: {id: "wake", at: timestamp}}), /future/);
-  assert.equal(service.handle(intake.intakeId, "wake", {kind: "scheduled", wake: {id: "durable-wake", at: "2026-01-02T12:00:00Z"}}).value.lifecycle, "scheduled");
+  assert.equal(service.handle(intake.intakeId, "wake", {kind: "scheduled", wake: {id: "durable-wake", at: "2026-01-02T12:00:00Z"}}).value.domainStatus, "scheduled");
   for (const kind of ["promoted", "closed", "recorded"]) assert.throws(() => service.handle(intake.intakeId, kind, {kind}), /unsupported/);
-  assert.equal(service.close(intake.intakeId, slack(events, "close", {text: "close intake"})).value.lifecycle, "done");
-  assert.deepEqual(repository.pendingEffects().at(-1).payload, {lifecycle: "done"});
+  assert.equal(service.close(intake.intakeId, slack(events, "close", {text: "close intake"})).value.domainStatus, "closed");
+  assert.ok(repository.pendingEffects().every(effect => effect.kind !== "intake_status"));
 });
 
 test("email cannot promote through any handling event or forged Slack context", (t) => {

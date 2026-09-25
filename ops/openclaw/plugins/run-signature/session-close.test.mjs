@@ -5,8 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
-  closeSummary,
-  formatCloseOut,
+  formatCloseReport,
   loadThreadUsage,
   measureSlackThread,
   recordSessionClose,
@@ -81,10 +80,9 @@ test("finds the current topic transcript from the canonical session index", asyn
   assert.equal((await loadThreadUsage({ agent: "liv", channel: "C1", thread: "100.000000", agentsRoot })).models, "grok");
 });
 
-test("a close always carries a summary and measured bullets", () => {
+test("the operational close report retains measurements", () => {
   const stats = measureSlackThread(messages);
-  assert.equal(closeSummary("## Session Closed"), "Closed at the human's request.");
-  const text = formatCloseOut({ summary: "Fixed the lifecycle path.", stats, agent: "liv" });
+  const text = formatCloseReport({ summary: "Fixed the lifecycle path.", stats, agent: "liv" });
   assert.match(text, /^## Session Closed\n- Summary:/);
   assert.match(text, /- Messages: 1 from the human \/ 1 from agents/);
   assert.match(text, /usage unavailable/);
