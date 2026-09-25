@@ -32,7 +32,7 @@ export function digest(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-/** Explicit allowlist: no body field can become policy, lifecycle, or promotion. */
+/** Explicit allowlist: no body field can become policy, domainStatus, or promotion. */
 export function normalizeMessage(input) {
   if (!Number.isSafeInteger(input?.sizeBytes) || input.sizeBytes < 0) throw new Error("invalid sizeBytes");
   if (input.references != null && (!Array.isArray(input.references) || input.references.length > 100)) throw new Error("invalid references");
@@ -69,29 +69,23 @@ export function normalizeReceipt(receipt, key) {
 }
 
 export function classify({receipt, assessment, automatic}) {
-  if (receipt) return {intakeClass: "recorded", state: "recorded", lifecycle: "done"};
-  if (automatic !== "none") return {intakeClass: "rejected", state: "rejected", lifecycle: null, diagnostic: "automatic_mail"};
+  if (receipt) return {intakeClass: "recorded", state: "recorded", domainStatus: "closed"};
+  if (automatic !== "none") return {intakeClass: "rejected", state: "rejected", domainStatus: null, diagnostic: "automatic_mail"};
   if (assessment?.bounded === true && assessment?.authorized === true && ["question", "record"].includes(assessment.kind)) {
-    return {intakeClass: "quick", state: "working", lifecycle: "working"};
+    return {intakeClass: "quick", state: "working", domainStatus: "working"};
   }
-  return {intakeClass: "promotion_requested", state: "awaiting_promotion", lifecycle: "act"};
+  return {intakeClass: "promotion_requested", state: "awaiting_promotion", domainStatus: "act"};
 }
 
-// Intake processing states are separate from the four canonical lifecycle values.
+// Intake processing states are separate from the four canonical domainStatus values.
 export function handlingTransition(current, event) {
   if (!["working", "answered", "clarify", "act", "scheduled"].includes(current.state)) throw new Error("intake is not in quick handling");
   switch (event.kind) {
-    case "answered": return {...current, state: "answered", lifecycle: "act", wake: null};
-    case "clarify": return {...current, state: "clarify", lifecycle: "act", wake: null};
-    case "act": return {...current, state: "act", lifecycle: "act", wake: null};
-    case "resume": return {...current, state: "working", lifecycle: "working", wake: null};
-    case "scheduled": return {...current, state: "scheduled", lifecycle: "scheduled", wake: {id: required(event.wake?.id, "durable wake ID"), at: instant(event.wake?.at)}};
+    case "answered": return {...current, state: "answered", domainStatus: "act", wake: null};
+    case "clarify": return {...current, state: "clarify", domainStatus: "act", wake: null};
+    case "act": return {...current, state: "act", domainStatus: "act", wake: null};
+    case "resume": return {...current, state: "working", domainStatus: "working", wake: null};
+    case "scheduled": return {...current, state: "scheduled", domainStatus: "scheduled", wake: {id: required(event.wake?.id, "durable wake ID"), at: instant(event.wake?.at)}};
     default: throw new Error("unsupported handling event");
   }
-}
-
-export const lifecycleReactions = Object.freeze({working: "arrows_counterclockwise", act: "raised_hand", scheduled: "calendar", done: "white_check_mark"});
-
-export function lifecycleReaction(conversation) {
-  return conversation.lifecycle == null ? null : lifecycleReactions[conversation.lifecycle];
 }

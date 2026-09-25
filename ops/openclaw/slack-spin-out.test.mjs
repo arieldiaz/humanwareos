@@ -63,7 +63,7 @@ test("uses stable idempotency keys for a repeated tool call", async () => {
   assert.equal(calls[3][1].idempotencyKey, "work-thread:call-1:session");
 });
 
-test("marks the root for human action if the work session cannot start", async () => {
+test("clears the transient tile without selecting a terminal if the session cannot start", async () => {
   const { calls, input } = fixture({
     createSession: async (params) => {
       calls.push(["session", params]);
@@ -71,7 +71,7 @@ test("marks the root for human action if the work session cannot start", async (
     },
   });
   await assert.rejects(startSlackWorkThread(input), /launch failed/);
-  assert.deepEqual(calls.at(-1), ["status", { channel: "C123", rootMessageId: "1787000000.100000", status: "act" }]);
+  assert.deepEqual(calls.at(-1), ["status", { channel: "C123", rootMessageId: "1787000000.100000", status: undefined }]);
 });
 
 test("does not start work when durable publication identity is unavailable", async () => {

@@ -93,12 +93,7 @@ export async function loadThreadUsage({ agent, channel, thread, agentsRoot = def
   }
 }
 
-export function closeSummary(content, ownerLabel = "the human") {
-  const source = String(content ?? "").replace(/(?:^|\n)## Session Closed[\s\S]*$/i, "").trim();
-  return source || `Closed at ${ownerLabel}'s request.`;
-}
-
-export function formatCloseOut({ summary, stats, usage, agent, ownerLabel = "the human" }) {
+export function formatCloseReport({ summary, stats, usage, agent, ownerLabel = "the human" }) {
   const name = String(agent || "agent").replace(/^./, (value) => value.toUpperCase());
   const compactSummary = String(summary).trim().replace(/\s+/g, " ");
   const lines = [
@@ -153,6 +148,6 @@ export async function recordSessionClose({ dataRoot, channel, thread, agent, clo
     if (error?.code !== "ENOENT") throw error;
   }
   if (!prior.includes(`\"id\":\"${id}\"`)) await appendFile(eventsPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
-  await writeFile(viewPath, `${formatCloseOut({ summary, stats, usage, agent, ownerLabel })}\n`, { mode: 0o600 });
+  await writeFile(viewPath, `${formatCloseReport({ summary, stats, usage, agent, ownerLabel })}\n`, { mode: 0o600 });
   return { event, viewPath };
 }

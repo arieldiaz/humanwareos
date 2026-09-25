@@ -74,57 +74,12 @@ export const OUTBOUND_STATUS_TO_TILE = Object.freeze({
   act: "raised_hand",
   working: "arrows_counterclockwise",
   scheduled: "calendar",
-  done: "white_check_mark",
+  closed: "white_check_mark",
 });
 export const ADMITTED_STATUS = "working";
 
-const OUTBOUND_STATUSES = new Set(["act", "working", "scheduled", "done"]);
-const LIFECYCLE_HEADING_STATUS = [
-  ["act", /^## ✋ Act\s*$/m],
-  ["scheduled", /^## 🗓️ Scheduled\s*$/m],
-  ["done", /^## Session Closed\s*$/m],
-];
-
-function lifecycleHeadingStatus(content) {
-  const source = String(content ?? "");
-  let status;
-  let lastIndex = -1;
-  for (const [name, pattern] of LIFECYCLE_HEADING_STATUS) {
-    const re = new RegExp(pattern.source, "gm");
-    let match;
-    while ((match = re.exec(source)) !== null) {
-      if (match.index >= lastIndex) {
-        lastIndex = match.index;
-        status = name;
-      }
-    }
-  }
-  return status;
-}
-
-// Typed status wins. A final normally returns the conversational turn to the
-// human; only an exact close heading may manufacture completion.
-export function normalizeOutboundStatus(content, { explicitStatus } = {}) {
-  const source = String(content ?? "").trim();
-  const typed = OUTBOUND_STATUSES.has(explicitStatus) ? explicitStatus : undefined;
-  return {
-    status: typed ?? lifecycleHeadingStatus(source) ?? "act",
-    closeRequested: /^## Session Closed\s*$/m.test(source),
-    content: source,
-  };
-}
-
-// A ✅ the human placed is the thread's done state, and a bot cannot remove
-// another user's reaction anyway. `botUserIds` is every gateway-controlled bot
-// user id — the other agent's ✅ is a bot close, not a human one.
-export function resolveStatusTile(outboundStatus, rawReactions, botUserIds) {
-  const bots = botUserIds instanceof Set ? botUserIds : new Set([botUserIds].filter(Boolean));
-  const reactions = normalizeReactions(rawReactions);
-  const humanDone = reactions?.find((item) =>
-    item?.name === "white_check_mark" &&
-    Array.isArray(item?.users) &&
-    item.users.some((user) => !bots.has(user)));
-  return humanDone ? "white_check_mark" : OUTBOUND_STATUS_TO_TILE[outboundStatus];
+export function resolveStatusTile(outboundStatus) {
+  return OUTBOUND_STATUS_TO_TILE[outboundStatus];
 }
 
 export function tileKind(name) {
@@ -141,15 +96,12 @@ export function tileKind(name) {
 // names the agent — a root copy is wrong by construction. With one tile there
 // is no order contract and nothing to re-lay.
 //
-// Forward cleanup rides along: any gateway-held tile from the retired
-// provenance-strip era is removed the next time its thread sees a send, each
-// with the token that holds it. A tile a human holds is never touched, and a
-// human-held lifecycle tile owns the state outright — the bot adds nothing
-// beside it. Reactions outside the strip vocabulary are never touched.
+// Only bot-owned canonical lifecycle reactions are projected. Human reactions
+// are social input and neither suppress nor override the committed decision.
 export function planStatusTile(rawReactions, { lifecycle, sendingBotId, botUserIds }) {
   const bots = botUserIds instanceof Set ? botUserIds : new Set([...(botUserIds ?? []), sendingBotId].filter(Boolean));
   const entries = normalizeReactions(rawReactions)
-    .filter((item) => STRIP_NAME_SET.has(item?.name))
+    .filter((item) => LIFECYCLE_NAMES.includes(item?.name))
     .map((item) => {
       const users = Array.isArray(item.users) ? item.users : [];
       return {
@@ -160,8 +112,7 @@ export function planStatusTile(rawReactions, { lifecycle, sendingBotId, botUserI
       };
     });
 
-  const humanStatus = entries.some((entry) => LIFECYCLE_NAMES.includes(entry.name) && entry.humanHeld);
-  const desired = humanStatus ? undefined : lifecycle;
+  const desired = lifecycle;
 
   const remove = entries
     .filter((entry) => entry.botHolders.length && entry.name !== desired)

@@ -421,7 +421,7 @@ OUTBOUND_LIFECYCLE = {
     "act": ("needs_you", "raised_hand"),
     "working": ("active", "arrows_counterclockwise"),
     "scheduled": ("scheduled", "calendar"),
-    "done": ("completed", "white_check_mark"),
+    "closed": ("completed", "white_check_mark"),
 }
 
 

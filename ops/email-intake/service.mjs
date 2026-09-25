@@ -50,7 +50,7 @@ export class EmailIntakeService {
       const correlated = priorReceipt ? repository.read(priorReceipt.intakeId) : correlate(repository, message, this.subjectWindowMs);
       const current = correlated && (correlated.authority?.principal ?? null) === (authority?.principal ?? null) ? correlated : null;
       const time = instant(this.now());
-      const classification = authority ? {intakeClass: "owner_session", state: "working", lifecycle: "working"} : classify({receipt, assessment: receipt || message.automatic !== "none" ? null : sync(this.assessQuick(message)), automatic: message.automatic});
+      const classification = authority ? {intakeClass: "owner_session", state: "working", domainStatus: "working"} : classify({receipt, assessment: receipt || message.automatic !== "none" ? null : sync(this.assessQuick(message)), automatic: message.automatic});
       // Only independently authenticated owner follow-ups can enqueue another turn.
       const conversation = current ? {...current, revision: current.revision + 1, updatedAt: time,
         lastReceivedAt: message.receivedAt > current.lastReceivedAt ? message.receivedAt : current.lastReceivedAt,
@@ -82,9 +82,6 @@ export class EmailIntakeService {
       if (!current) throw new Error("unknown intake");
       const next = {...apply(current), revision: current.revision + 1, updatedAt: instant(this.now())};
       this.repository.save(next, current.revision);
-      if (next.lifecycle !== current.lifecycle) {
-        this.repository.enqueue({key: `status:${operationId}`, intakeId, kind: "intake_status", payload: {lifecycle: next.lifecycle}});
-      }
       return next;
     });
   }
@@ -131,13 +128,13 @@ export class EmailIntakeService {
       const destination = name ? sync(this.resolveDestination(name)) : null;
       if (!destination?.channelId || destination.name !== name || destination.channelId === this.intakeChannelId) {
         this.repository.enqueue({key: `question:${operationId}`, intakeId, kind: "promotion_question", payload: {reason: "named_resolvable_destination_required"}});
-        return {...current, state: "awaiting_promotion", lifecycle: "act", wake: null};
+        return {...current, state: "awaiting_promotion", domainStatus: "act", wake: null};
       }
       const promotion = {operationId, actorId: event.actorId, slackEventId: event.eventId,
         destination: {name, channelId: required(destination.channelId, "destination channel")},
         codingSession: match[1].toLowerCase().startsWith("start"), workThread: null, sessionId: null};
       this.repository.enqueue({key: `work:${intakeId}`, intakeId, kind: "promoted_work", payload: promotion});
-      return {...current, state: "promoted", lifecycle: "act", wake: null, promotion};
+      return {...current, state: "promoted", domainStatus: "act", wake: null, promotion};
     });
   }
 
@@ -145,7 +142,7 @@ export class EmailIntakeService {
     const event = this.#slack(intakeId, authentication);
     if (event.text.toLowerCase() !== "close intake") throw new Error("explicit close intake command required");
     return this.#change(intakeId, `close:${digest([event.workspaceId, event.eventId])}`, event,
-      (current) => ({...current, state: "closed", lifecycle: "done", wake: null}));
+      (current) => ({...current, state: "closed", domainStatus: "closed", wake: null}));
   }
 
   fail(intakeId, operationId, {code, exhausted = false}) {
@@ -155,9 +152,9 @@ export class EmailIntakeService {
     return this.#change(intakeId, `failure:${operationId}`, {code, exhausted}, (current) => {
       if (current.state === "dead_letter") return current;
       const failure = {code, attempts: (current.failure?.attempts ?? 0) + 1,
-        resumeState: current.failure?.resumeState ?? current.state, resumeLifecycle: current.failure?.resumeLifecycle ?? current.lifecycle};
+        resumeState: current.failure?.resumeState ?? current.state, resumeDomainStatus: current.failure?.resumeDomainStatus ?? current.domainStatus};
       if (exhausted) this.repository.enqueue({key: `fault:${intakeId}`, intakeId, kind: "operational_fault", payload: {code}});
-      return {...current, state: exhausted ? "dead_letter" : "retrying", lifecycle: null, failure};
+      return {...current, state: exhausted ? "dead_letter" : "retrying", domainStatus: null, failure};
     });
   }
 
@@ -165,7 +162,7 @@ export class EmailIntakeService {
     required(operationId, "operation ID");
     return this.#change(intakeId, `retry:${operationId}`, {}, (current) => {
       if (current.state !== "retrying") throw new Error("intake is not retrying");
-      return {...current, state: current.failure.resumeState, lifecycle: current.failure.resumeLifecycle, failure: null};
+      return {...current, state: current.failure.resumeState, domainStatus: current.failure.resumeDomainStatus, failure: null};
     });
   }
 }

@@ -75,7 +75,7 @@ export async function startSlackWorkThread({
       thinkingLevel: "high",
     };
   } catch (error) {
-    await setStatus({ channel, rootMessageId: String(rootMessageId), status: "act" });
+    await setStatus({ channel, rootMessageId: String(rootMessageId), status: undefined });
     throw error;
   }
 }
