@@ -40,3 +40,12 @@ export function finalText(result, kind) {
   if (kind === 'cursor') return result.payloads?.filter(p => !p.isReasoning).map(p => p.text ?? '').join('\n\n') ?? '';
   return result.assistantTexts?.join('\n\n') ?? '';
 }
+
+// Attachments are host-produced delivery facts, not extra model schema fields.
+export function finalMedia(result) {
+  const sent = new Set(result.messagingToolSentMediaUrls ?? []);
+  return [...new Set([
+    ...(result.payloads ?? []).flatMap(p => [...(p.mediaUrls ?? []), ...(p.mediaUrl ? [p.mediaUrl] : [])]),
+    ...(result.toolMediaUrls ?? []), ...(result.toolAutoDeliveryMediaUrls ?? []),
+  ])].filter(url => typeof url === 'string' && !sent.has(url));
+}

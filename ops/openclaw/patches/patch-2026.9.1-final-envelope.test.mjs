@@ -26,3 +26,8 @@ test('Codex passes schema through the actual turn/start parameter boundary', () 
 test('changed installed anchors fail closed', () => {
   for (const kind of ['cursor','codex','schema']) assert.throws(() => patchFinalBoundary('different source', kind));
 });
+test('Slack cannot silently bypass a missing final owner', async () => {
+  const context = vm.createContext({Symbol});
+  vm.runInContext(patchFinalBoundary('function runCliAgent(paramsInput) { return paramsInput; }', 'cursor'), context);
+  assert.throws(() => context.runCliAgent({sessionKey: 'agent:max:slack:channel:c123:thread:1'}), /owner is unavailable/);
+});

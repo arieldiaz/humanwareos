@@ -115,3 +115,8 @@ test('repeated inbound delivery does not supersede its own running turn', async 
   }, 'codex');
   assert.equal(sends.length, 1);
 });
+test('host attachments survive final delivery without duplicating tool-sent media', async t => {
+  const {runtime, params, sends} = await fixture(t);
+  await runtime.run(params, async () => ({assistantTexts: [wire()], toolMediaUrls: ['first.png','sent.png'], messagingToolSentMediaUrls: ['sent.png']}), 'codex');
+  assert.deepEqual(sends[0].mediaUrls, ['first.png']);
+});

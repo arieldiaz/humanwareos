@@ -12,12 +12,12 @@ export function patchFinalBoundary(source, kind) {
   if (kind === 'cursor') {
     const anchor = 'function runCliAgent(paramsInput) {';
     if (!source.includes(anchor)) throw new Error('CLI final boundary changed');
-    return source.replace(anchor, `// ${marker}\nfunction runCliAgent(paramsInput) {\n const runtime = ${runtime};\n return runtime ? runtime.run(paramsInput, runCliAgentUncontracted, "cursor") : runCliAgentUncontracted(paramsInput);\n}\nfunction runCliAgentUncontracted(paramsInput) {`);
+    return source.replace(anchor, `// ${marker}\nfunction runCliAgent(paramsInput) {\n const runtime = ${runtime};\n if (!runtime && /:slack:channel:/i.test(paramsInput.sessionKey ?? "")) throw new Error("Lifecycle final owner is unavailable");\n return runtime ? runtime.run(paramsInput, runCliAgentUncontracted, "cursor") : runCliAgentUncontracted(paramsInput);\n}\nfunction runCliAgentUncontracted(paramsInput) {`);
   }
   if (kind === 'codex') {
     const anchor = 'async function runAgentHarnessAttempt(params) {\n\treturn runSelectedAgentHarnessAttempt(params);\n}';
     if (!source.includes(anchor)) throw new Error('Harness final boundary changed');
-    return source.replace(anchor, `// ${marker}\nasync function runAgentHarnessAttempt(params) {\n const runtime = ${runtime};\n return runtime ? runtime.run(params, runSelectedAgentHarnessAttempt, "codex") : runSelectedAgentHarnessAttempt(params);\n}`);
+    return source.replace(anchor, `// ${marker}\nasync function runAgentHarnessAttempt(params) {\n const runtime = ${runtime};\n if (!runtime && /:slack:channel:/i.test(params.sessionKey ?? "")) throw new Error("Lifecycle final owner is unavailable");\n return runtime ? runtime.run(params, runSelectedAgentHarnessAttempt, "codex") : runSelectedAgentHarnessAttempt(params);\n}`);
   }
   if (kind === 'schema') {
     const anchor = '\t\tcodexModelCallDiagnostics.setRequestPayloadBytes(utf8JsonByteLength(turnStartParams));';

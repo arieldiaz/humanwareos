@@ -1,6 +1,6 @@
 import {mkdir, readFile, writeFile, rename} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
-import {FINAL_SCHEMA, FINAL_INSTRUCTION, decodeFinal, validateEvidence, sameConversationWake, finalText} from './final-envelope.mjs';
+import {FINAL_SCHEMA, FINAL_INSTRUCTION, decodeFinal, validateEvidence, sameConversationWake, finalText, finalMedia} from './final-envelope.mjs';
 import {conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
 
 export const FINAL_RUNTIME = Symbol.for('humanware.final-envelope.v1');
@@ -92,7 +92,7 @@ export class FinalRuntime {
       }
       await this.state(state => {
         if (state.conversations[conversation]?.owner !== key) throw new Error('Superseded turn cannot commit');
-        state.turns[key] = {...state.turns[key], envelope, phase: 'reserved'};
+        state.turns[key] = {...state.turns[key], envelope, mediaUrls: finalMedia(result), phase: 'reserved'};
       });
       await this.deliver(key);
       return result;

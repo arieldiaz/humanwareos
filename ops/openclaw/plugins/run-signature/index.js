@@ -471,6 +471,7 @@ export default {
         channel: 'slack', accountId: turn.accountId, agentId: turn.accountId,
         to: `channel:${turn.route.channel}`, threadId: turn.route.threadId,
         sessionKey: turn.sessionKey, message: turn.envelope.message,
+        ...(turn.mediaUrls?.length ? {mediaUrls: turn.mediaUrls} : {}),
         idempotencyKey: `humanware-final:${turn.key}`,
       }),
       wakes: async sessionKey => {
