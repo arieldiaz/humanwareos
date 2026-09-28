@@ -108,6 +108,7 @@ if [ -d "$INSTANCE_DIR/surfaces/static" ]; then
 fi
 if [ -d "$INSTANCE_DIR/services" ]; then
   cp -R "$INSTANCE_DIR/services" "$BUILD_DIR/config/services"
+  python3 "$FRAMEWORK_DIR/scripts/validate-launchagents.py" "$BUILD_DIR/config/services"
   # Only explicitly declared service runtime dependencies are installed. npm ci
   # replaces any copied development tree; lifecycle scripts are never executed.
   for service_package in "$BUILD_DIR"/config/services/*/package.json; do

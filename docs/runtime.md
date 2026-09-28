@@ -65,3 +65,11 @@ The reference reboot gate verifies:
 - one non-mutating surface canary.
 
 An optional adapter is contained only when its failure cannot materially degrade required channels or the agent core through shared databases, queues, event loops, locks, or retry load. Its supervisor uses bounded retries and a circuit breaker; once unhealthy it fails closed and stays stopped until repaired or explicitly re-enabled. A disabled adapter is removed from supervision, and post-cutover acceptance verifies required-channel health after optional services settle.
+
+## macOS host operations
+
+Routine agent commands run headlessly; a PTY does not require Terminal.app. Interactive setup windows have an owning task and are closed when that task finishes. Cleanup checks every tab and its process tree, preserves active jobs and unsaved work, and verifies the resulting window count. Never close an unowned window merely because it is old. If macOS denies access, report the exact blocked operation; do not grant a shared interpreter Accessibility or Full Disk Access to finish housekeeping.
+
+Runtime builds strictly parse service plists and reject duplicate labels, invalid argument arrays, and relative executable/log paths before publishing a build. Installation additionally verifies executable availability and reconciles enabled service labels against the generated runtime. Upgrade and uninstall remove only product-owned services, retain data, and preserve a rollback path. Health reporting distinguishes malformed configuration, missing dependencies, and failed jobs.
+
+Desktop cleanup is local remediation, not a service migration: inventory first, preserve files with a reversible move manifest, and verify afterward. Storage pruning requires a verified backup and restore check. Account separation and named privacy grants are owned by [the permission model](docs/permission-model.md).
