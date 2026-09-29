@@ -90,8 +90,8 @@ test('a live same-session wake validates scheduling, a different-session wake ca
   await assert.rejects(runtime.run({...params, runId: 'r2'}, async () => ({assistantTexts: [wire('scheduled')]}), 'codex'));
   assert.equal(sends.length, 1);
 });
-test('a new human admission supersedes a pending old final before model execution', async t => {
-  const {runtime, params, sends} = await fixture(t);
+test('a newer admission owns the root tile but never discards an older finished reply', async t => {
+  const {runtime, params, sends, projections} = await fixture(t);
   runtime.fences.reopenFromHuman = async () => {};
   let finish;
   const waiting = new Promise(resolve => { finish = resolve; });
@@ -101,8 +101,20 @@ test('a new human admission supersedes a pending old final before model executio
   await entered;
   await runtime.human(runtime.route(params), {messageId: 'new', text: 'Different request'});
   finish();
-  await assert.rejects(old, /Superseded/);
-  assert.equal(sends.length, 0);
+  await old;
+  assert.equal(sends.length, 1);
+  assert.deepEqual(projections, ['working']);
+});
+test('Liv and Max both deliver in one thread; the last admitted owns the tile', async t => {
+  const liv = await fixture(t, 'liv');
+  const maxKey = liv.params.sessionKey.replace('agent:liv:', 'agent:max:');
+  let finish;
+  const waiting = new Promise(resolve => { finish = resolve; });
+  const first = liv.runtime.run(liv.params, async () => { await waiting; return {assistantTexts: [wire()]}; }, 'codex');
+  await liv.runtime.run({...liv.params, sessionKey: maxKey, agentId: 'max', runId: 'r2'}, async () => ({assistantTexts: [wire()]}), 'codex');
+  finish();
+  await first;
+  assert.deepEqual(liv.sends.map(turn => turn.accountId), ['max', 'liv']);
 });
 test('repeated inbound delivery does not supersede its own running turn', async t => {
   const {runtime, params, sends} = await fixture(t);

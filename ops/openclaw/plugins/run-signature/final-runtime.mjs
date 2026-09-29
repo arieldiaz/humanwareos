@@ -91,7 +91,6 @@ export class FinalRuntime {
         }
       }
       await this.state(state => {
-        if (state.conversations[conversation]?.owner !== key) throw new Error('Superseded turn cannot commit');
         state.turns[key] = {...state.turns[key], envelope, mediaUrls: finalMedia(result), phase: 'reserved'};
       });
       await this.deliver(key);
@@ -104,7 +103,7 @@ export class FinalRuntime {
   async fail(key, error, {abandon = false} = {}) {
     await this.state(async state => {
       const turn = state.turns[key];
-      if (!turn || ['sent', 'failed', 'superseded'].includes(turn.phase)) return;
+      if (!turn || ['sent', 'failed'].includes(turn.phase)) return;
       // A send error does not prove the durable queue failed to publish. Keep
       // its reservation recoverable under the same transport key.
       if (abandon || !['reserved', 'queued', 'delivered'].includes(turn.phase)) turn.phase = 'failed';
@@ -125,10 +124,6 @@ export class FinalRuntime {
     const turn = await this.state(state => {
       const turn = state.turns[key];
       if (!turn || !['reserved', 'queued'].includes(turn.phase)) return;
-      if (state.conversations[turn.conversation]?.owner !== key) {
-        turn.phase = 'superseded';
-        return;
-      }
       turn.phase = 'queued';
       return turn;
     });
