@@ -59,3 +59,13 @@ Public HumanwareOS documentation explains the model and examples but never expos
 3. Package persistent privileged features as narrowly scoped, signed components. Do not merely rename or copy a runtime binary: identity must survive upgrades and be verifiable by code signature.
 4. Reset the old runtime-scoped grants, request only the capabilities each component needs, and verify the user-visible operating-system names.
 5. Capture every relevant permissions pane after restart and compare it with the canonical inventory.
+
+## macOS account tiers (proposed deployment model)
+
+Use a human-controlled maintenance administrator and a standard operator account for daily agent execution. “Super admin” means the maintenance role, not an enabled root login. The administrator performs explicitly approved installation and recovery; it has no routine browsing, mail, agent sessions, or inherited browser profile. The operator has only task-scoped files, dedicated browser profiles, and individually justified application grants; no admin membership or passwordless sudo. An agent name is not a security boundary: execution account, signed process identity, and enforced capabilities are.
+
+A standard account still has its own login keychain. “Browser access but no keychain” is not an account checkbox: browser cookies and saved sessions are credentials too. Keep personal keychains and profiles out of the operator account, use the protected secret broker for named task credentials, and verify both filesystem isolation and application access. No-browser administration is a usage policy unless a separately tested enforcement mechanism implements it; administrators can change machine policy. Account separation does not defeat a malicious administrator.
+
+Before migration, record current service UIDs, file ownership, privacy grants, login items, remote access, backup/restore, and recovery access. Stage the operator, migrate only approved data, reinstall user-scoped services, and test reboot, browser, secret access, denied cross-account access, and rollback. Preserve the existing administrator until recovery is proven. Creating accounts, changing ownership, revoking grants, and switching production execution require a separate concrete migration review; this design does not perform those actions.
+
+Permission review binds each macOS prompt to the permission record above. Show the human-facing service name plus the actual signed bundle/executable and requested capability; never relabel a generic runtime as if that supplied isolation. A denied request remains denied until the human grants it through macOS. Capture the observed dialog identity during acceptance, not merely the intended application name.
