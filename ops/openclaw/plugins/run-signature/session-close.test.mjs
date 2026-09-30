@@ -40,7 +40,8 @@ test("sums one usage record per completed model turn", () => {
     output: 5,
     cacheRead: 20,
     cacheWrite: 4,
-    peakContext: 30,
+    peakContext: 0,
+    coverage: {input: 2, output: 2, cacheRead: 1, cacheWrite: 1, peakContext: 0},
     models: "grok-4.6 (2 runs)",
   });
 });
@@ -62,6 +63,7 @@ test("reads usage from the current OpenClaw assistant-message transcript", () =>
     cacheRead: 10,
     cacheWrite: 2,
     peakContext: 52,
+    coverage: {input: 1, output: 1, cacheRead: 1, cacheWrite: 1, peakContext: 1},
     models: "grok-4.6-low-fast",
   });
 });
@@ -84,7 +86,7 @@ test("the operational close report retains measurements", () => {
   const stats = measureSlackThread(messages);
   const text = formatCloseReport({ summary: "Fixed the lifecycle path.", stats, agent: "liv" });
   assert.match(text, /^## Session Closed\n- Summary:/);
-  assert.match(text, /- Messages: 1 from the human \/ 1 from agents/);
+  assert.match(text, /- Messages: 1 from humans \/ 1 from agents/);
   assert.match(text, /usage unavailable/);
 });
 

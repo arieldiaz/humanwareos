@@ -16,7 +16,7 @@ Humanware OS will use the simplest sufficient instruction architecture:
 2. A domain rule appears in one Layer 2 spec. Identity files contain only role, jurisdiction, judgment, and voice.
 3. Skills are optional task procedures. They may sequence work and define a result, but may not establish global policy, channel reply shape, lifecycle state, execution profile, or identity behavior.
 4. Every agent workspace receives the same canonical skill directory from the immutable runtime. Pre-existing workspace skills are backed up during cutover and cease to be discoverable.
-5. The lifecycle has four states: `working` (on agent), `act` (on human), `scheduled`, and `closed`. A question is content inside the on-human state, not a fifth phase. An ordinary final returns the turn to the human; only explicit whole-thread confirmation closes it.
+5. The lifecycle has four states: `working` (on agent), `act` (on human), `scheduled`, and `closed`. A question is content inside the on-human state, not a fifth phase. An ordinary final returns the turn to the human; only the authenticated host close command closes it.
 6. Models write standard Markdown. Surface adapters own deterministic rendering differences. In Slack, Markdown pipe tables become aligned preformatted text instead of requiring a model-only exception.
 
 ## Consolidation

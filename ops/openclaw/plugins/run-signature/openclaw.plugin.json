@@ -8,6 +8,7 @@
   "configSchema": {
     "type": "object",
     "properties": {
+      "ownerUserId": {"type": "string", "pattern": "^U[A-Z0-9]+$"},
       "ownerLabel": {"type": "string", "minLength": 1},
       "dataRoot": {"type": "string", "pattern": "^/"},
       "excludedChannels": {
@@ -20,6 +21,7 @@
         "required": ["enabled", "accounts"],
         "properties": {
           "enabled": {"type": "boolean"},
+          "defaultAccounts": {"type": "object", "propertyNames": {"pattern": "^[CGD][A-Z0-9]+$"}, "additionalProperties": {"type": "string", "minLength": 1}},
           "accounts": {
             "type": "object",
             "minProperties": 1,
