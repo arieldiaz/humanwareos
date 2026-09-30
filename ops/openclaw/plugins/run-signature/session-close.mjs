@@ -42,7 +42,8 @@ export function summarizeTrajectory(source = "", {before = Infinity} = {}) {
       if (seen.has(entry.id)) continue;
       seen.add(entry.id);
     }
-    const timestamp = Date.parse(entry.ts ?? entry.timestamp ?? entry.message?.timestamp);
+    const recordedAt = entry.ts ?? entry.timestamp ?? entry.message?.timestamp;
+    const timestamp = typeof recordedAt === 'number' ? recordedAt : Date.parse(recordedAt);
     if (Number.isFinite(before) && (!Number.isFinite(timestamp) || timestamp > before)) continue;
     const completed = entry?.type === "model.completed";
     const assistant = entry?.type === "message" && entry?.message?.role === "assistant" && entry?.message?.usage;
