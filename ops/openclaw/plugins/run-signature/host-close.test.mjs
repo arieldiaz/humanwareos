@@ -244,4 +244,5 @@ test('an old delivered model-closed decision is retained for reconciliation, not
   assert.equal((await f.runtime.state(state => state.turns[key])).phase, 'delivered');
   assert.equal(f.completed.size, 0); assert.equal(f.receipts.size, 0);
   assert.equal(f.order.includes('closed'), false);
+  await assert.rejects(f.runtime.human(route, {messageId: input.messageId}), /reconciliation/);
 });
