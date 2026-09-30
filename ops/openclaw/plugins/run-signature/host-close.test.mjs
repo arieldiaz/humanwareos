@@ -31,7 +31,9 @@ test('exact command grammar never strips untrusted text into a command', () => {
 test('principal config and raw bot/forwarded text gates; non-owner callback performs no reservation', async () => {
   const register = pluginConfig => {
     plugin.register({config: {}, pluginConfig, on() {}});
-    return globalThis[Symbol.for('humanware.final-envelope.v1')];
+    const runtime = globalThis[Symbol.for('humanware.final-envelope.v1')];
+    runtime.sender = async () => undefined;
+    return runtime;
   };
   const message = {channel: 'C123', ts: input.messageId, thread_ts: route.threadId, text: 'close this', user: 'UOWNER'};
   const config = {ownerUserId: 'UOWNER', threadOwnership: {accounts: {max: 'UMAX', liv: 'ULIV'}, defaultAccounts: {C123: 'max'}}};
@@ -218,4 +220,16 @@ for (const phase of ['reserved', 'snapshot', 'file', 'sending', 'delivered', 're
   else await restarted.recover();
   assert.equal(f.receipts.size, 1); assert.equal(f.completed.size, 1);
   assert.equal((await restarted.state(state => state.conversations[conversationFenceKey(route)])).state, 'closed');
+});
+
+test('existing journal owner binds sender even when the routing projection is absent', async t => {
+  const f = await fixture(t), key = conversationFenceKey(route);
+  await f.runtime.state(state => {
+    state.turns[key + ':old'] = {key: key + ':old', conversation: key, accountId: 'liv', phase: 'sent'};
+    state.conversations[key] = {status: 'act', owner: key + ':old'};
+  });
+  assert.equal(await f.runtime.sender(route), 'liv');
+  await f.runtime.run(params, async () => result, 'codex');
+  await f.runtime.human(route, {messageId: input.messageId, text: 'a new request'});
+  assert.equal(await f.runtime.sender(route), 'max');
 });

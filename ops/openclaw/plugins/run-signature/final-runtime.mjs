@@ -76,6 +76,12 @@ export class FinalRuntime {
       conversation.owner = `inbound:${input.messageId}`;
     });
   }
+  async sender(route) {
+    return this.state(state => {
+      const conversation = state.conversations[conversationFenceKey(route)];
+      return conversation?.sender ?? state.turns[conversation?.owner]?.accountId ?? state.closes?.[conversation?.closeOperation]?.accountId;
+    });
+  }
   async reserveClose(route, {messageId, principal, accountId}) {
     if (!messageId || !principal || !accountId) throw new Error('Closure requires source, principal and configured sender');
     return this.state(state => {
@@ -160,7 +166,7 @@ export class FinalRuntime {
       const turn = {key, route, conversation, generation: boundary.generation, runId: params.runId, sessionKey: params.sessionKey, accountId,
         previous: state.conversations[conversation]?.status, phase: 'running', startedAt: Date.now()};
       state.turns[key] = turn;
-      state.conversations[conversation] = {...state.conversations[conversation], owner: key};
+      state.conversations[conversation] = {...state.conversations[conversation], owner: key, sender: accountId};
       return turn;
     });
     if (admission.phase !== 'running') throw new Error('Turn already settled; replay its durable delivery, not model execution');

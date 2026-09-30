@@ -662,7 +662,7 @@ export default {
       if (!principal || !/^U[A-Z0-9]+$/.test(principal)) throw new Error('Owner-only closure requires configured ownerUserId');
       if (message.user !== principal) return false;
       const thread = message.thread_ts;
-      const sender = thread ? await threadOwnership?.owner(message.channel, thread) : undefined;
+      const sender = thread ? await threadOwnership?.owner(message.channel, thread) ?? await finalRuntime.sender({channel: message.channel, threadId: thread}) : undefined;
       const configuredSender = sender ?? threadOwnershipConfig?.defaultAccounts?.[message.channel];
       if (!configuredSender || !threadOwnershipConfig?.accounts?.[configuredSender]) throw new Error('Closure requires persisted thread owner or configured channel default sender');
       // The non-owner callback is consumed without admission or lifecycle writes.
