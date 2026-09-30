@@ -39,7 +39,7 @@ export function readConversationFence(route, {path = join(process.env.OPENCLAW_S
   const journal = JSON.parse(readFileSync(path, 'utf8'));
   assertLifecycleJournal(journal);
   const conversation = journal.conversations[key];
-  if (conversation && (!Number.isSafeInteger(conversation.generation) || conversation.generation < 0 || !['open', 'closing', 'closed'].includes(conversation.state)))
+  if (conversation !== undefined && (!Number.isSafeInteger(conversation?.generation) || conversation.generation < 0 || !['open', 'closing', 'closed'].includes(conversation.state)))
     throw new Error('Invalid lifecycle generation; migration/reconciliation required');
   return conversation;
 }

@@ -39,8 +39,8 @@ export class FinalRuntime {
     if (!key) throw new Error('Canonical closure route is unavailable');
     if (!state.conversations[key] && Object.values(state.turns).some(turn => turn.conversation === key)) throw new Error('Orphan turn requires historical reconciliation');
     const prior = state.conversations[key];
-    if (prior) {
-      if (!Number.isSafeInteger(prior.generation) || prior.generation < 0 || !['open', 'closing', 'closed'].includes(prior.state))
+    if (prior !== undefined) {
+      if (!Number.isSafeInteger(prior?.generation) || prior.generation < 0 || !['open', 'closing', 'closed'].includes(prior.state))
         throw new Error('Invalid lifecycle generation; migration/reconciliation required');
       return prior;
     }

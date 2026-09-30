@@ -175,4 +175,7 @@ test('migration gate rejects missing and unversioned journals before admission o
   await writeFile(join(root, 'final-decisions.json'), JSON.stringify({turns: {}, conversations: {}}));
   await assert.rejects(runtime.human(route, {messageId: '1700000200.000001'}), /migration/);
   assert.throws(() => shouldSuppressConversationDelivery(route, {path: join(root, 'final-decisions.json')}), /migration/);
+  await writeFile(join(root, 'final-decisions.json'), JSON.stringify({lifecycleSchemaVersion: 1, turns: {}, conversations: {[key]: null}}));
+  await assert.rejects(runtime.human(route, {messageId: '1700000200.000001'}), /migration/);
+  assert.throws(() => shouldSuppressConversationDelivery(route, {path: join(root, 'final-decisions.json')}), /migration/);
 });
