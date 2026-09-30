@@ -79,6 +79,7 @@ export function reconcileLifecycleHistory({fences, journal, owners = [], events 
       if (!object(turn)) { issue('invalid_turn', source); continue; }
       const record = get(turn.conversation, source);
       if (!record) continue;
+      if (!record.journal) issue('orphan_turn', source, record.conversation);
       if (key !== turn.key || !['running', 'reserved', 'queued', 'delivered', 'sent', 'failed'].includes(turn.phase))
         issue('invalid_turn', source, record.conversation);
       if (turn.route && canonicalLifecycleKey(`slack:${turn.route.channel}:${turn.route.threadId}`) !== record.conversation)

@@ -147,3 +147,21 @@ test('completion evidence without a preserved fence cannot silently validate an 
   input.events[0].details = {};
   assert.ok(codes(reconcileLifecycleHistory(input)).includes('unmapped_completion'));
 });
+
+
+test('an ordinary orphan turn cannot pass reconciliation even with a legacy fence', () => {
+  for (const withFence of [true, false]) {
+    const input = fixture({state: 'open', revision: 1, openedAt: 100, updatedAt: 100}, 'act');
+    input.journal.conversations = {};
+    if (!withFence) input.fences.conversations = {};
+    const turnKey = `${key}:orphan`;
+    input.journal.turns[turnKey] = {key: turnKey, conversation: key, phase: 'queued',
+      envelope: {status: 'act', message: 'unmapped result'}, startedAt: 200};
+    const original = structuredClone(input);
+    const report = reconcileLifecycleHistory(input);
+    assert.equal(report.consistent, false);
+    assert.ok(codes(report).includes('orphan_turn'));
+    assert.deepEqual(input, original);
+    assert.equal(report.conversations[0].journal, undefined);
+  }
+});
