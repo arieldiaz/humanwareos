@@ -29,8 +29,9 @@ export function measureSlackThread(messages = []) {
   };
 }
 
-export function summarizeTrajectory(source = "") {
+export function summarizeTrajectory(source = "", {before = Infinity} = {}) {
   const totals = { turns: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, peakContext: 0 };
+  const coverage = {input: 0, output: 0, cacheRead: 0, cacheWrite: 0, peakContext: 0};
   const models = new Map();
   const entries = typeof source === "string" ? source.split("\n").flatMap((line) => {
     try { return [JSON.parse(line)]; } catch { return []; }
@@ -41,28 +42,31 @@ export function summarizeTrajectory(source = "") {
       if (seen.has(entry.id)) continue;
       seen.add(entry.id);
     }
+    const timestamp = Date.parse(entry.ts ?? entry.timestamp ?? entry.message?.timestamp);
+    if (Number.isFinite(before) && (!Number.isFinite(timestamp) || timestamp > before)) continue;
     const completed = entry?.type === "model.completed";
     const assistant = entry?.type === "message" && entry?.message?.role === "assistant" && entry?.message?.usage;
     if (!completed && !assistant) continue;
     const usage = completed ? entry?.data?.usage ?? {} : entry.message.usage;
     totals.turns += 1;
-    totals.input += Number(usage.input) || 0;
-    totals.output += Number(usage.output) || 0;
-    totals.cacheRead += Number(usage.cacheRead) || 0;
-    totals.cacheWrite += Number(usage.cacheWrite) || 0;
-    totals.peakContext = Math.max(totals.peakContext,
-      (Number(usage.input) || 0) + (Number(usage.cacheRead) || 0) + (Number(usage.cacheWrite) || 0));
+    for (const field of ['input', 'output', 'cacheRead', 'cacheWrite']) {
+      if (Number.isFinite(usage[field]) && usage[field] >= 0) { totals[field] += usage[field]; coverage[field]++; }
+    }
+    if (['input', 'cacheRead', 'cacheWrite'].every(field => Number.isFinite(usage[field]))) {
+      coverage.peakContext++;
+      totals.peakContext = Math.max(totals.peakContext, usage.input + usage.cacheRead + usage.cacheWrite);
+    }
     const model = String(entry.modelId ?? entry?.message?.model ?? "model unrecorded");
     models.set(model, (models.get(model) ?? 0) + 1);
   }
   if (!totals.turns) return;
   return {
-    ...totals,
+    ...totals, coverage,
     models: [...models].map(([model, count]) => count === 1 ? model : `${model} (${count} runs)`).join(", "),
   };
 }
 
-export async function loadThreadUsage({ agent, channel, thread, agentsRoot = defaultAgentsRoot() }) {
+export async function loadThreadUsage({ agent, channel, thread, agentsRoot = defaultAgentsRoot(), before = Infinity }) {
   const sessionsDir = join(agentsRoot, agent, "sessions");
   const key = `agent:${agent}:slack:channel:${String(channel).toLowerCase()}:thread:${thread}`;
   const canonical = await withCanonicalSessionDatabase({agent, agentsRoot}, (database) => {
@@ -72,7 +76,7 @@ export async function loadThreadUsage({ agent, channel, thread, agentsRoot = def
     function* entries() {
       for (const row of rows) yield JSON.parse(row.event_json);
     }
-    return summarizeTrajectory(entries());
+    return summarizeTrajectory(entries(), {before});
   });
   if (canonical.found) return canonical.result;
   const sessionId = (await loadSessionEntry(key, {agentsRoot}))?.sessionId;
@@ -88,39 +92,70 @@ export async function loadThreadUsage({ agent, channel, thread, agentsRoot = def
     return;
   }
   for (const candidate of candidates) {
-    const usage = summarizeTrajectory(await readFile(candidate.path, "utf8"));
+    const usage = summarizeTrajectory(await readFile(candidate.path, "utf8"), {before});
     if (usage) return usage;
   }
 }
 
-export function formatCloseReport({ summary, stats, usage, agent, ownerLabel = "the human" }) {
-  const name = String(agent || "agent").replace(/^./, (value) => value.toUpperCase());
-  const compactSummary = String(summary).trim().replace(/\s+/g, " ");
-  const lines = [
-    "## Session Closed",
-    `- Summary: ${compactSummary}`,
-    `- Elapsed: ${stats.elapsed}`,
-    `- Messages: ${stats.humanMessages} from ${ownerLabel} / ${stats.agentMessages} from agents`,
-    `- Words: ${stats.humanWords.toLocaleString("en-US")} from ${ownerLabel} / ${stats.agentWords.toLocaleString("en-US")} from agents`,
-  ];
-  if (usage) {
-    const processed = usage.input + usage.cacheRead + usage.cacheWrite;
-    lines.push(`- Runtime: ${name} · ${usage.models} · ${usage.turns} completed model turn${usage.turns === 1 ? "" : "s"}`);
-    lines.push(`- Input processed: ${processed.toLocaleString("en-US")} tokens (${usage.cacheRead.toLocaleString("en-US")} cache read, ${usage.cacheWrite.toLocaleString("en-US")} cache write, ${usage.input.toLocaleString("en-US")} fresh)`);
-    if (usage.peakContext) lines.push(`- Context peak: ${usage.peakContext.toLocaleString("en-US")} tokens`);
-    lines.push(usage.output >= stats.agentWords
-      ? `- Tokens out: ${usage.output.toLocaleString("en-US")}`
-      : `- Tokens out: unavailable (provider counter incomplete: ${usage.output.toLocaleString("en-US")})`);
-  } else {
-    lines.push(`- Runtime: ${name} · usage unavailable because this harness recorded no completed model-usage event for the thread`);
+export function formatCloseReport({ summary = "Recap evidence is limited", outcomes = [], followUps = [], stats, usage, agent, boundary, ownerLabel = "humans" }) {
+  const metric = value => value == null ? "unavailable" : typeof value === 'number' ? value.toLocaleString('en-US') : value;
+  const lines = ["## Session Closed", `- Summary: ${summary}`, ...outcomes.map(value => `- Recorded outcome: ${value}`),
+    `- Unresolved follow-ups: ${followUps.length ? followUps.join('; ') : 'unavailable — no complete follow-up ledger recorded'}`,
+    `- Evidence boundary: ${boundary ?? 'recorded thread messages; close report excluded'}`,
+    `- Elapsed: ${metric(stats?.elapsed)}`,
+    `- Messages: ${metric(stats?.humanMessages)} from ${ownerLabel} / ${metric(stats?.agentMessages)} from agents`,
+    `- Words: ${metric(stats?.humanWords)} from ${ownerLabel} / ${metric(stats?.agentWords)} from agents`];
+  const usages = Array.isArray(usage) ? usage : [{agent, usage}];
+  for (const record of usages) {
+    const value = record.usage;
+    lines.push(`- Runtime: ${record.agent ?? 'agent'} · ${value?.models ?? 'models unavailable'} · ${value ? value.turns + ' recorded model turns (partial thread coverage)' : 'usage unavailable'}`);
+    for (const [field, label] of Object.entries({input: 'Fresh input', cacheRead: 'Cache read', cacheWrite: 'Cache write', output: 'Tokens out', peakContext: 'Context peak'})) {
+      const count = value?.coverage?.[field];
+      lines.push(`- ${label}: ${count ? metric(value[field]) + ' tokens' + (count < value.turns ? ` (partial: ${count}/${value.turns} recorded turns)` : '') : 'unavailable'}`);
+    }
   }
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
-export async function recordSessionClose({ dataRoot, channel, thread, agent, closeMessageId, summary, stats, usage, ownerLabel, now = new Date() }) {
+export function closeReportPath(dataRoot, operationId) {
+  return join(dataRoot, 'generated', 'sessions', createHash('sha256').update(operationId).digest('hex').slice(0, 24) + '.md');
+}
+
+export async function writeCloseReport({dataRoot, operationId, report}) {
+  const viewPath = closeReportPath(dataRoot, operationId);
+  await mkdir(dirname(viewPath), {recursive: true});
+  await writeFile(viewPath, report + '\n', {mode: 0o600});
+  return viewPath;
+}
+
+// No stripping of quotations, arbitrary prefixes or attachments into commands.
+export function isCloseCommand(text, botIds = []) {
+  let remaining = String(text ?? '').trim();
+  while (remaining.startsWith('<@')) {
+    const match = remaining.match(/^<@([A-Z0-9]+)>\s+/);
+    if (!match || !botIds.includes(match[1])) return false;
+    remaining = remaining.slice(match[0].length);
+  }
+  return /^(?:ok[,!]?\s+)?(?:close this|close it|mark this closed|close (?:this )?thread)[.!]?$/i.test(remaining);
+}
+
+export function reportParts(report, limit = 3000) {
+  const parts = [];
+  let rest = report;
+  while (rest.length > limit) {
+    let end = rest.lastIndexOf('\n', limit);
+    if (end < 1) end = limit;
+    if (/^[\uDC00-\uDFFF]$/.test(rest[end])) end--;
+    parts.push(rest.slice(0, end)); rest = rest.slice(end);
+  }
+  if (rest) parts.push(rest);
+  return parts;
+}
+
+export async function recordSessionClose({ dataRoot, channel, thread, agent, closeMessageId, summary, stats, usage, ownerLabel, operationId, report, now = new Date() }) {
   const ts = now.toISOString();
   const logicalSessionId = `slack:${channel}:${thread}`;
-  const id = `session-completed:${channel}:${thread}:${closeMessageId}`;
+  const id = operationId ?? `session-completed:${channel}:${thread}:${closeMessageId}`;
   const event = {
     schemaVersion: 2,
     id,
@@ -137,7 +172,7 @@ export async function recordSessionClose({ dataRoot, channel, thread, agent, clo
     sourceRef: { sessionKey: logicalSessionId, messageId: closeMessageId },
   };
   const eventsPath = join(dataRoot, "evidence", "sessions", "events", `${ts.slice(0, 10)}.jsonl`);
-  const viewName = createHash("sha256").update(logicalSessionId).digest("hex").slice(0, 24);
+  const viewName = createHash("sha256").update(operationId ?? logicalSessionId).digest("hex").slice(0, 24);
   const viewPath = join(dataRoot, "generated", "sessions", `${viewName}.md`);
   await mkdir(dirname(eventsPath), { recursive: true });
   await mkdir(dirname(viewPath), { recursive: true });
@@ -148,6 +183,6 @@ export async function recordSessionClose({ dataRoot, channel, thread, agent, clo
     if (error?.code !== "ENOENT") throw error;
   }
   if (!prior.includes(`\"id\":\"${id}\"`)) await appendFile(eventsPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
-  await writeFile(viewPath, `${formatCloseReport({ summary, stats, usage, agent, ownerLabel })}\n`, { mode: 0o600 });
+  await writeFile(viewPath, `${report ?? formatCloseReport({ summary, stats, usage, agent, ownerLabel })}\n`, { mode: 0o600 });
   return { event, viewPath };
 }

@@ -110,7 +110,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         continue;
       }
       const startedAt = Date.now();
-      const run = spawnSync(binary, ["agent", "--agent", agent, "--session-key", `agent:${agent}:eval:response-envelope:${entry.id}:${Date.now()}`, "--message", entry.prompt + ' Return a final JSON envelope with schemaVersion 1, message, and status (act, scheduled, closed).', "--thinking", "low", "--timeout", "180", "--json"], {encoding: "utf8", timeout: 190_000});
+      const run = spawnSync(binary, ["agent", "--agent", agent, "--session-key", `agent:${agent}:eval:response-envelope:${entry.id}:${Date.now()}`, "--message", entry.prompt + ' Return a final JSON envelope with schemaVersion 1, message, and status (act, scheduled).', "--thinking", "low", "--timeout", "180", "--json"], {encoding: "utf8", timeout: 190_000});
       const durationMs = Date.now() - startedAt;
       if (run.status !== 0) {
         results.push({agent, caseId: entry.id, pass: false, durationMs, failures: [run.stderr.trim() || `OpenClaw exited ${run.status}`]});

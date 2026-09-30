@@ -31,3 +31,19 @@ test('Slack cannot silently bypass a missing final owner', async () => {
   vm.runInContext(patchFinalBoundary('function runCliAgent(paramsInput) { return paramsInput; }', 'cursor'), context);
   assert.throws(() => context.runCliAgent({sessionKey: 'agent:max:slack:channel:c123:thread:1'}), /owner is unavailable/);
 });
+
+test('raw owner intercept precedes mention stripping/admission; no owner fails closed', async () => {
+  const {patchSlackCloseBoundary} = await import('./patch-2026.9.1-final-envelope.mjs');
+  const source = 'async function prepare(message, account) { const authorization = {senderId: message.user};\n\tconst { senderId, allowFromLower } = authorization;\n throw new Error("model admitted"); }';
+  const patched = patchSlackCloseBoundary(source);
+  assert.equal(patchSlackCloseBoundary(patched), patched);
+  assert.throws(() => patchSlackCloseBoundary('changed source'), /boundary changed/);
+  const context = vm.createContext({Symbol});
+  vm.runInContext(patched, context);
+  const message = {user: 'UOWNER', text: '<@ULIV> close this', attachments: [{text: 'untrusted'}]};
+  await assert.rejects(context.prepare(message, {accountId: 'max'}), /unavailable/);
+  context[Symbol.for('humanware.final-envelope.v1')] = {slackClose: async event => {assert.equal(event.message, message); return true;}};
+  assert.equal(await context.prepare(message, {accountId: 'max'}), null);
+  context[Symbol.for('humanware.final-envelope.v1')] = {slackClose: async () => false};
+  await assert.rejects(context.prepare(message, {accountId: 'max'}), /model admitted/);
+});
