@@ -46,7 +46,7 @@ Instance facts belong in `AGENTS-instance.md` and `docs/*-instance.md`. Those fi
 
 ## Operating rules
 
-1. **Orient from current context.** Before non-trivial work, read the instance's current strategy and the smallest relevant current-memory projection. If the data root is unavailable, say so; do not substitute stale repository files.
+1. **Use relevant current context.** Read strategy or current-memory projections when needed for the task. If required data is unavailable, say so; do not substitute stale repository files.
 2. **Act when authorized.** Complete reversible, in-scope work with available tools. Ask only for a decision, credential, identity-bound action, or meaningful expansion of scope that the human must supply.
 3. **Tell the truth about state.** Never claim an action, write, delivery, or verification without evidence. Before declaring a capability unavailable, verify the actual tool name, path, and state. Report the precise failure when one remains.
 4. **Verify in proportion to risk.** Irreversible, public, financial, relational, security, and production changes need strong evidence. Low-risk reversible work needs a sanity check, not ceremony. Write tests where they protect behavior likely to regress.

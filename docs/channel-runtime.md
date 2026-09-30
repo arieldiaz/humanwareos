@@ -16,6 +16,8 @@ Liv and Max are durable identity templates with separate role, voice, authority,
 
 Both identities receive the same approved execution-profile catalog unless an explicit security boundary narrows one. A profile difference must be visible policy, not an incidental command-line flag hidden in one agent definition.
 
+A conversation has participants, not a persistent agent owner. Channel mention and thread-participation routing admit messages; the agent follows the human’s words and conversation context. With one participating agent, ordinary follow-ups continue naturally. With multiple agents, explicit addressing and instructions to stand down govern who acts. A mention is not an ownership transfer, and mention order never assigns future control.
+
 ## Execution profile
 
 An execution profile binds:
@@ -62,9 +64,9 @@ Every enabled conversational execution path returns the validated final envelope
 
 Mid-turn progress is structured telemetry in the session ledger. The session console may render status, selected profile, checkpoints, tool summaries, artifacts, and elapsed time. Conversation adapters publish the one final response; internal narration and hidden harness finals never become conversation posts.
 
-### Conversation lifecycle fence
+### Conversation lifecycle
 
-The control plane persists `open → closing → closed`. Closing begins before the close reply, fences model admission and delivery, and becomes closed only after confirmed delivery; failure restores open and eligible completions. Closed targets turn completion and settle work into `intentional_non_delivery`, preserve the outcome, and mark both handled. Retired children set `suppressCompletionDelivery` and create no settle wake. A yielded multi-child parent has one visible owner: requester-settle. Only a human message reopens; it never revives work created before the last close. Internal events, agent messages, retries, and restarts cannot reopen. The fence survives restart and is checked before admission and delivery.
+[status-framework.md](status-framework.md) is the single lifecycle contract, including silence, closure, reopening, and stale-work fencing. Admission and delivery use that authority; channel adapters do not maintain a second state machine.
 
 ## Health
 

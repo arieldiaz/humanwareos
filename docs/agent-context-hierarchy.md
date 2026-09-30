@@ -26,7 +26,7 @@ Harness, model, reasoning, permissions, and working directory are execution-prof
 
 The data plane supplies concise non-normative context: current strategy, active facts, decisions, project state, and references to evidence. Memory can inform judgment but cannot establish a rule. Contradictory memory is stale data to correct, never a policy tiebreaker.
 
-Task instructions and the live conversation sit nearest the active work but remain beneath this authority stack.
+The human's current task instructions override ordinary style and workflow defaults. Privacy, security, data scope, and authorization boundaries remain binding; historical memory cannot override the current request.
 
 ## Skills are procedures
 

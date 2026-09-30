@@ -13,7 +13,6 @@ import {
   resolveStatusTile,
   planStatusTile,
 } from "./strip-core.mjs";
-import { createThreadOwnershipRuntime, inferThreadOwnerFromMessages } from "./thread-ownership.mjs";
 import {
   loadThreadUsage,
   measureSlackThread,
@@ -469,7 +468,6 @@ export default {
     const faultedRoots = new Set();
     const humanInputs = new Map();
     const serializeRunStrip = createKeyedSerialQueue();
-    const threadOwnershipConfig = api.pluginConfig?.threadOwnership;
     const conversationFences = new ConversationFenceStore();
 
     const finalRuntime = new FinalRuntime({
@@ -609,24 +607,6 @@ export default {
       };
     }, { name: "start_work_thread" });
 
-    const threadOwnership = threadOwnershipConfig?.enabled === true
-      ? createThreadOwnershipRuntime({
-          accounts: threadOwnershipConfig.accounts,
-          resolveUnclaimedOwner: async (event, ctx) => {
-            const route = slackRouteFromSessionKey(ctx.sessionKey);
-            const channel = String(event.conversationId ?? ctx.conversationId ?? route?.channel ?? "").replace(/^channel:/, "").toUpperCase();
-            const rootTs = String(event.threadId ?? event.replyToId ?? route?.rootTs ?? "");
-            const accountId = event.accountId ?? ctx.accountId;
-            if (!channel || !rootTs || !accountId) return;
-            const accountRuntime = await import(resolveSlackRuntimeModule("accounts"));
-            const token = accountRuntime.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
-            if (!token) return;
-            const messages = (await slackApi("conversations.replies", token, { channel, ts: rootTs, limit: 1000 })).messages ?? [];
-            return inferThreadOwnerFromMessages(messages, threadOwnershipConfig.accounts);
-          },
-        })
-      : undefined;
-
     api.on("inbound_claim", async (event, ctx) => {
       const route = rememberInboundThreadRoot(event, ctx, rootCache);
       if (route && !isExcludedChannel(route.channel)) {
@@ -640,28 +620,21 @@ export default {
           return { handled: true };
         }
       }
-      if (threadOwnership) {
-        const claim = await threadOwnership.claim(event, ctx);
-        if (claim.handled) {
-          api.logger?.info?.(`thread ownership handled inbound for ${event.accountId ?? ctx.accountId ?? "unknown"}: ${claim.reason}; owner=${claim.owner ?? "none"}`);
-          return {handled: true};
-        }
-        if (!route || isExcludedChannel(route.channel)) return;
-        const accountId = event.accountId ?? ctx.accountId;
-        try {
-          const accounts = await import(resolveSlackRuntimeModule("accounts"));
-          const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
-          if (!token) throw new Error(`the claimed account ${accountId ?? "unknown"} has no Slack token`);
-          await maintainStatusTile(ADMITTED_STATUS, ctx, {
-            channel: route.channel,
-            rootTs: route.rootTs,
-            routeKey: `${route.channel.toLowerCase()}:${route.rootTs}`,
-            accountId,
-            token,
-          });
-        } catch (error) {
-          api.logger?.error?.(`run-signature could not mark the admitted turn working: ${String(error)}`);
-        }
+      if (!route || isExcludedChannel(route.channel)) return;
+      const accountId = event.accountId ?? ctx.accountId;
+      try {
+        const accounts = await import(resolveSlackRuntimeModule("accounts"));
+        const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
+        if (!token) throw new Error(`the admitted account ${accountId ?? "unknown"} has no Slack token`);
+        await maintainStatusTile(ADMITTED_STATUS, ctx, {
+          channel: route.channel,
+          rootTs: route.rootTs,
+          routeKey: `${route.channel.toLowerCase()}:${route.rootTs}`,
+          accountId,
+          token,
+        });
+      } catch (error) {
+        api.logger?.error?.(`run-signature could not mark the admitted turn working: ${String(error)}`);
       }
     });
 

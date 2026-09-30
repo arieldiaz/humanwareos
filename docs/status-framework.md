@@ -15,11 +15,13 @@ Budget: 900 words. Over it, consolidate.
 
 ## Final wire contract
 
-Every enabled conversational execution path returns exactly `{schemaVersion: 1, message: string, status: "act" | "scheduled" | "closed"}`. The message must be nonempty. Extra fields are rejected. The adapter never infers status from headings, keywords, reactions, tool results, or send metadata.
+Every ordinary response from an enabled conversational execution path returns exactly `{schemaVersion: 1, message: string, status: "act" | "scheduled" | "closed"}`. The message must be nonempty. Extra fields are rejected. The adapter never infers status from headings, keywords, reactions, tool results, or send metadata.
 
 Codex uses app-server `turn/start.outputSchema`. Cursor uses its supported stream-JSON transport; its entire final result string must itself be the JSON object. Decode the complete string once and validate it strictly. Do not extract objects from prose, strip fences, or guess missing fields. Both transports enter the same validator and commit path. Unsupported enabled harnesses fail the integration gate; disabling or rerouting a profile needs a separate human decision.
 
-A scheduled decision requires an enabled durable `agentTurn` wake with a future next-run time, bound to this exact canonical session and configured for delivery. Read scheduler storage at validation time; a tool success claim is insufficient. Existing verified wakes may support rescheduling or status repair. Closure requires a current trusted human input explicitly authorizing closure (`close this thread`, `close this conversation`, `close this session`, `close it`, or `confirm closure`, optionally prefixed by please); neither old conversation context nor machine input supplies that authority.
+A scheduled decision requires an enabled durable `agentTurn` wake with a future next-run time, bound to this exact canonical session and configured for delivery. Read scheduler storage at validation time; a tool success claim is insufficient. Existing verified wakes may support rescheduling or status repair. Closure requires a current trusted human input explicitly authorizing closure; neither old conversation context nor machine input supplies that authority.
+
+If the envelope message is exactly `NO_REPLY`, send nothing and finish the execution without changing the conversation disposition.
 
 ## Commit and recovery
 
@@ -33,6 +35,4 @@ An accepted closed final fences automated continuations. A new human message reo
 
 ## Verification and release
 
-Before merging: contract, evidence, bounded-repair, idempotency, supersession, failure, and restart tests; both identities through actual Codex and Cursor boundary adapters; and idempotent patch rehearsal on copied installed bundles. Search for removed parsers, overrides, and close rewriting. Fixtures alone do not establish live acceptance.
-
-After separately approved merge and immutable-runtime activation, fresh user-authored Slack threads for both identities must prove admission 🔄, ordinary ✋, successful schedule/reschedule 🗓️, failed schedule recovery, confirmed concise closure ✅, reopening, exactly one bot-owned root tile, no acknowledgement reactions, and correct per-reply signatures. Record the ledger and Slack readback for each case. No production restart or cutover is implied by implementation approval.
+Verify changed behavior through the affected harness and delivery paths, including recovery where relevant. Fixtures alone do not establish live Slack acceptance. Merge and production activation require separate human approval.
