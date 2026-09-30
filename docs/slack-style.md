@@ -32,7 +32,7 @@ When substantial work gets its own thread, use the atomic work-thread tool with 
 - **Never type a raw `~`.** Write "about". A bare tilde pairs with the next one anywhere later — including inside backticks, striking the code marks with it — and backslash is not an escape, it renders literally. Backticked tildes are safe only when no bare one exists in the message.
 - Use one blank line between a heading and its content, as standard Markdown requires. Do not add extra spacer lines.
 - Lists use `- `, never a literal `•`. One bullet is one uninterrupted list item — a hard line break or manual indent inside it kills the hanging indent. Numbers are reserved for steps performed in order; everything else is a bullet.
-- **No decorative emoji in headings.** The exact lifecycle headings from `docs/status-framework.md` are the only exception because their glyph is semantic state.
+- **No decorative emoji in headings.** Headings carry no lifecycle state.
 - **Tables:** write a standard Markdown pipe table. The adapter renders it as aligned preformatted text because Slack has no table primitive. For large tables, link the source rather than forcing the full dataset into chat.
 - **Specialized vocabulary:** `**term** (short plain definition)` at first use in a thread, then append the entry to the instance's glossary. Never silently swap in a simpler word. Do not re-define a term already glossed in the same thread.
 - Visual and interactive review work ships as a viewable HTML artifact plus editable source.
