@@ -233,3 +233,15 @@ test('existing journal owner binds sender even when the routing projection is ab
   await f.runtime.human(route, {messageId: input.messageId, text: 'a new request'});
   assert.equal(await f.runtime.sender(route), 'max');
 });
+
+test('an old delivered model-closed decision is retained for reconciliation, not completed by recovery', async t => {
+  const f = await fixture(t), conversation = conversationFenceKey(route), key = conversation + ':legacy-close';
+  await f.runtime.state(state => {
+    state.conversations[conversation] = {owner: key, status: 'act'};
+    state.turns[key] = {key, route, conversation, phase: 'delivered', messageId: 'old-ack', envelope: {schemaVersion: 1, message: 'Closed.', status: 'closed'}};
+  });
+  await f.runtime.recover();
+  assert.equal((await f.runtime.state(state => state.turns[key])).phase, 'delivered');
+  assert.equal(f.completed.size, 0); assert.equal(f.receipts.size, 0);
+  assert.equal(f.order.includes('closed'), false);
+});

@@ -257,6 +257,7 @@ export class FinalRuntime {
     await this.state(async state => {
       const turn = state.turns[key];
       if (turn?.phase !== 'delivered') return;
+      decodeFinal(JSON.stringify(turn.envelope));
       if (state.conversations[turn.conversation]?.owner === key && this.eligible(turn, state.conversations[turn.conversation])) {
         await this.record({...turn, status: turn.envelope.status});
         await this.project(turn.envelope.status, turn);
