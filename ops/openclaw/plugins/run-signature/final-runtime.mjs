@@ -47,7 +47,8 @@ export class FinalRuntime {
     const legacy = readLegacyFence(route, {path: join(this.root, 'conversation-fences.json')});
     if (legacy && !['open', 'closing', 'closed'].includes(legacy.state)) throw new Error('Unknown historical fence state');
     const conflict = legacy && prior.status && (prior.status === 'closed') !== (legacy.state === 'closed');
-    const ambiguous = conflict || legacy?.state === 'closing' || (!legacy && prior.status === 'closed') ||
+    const pendingLegacyClose = Object.values(state.turns).some(turn => turn.conversation === key && turn.envelope?.status === 'closed' && !['sent', 'failed', 'intentional_non_delivery'].includes(turn.phase));
+    const ambiguous = pendingLegacyClose || conflict || legacy?.state === 'closing' || (!legacy && prior.status === 'closed') ||
       (legacy?.state === 'closed' && !Number.isFinite(legacy.closedThrough));
     return state.conversations[key] = {...prior, ...(legacy ?? {}), generation: 0,
       state: legacy?.state ?? (prior.status === 'closed' ? 'closed' : 'open'),
