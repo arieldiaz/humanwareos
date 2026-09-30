@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, rm} from 'node:fs/promises';
+import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {decodeFinal, validateEvidence} from './final-envelope.mjs';
@@ -20,6 +20,7 @@ test('scheduled and closed require host evidence', () => {
 async function fixture(t, agent = 'max') {
   const root = await mkdtemp(join(tmpdir(), 'final-contract-'));
   t.after(() => rm(root, {recursive: true, force: true}));
+  await writeFile(join(root, 'final-decisions.json'), JSON.stringify({lifecycleSchemaVersion: 1, turns: {}, conversations: {}}));
   const records = [], projections = [], faults = [], sends = [];
   const sessionKey = `agent:${agent}:slack:channel:c123:thread:1790050400.000001`;
   const runtime = new FinalRuntime({root, humanInputs: new Map(), fences: {shouldSuppress: () => false},

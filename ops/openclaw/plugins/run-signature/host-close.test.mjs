@@ -14,6 +14,7 @@ const result = {assistantTexts: [JSON.stringify({schemaVersion: 1, message: 'Rec
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'host-close-'));
   t.after(() => rm(root, {recursive: true, force: true}));
+  await writeFile(join(root, 'final-decisions.json'), JSON.stringify({lifecycleSchemaVersion: 1, turns: {}, conversations: {}}));
   const receipts = new Map(), completed = new Set(), files = new Map(), order = [];
   const options = {root, fences: {shouldSuppress: () => false},
     record: async () => {}, fault: async () => {}, wakes: async () => [],
@@ -174,18 +175,6 @@ test('orphan turn cannot silently create an open boundary and publish', async t 
   assert.equal(f.receipts.size, 0);
   await assert.rejects(f.runtime.reserveClose(route, input), /Orphan/);
 });
-test('an imported historical boundary retains closedThrough after human reopening', async t => {
-  const f = await fixture(t), key = conversationFenceKey(route);
-  await writeFile(join(f.root, 'conversation-fences.json'), JSON.stringify({schemaVersion: 1, conversations: {[key]: {state: 'closed', closedThrough: 1000, closeMessageId: 'legacy-receipt'}}}));
-  await f.runtime.state(state => {state.conversations[key] = {status: 'closed'};});
-  await f.runtime.human(route, {messageId: input.messageId});
-  const conversation = await f.runtime.state(state => state.conversations[key]);
-  assert.equal(conversation.generation, 1);
-  assert.equal(conversation.closedThrough, 1000);
-  assert.equal(conversation.legacyBoundary.closeMessageId, 'legacy-receipt');
-  assert.equal(f.runtime.eligible({generation: 0, startedAt: 500}, conversation), false);
-});
-
 test('only checked host sends cross message hook fences, including valid reopened finals', async () => {
   const hooks = new Map();
   plugin.register({config: {}, on(name, callback) {hooks.set(name, callback);}});
@@ -226,7 +215,7 @@ test('existing journal owner binds sender even when the routing projection is ab
   const f = await fixture(t), key = conversationFenceKey(route);
   await f.runtime.state(state => {
     state.turns[key + ':old'] = {key: key + ':old', conversation: key, accountId: 'liv', phase: 'sent'};
-    state.conversations[key] = {status: 'act', owner: key + ':old'};
+    state.conversations[key] = {generation: 0, state: 'open', status: 'act', owner: key + ':old'};
   });
   assert.equal(await f.runtime.sender(route), 'liv');
   await f.runtime.run(params, async () => result, 'codex');

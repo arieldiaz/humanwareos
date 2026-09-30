@@ -122,11 +122,11 @@ test('CLI is repeatable, read-only and errors on malformed or absent source file
     const fenceText = JSON.stringify(input.fences), journalText = JSON.stringify(input.journal);
     await writeFile(fencesPath, fenceText);
     await writeFile(journalPath, journalText);
-    const cli = new URL('../../../../scripts/reconcile-lifecycle-history.mjs', import.meta.url);
+    const cli = new URL('../../../../scripts/migrate-lifecycle-history.mjs', import.meta.url);
     const args = [cli.pathname, '--fences', fencesPath, '--journal', journalPath];
     const first = spawnSync(process.execPath, args, {encoding: 'utf8'});
     assert.equal(first.status, 0, first.stderr);
-    assert.equal(JSON.parse(first.stdout).mode, 'read-only');
+    assert.equal(JSON.parse(first.stdout).mode, 'dry-run');
     assert.equal(spawnSync(process.execPath, args, {encoding: 'utf8'}).stdout, first.stdout);
     assert.equal(await readFile(fencesPath, 'utf8'), fenceText);
     assert.equal(await readFile(journalPath, 'utf8'), journalText);

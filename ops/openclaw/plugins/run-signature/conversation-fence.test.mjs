@@ -10,17 +10,19 @@ test('canonical route and verified human profile', () => {
   assert.equal(isHumanSlackUserProfile({id: 'UHUMAN'}), true);
   for (const user of [undefined, {id: 'UBOT', is_bot: true}, {id: 'UAPP', is_app_user: true}]) assert.equal(isHumanSlackUserProfile(user), false);
 });
-test('journal is authoritative; legacy is read only for untouched boundaries', async t => {
+test('only the migrated journal is read; legacy cannot override it', async t => {
   const root = await mkdtemp(join(tmpdir(), 'fence-reader-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   const paths = {path: join(root, 'final-decisions.json'), legacyPath: join(root, 'conversation-fences.json')};
   const key = conversationFenceKey(route);
   await writeFile(paths.legacyPath, JSON.stringify({schemaVersion: 1, conversations: {[key]: {state: 'closed', closedThrough: 100}}}));
-  assert.equal(readConversationFence(route, paths).state, 'closed');
-  await writeFile(paths.path, JSON.stringify({conversations: {[key]: {generation: 1, state: 'open', closedThrough: 100}}}));
+  assert.throws(() => readConversationFence(route, paths), {code: 'ENOENT'});
+  await writeFile(paths.path, JSON.stringify({turns: {}, conversations: {}}));
+  assert.throws(() => readConversationFence(route, paths), /migration/);
+  await writeFile(paths.path, JSON.stringify({lifecycleSchemaVersion: 1, turns: {}, conversations: {[key]: {generation: 1, state: 'open', closedThrough: 100}}}));
   assert.equal(shouldSuppressConversationDelivery(route, {...paths, workCreatedAt: 99}), true);
   assert.equal(shouldSuppressConversationDelivery(route, {...paths, workCreatedAt: 101}), false);
   assert.equal(shouldSuppressConversationDelivery(route, paths), true);
-  await writeFile(paths.path, JSON.stringify({conversations: {[key]: {generation: 1, state: 'closing'}}}));
+  await writeFile(paths.path, JSON.stringify({lifecycleSchemaVersion: 1, turns: {}, conversations: {[key]: {generation: 1, state: 'closing'}}}));
   assert.equal(shouldSuppressConversationDelivery(route, {...paths, workCreatedAt: 101}), true);
 });

@@ -12,11 +12,11 @@ function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   return object(value) ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
 }
-export const lifecycleDigest = value => createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+export const lifecycleDigest = value => createHash('sha256').update(JSON.stringify(stable(value)) ?? 'undefined').digest('hex');
 
 export function reconcileLifecycleHistory({fences, journal, owners = [], events = []}) {
   const issues = [], records = new Map();
-  const counts = {fences: 0, journalConversations: 0, turns: 0, ownerClaims: 0, events: 0, duplicateEvents: 0};
+  const counts = {fences: 0, journalConversations: 0, turns: 0, closes: 0, ownerClaims: 0, events: 0, duplicateEvents: 0};
   const issue = (code, source, conversation = null) => issues.push({code, source, conversation});
   const get = (raw, source) => {
     const key = canonicalLifecycleKey(raw);
@@ -60,7 +60,8 @@ export function reconcileLifecycleHistory({fences, journal, owners = [], events 
         generation: null};
     }
   }
-  if (!object(journal) || !object(journal.conversations) || !object(journal.turns)) {
+  if (!object(journal) || !object(journal.conversations) || !object(journal.turns) ||
+      (journal.lifecycleSchemaVersion !== undefined && journal.lifecycleSchemaVersion !== 1)) {
     issue('invalid_journal', 'journal');
   } else {
     for (const [raw, conversation] of Object.entries(journal.conversations)) {
@@ -70,6 +71,14 @@ export function reconcileLifecycleHistory({fences, journal, owners = [], events 
       if (!object(conversation)) { issue('invalid_journal_conversation', source, record.conversation); continue; }
       if (record.journal) { issue('duplicate_journal_mapping', source, record.conversation); continue; }
       record.journal = structuredClone(conversation);
+      if (raw !== record.conversation) issue('noncanonical_journal_key', source, record.conversation);
+      if (conversation.generation !== undefined && (!Number.isSafeInteger(conversation.generation) || conversation.generation < 0 ||
+          !['open', 'closing', 'closed'].includes(conversation.state))) issue('invalid_generation', source, record.conversation);
+      if (conversation.reconciliationRequired) issue('reconciliation_required', source, record.conversation);
+      if (conversation.state === 'closing') issue('unresolved_close', source, record.conversation);
+      if (conversation.closedThrough !== undefined && !timestamp(conversation.closedThrough)) issue('invalid_boundary', source, record.conversation);
+      if (conversation.generation === undefined && (conversation.state !== undefined || conversation.closedThrough !== undefined))
+        issue('unversioned_boundary', source, record.conversation);
       if (conversation.status !== undefined && !['act', 'scheduled', 'closed'].includes(conversation.status))
         issue('invalid_journal_status', source, record.conversation);
     }
@@ -80,15 +89,30 @@ export function reconcileLifecycleHistory({fences, journal, owners = [], events 
       const record = get(turn.conversation, source);
       if (!record) continue;
       if (!record.journal) issue('orphan_turn', source, record.conversation);
-      if (key !== turn.key || !['running', 'reserved', 'queued', 'delivered', 'sent', 'failed'].includes(turn.phase))
+      if (key !== turn.key || !timestamp(turn.startedAt) || !['running', 'reserved', 'queued', 'delivered', 'sent', 'failed', 'intentional_non_delivery'].includes(turn.phase))
         issue('invalid_turn', source, record.conversation);
+      if (turn.generation !== undefined && (!Number.isSafeInteger(turn.generation) || turn.generation < 0 || turn.generation > (record.journal?.generation ?? 0)))
+        issue('invalid_turn_generation', source, record.conversation);
       if (turn.route && canonicalLifecycleKey(`slack:${turn.route.channel}:${turn.route.threadId}`) !== record.conversation)
         issue('turn_route_mismatch', source, record.conversation);
       if (turn.envelope?.status === 'closed') {
         record.closeTurns.push({key, phase: turn.phase, messageId: turn.messageId ?? null, startedAt: turn.startedAt});
-        if (!['sent', 'failed'].includes(turn.phase)) issue('pending_historical_close', source, record.conversation);
+        if (!['sent', 'failed', 'intentional_non_delivery'].includes(turn.phase)) issue('pending_historical_close', source, record.conversation);
       }
     }
+  }
+  if (journal?.closes !== undefined && !object(journal.closes)) issue('invalid_closes', 'journal.closes');
+  else for (const [key, close] of Object.entries(journal?.closes ?? {})) {
+    counts.closes++;
+    const source = `journal.closes:${key}`, record = get(close?.conversation, source);
+    if (!record) continue;
+    if (!object(close) || close.key !== key || key !== `${record.conversation}:close:${close.generation}` ||
+        !Number.isSafeInteger(close.generation) || close.generation < 0 || !record.journal ||
+        close.generation > record.journal.generation || !timestamp(close.startedAt) ||
+        canonicalLifecycleKey(`slack:${close.route?.channel}:${close.route?.threadId}`) !== record.conversation)
+      issue('invalid_close_mapping', source, record.conversation);
+    if (close.phase !== 'complete') issue('active_host_close', source, record.conversation);
+    if (!close.messageId || typeof close.snapshot?.report !== 'string') issue('incomplete_host_close', source, record.conversation);
   }
   if (!Array.isArray(owners)) issue('invalid_owner_claims', 'owners');
   else for (const [index, claim] of owners.entries()) {
@@ -125,12 +149,28 @@ export function reconcileLifecycleHistory({fences, journal, owners = [], events 
   }
   for (const record of records.values()) {
     const fence = record.legacyFence, current = record.journal;
-    if (fence && current?.status !== undefined &&
+    const modern = current?.generation !== undefined;
+    const close = journal?.closes?.[current?.closeOperation];
+    if (modern) {
+      if (current.legacyBoundary && !fence) issue('missing_legacy_source', 'fences+journal', record.conversation);
+      if (close && (!timestamp(current.closedThrough) || current.closedThrough < close.startedAt ||
+          (current.state === 'closed' && current.generation !== close.generation)))
+        issue('lost_host_boundary', 'journal', record.conversation);
+      if (current.closeOperation && (!close || close.conversation !== record.conversation))
+        issue('missing_close_operation', 'journal', record.conversation);
+      if (fence && lifecycleDigest(current.legacyBoundary) !== lifecycleDigest(fence))
+        issue('legacy_provenance_mismatch', 'fences+journal', record.conversation);
+      if (timestamp(fence?.closedThrough) && (!timestamp(current.closedThrough) || current.closedThrough < fence.closedThrough))
+        issue('lost_historical_boundary', 'fences+journal', record.conversation);
+      if ((current.state === 'closed' || current.closedThrough !== undefined) && !fence && !close && !current.legacyBoundary)
+        issue('orphan_closure', 'journal', record.conversation);
+      if (current.state === 'closed' && !timestamp(current.closedThrough)) issue('invalid_boundary', 'journal', record.conversation);
+    } else if (fence && current?.status !== undefined &&
         ((fence.state === 'closed') !== (current.status === 'closed')))
       issue('state_disagreement', 'fences+journal', record.conversation);
-    if (!fence && (current?.status === 'closed' || record.closedEvents.length || record.closeTurns.some(turn => turn.phase === 'sent')))
+    if (!fence && !modern && (current?.status === 'closed' || record.closedEvents.length || record.closeTurns.some(turn => turn.phase === 'sent')))
       issue('orphan_closure', 'journal+events', record.conversation);
-    if (fence && !timestamp(fence.closedThrough) &&
+    if (!timestamp(fence?.closedThrough) && !timestamp(current?.closedThrough) && !close &&
         (record.closedEvents.length || record.closeTurns.some(turn => turn.phase === 'sent')))
       issue('missing_historical_boundary', 'fences+history', record.conversation);
   }

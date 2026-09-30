@@ -1,12 +1,6 @@
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
-
-
-export function defaultConversationFencePath(env = process.env) {
-  const stateRoot = env.OPENCLAW_STATE_DIR || join(homedir(), ".openclaw");
-  return join(stateRoot, "run-signature", "conversation-fences.json");
-}
 
 function normalizeChannel(value) {
   const channel = String(value ?? "").replace(/^channel:/i, "").toUpperCase();
@@ -31,29 +25,23 @@ export function conversationFenceKey(route) {
   return resolved ? `slack:${resolved.channel}:${resolved.threadId}` : undefined;
 }
 
-// Read-only legacy source. A first live mutation imports this boundary into
-// FinalRuntime; B reconciles untouched history before removing this fallback.
-export function readLegacyFence(route, {path = defaultConversationFencePath()} = {}) {
-  try {
-    const snapshot = JSON.parse(readFileSync(path, "utf8"));
-    if (snapshot.schemaVersion !== 1 || !snapshot.conversations) throw new Error("Invalid legacy fence snapshot");
-    return snapshot.conversations[conversationFenceKey(route)];
-  } catch (error) { if (error.code !== "ENOENT") throw error; }
+// A version marker is required even for an empty installation: absent historical
+// rows cannot prove that there were no legacy-only boundaries before cutover.
+export function assertLifecycleJournal(journal) {
+  const object = value => value && typeof value === 'object' && !Array.isArray(value);
+  if (journal?.lifecycleSchemaVersion !== 1 || !object(journal.conversations) || !object(journal.turns))
+    throw new Error('Lifecycle migration/reconciliation required before runtime admission');
 }
 
-export function readConversationFence(route, {path = join(dirname(defaultConversationFencePath()), "final-decisions.json"), legacyPath} = {}) {
+export function readConversationFence(route, {path = join(process.env.OPENCLAW_STATE_DIR || join(homedir(), '.openclaw'), 'run-signature', 'final-decisions.json')} = {}) {
   const key = conversationFenceKey(route);
   if (!key) return;
-  let conversation;
-  try { conversation = JSON.parse(readFileSync(path, "utf8")).conversations?.[key]; }
-  catch (error) { if (error.code !== "ENOENT") throw error; }
-  if (conversation?.generation !== undefined) {
-    if (!Number.isInteger(conversation.generation) || conversation.generation < 0 || !['open', 'closing', 'closed'].includes(conversation.state)) throw new Error('Invalid lifecycle generation');
-    return conversation;
-  }
-  const legacy = readLegacyFence(route, {path: legacyPath});
-  if (legacy && (!['open', 'closing', 'closed'].includes(legacy.state) || (conversation?.status && (conversation.status === 'closed') !== (legacy.state === 'closed')))) return {...legacy, reconciliationRequired: true};
-  return legacy ?? (conversation?.status === "closed" ? {state: "closed", reconciliationRequired: true} : undefined);
+  const journal = JSON.parse(readFileSync(path, 'utf8'));
+  assertLifecycleJournal(journal);
+  const conversation = journal.conversations[key];
+  if (conversation && (!Number.isSafeInteger(conversation.generation) || conversation.generation < 0 || !['open', 'closing', 'closed'].includes(conversation.state)))
+    throw new Error('Invalid lifecycle generation; migration/reconciliation required');
+  return conversation;
 }
 
 export function shouldSuppressConversationDelivery(route, {workCreatedAt, ...paths} = {}) {

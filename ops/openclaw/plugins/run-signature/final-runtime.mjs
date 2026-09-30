@@ -1,7 +1,7 @@
 import {mkdir, readFile, writeFile, rename} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
 import {FINAL_SCHEMA, FINAL_INSTRUCTION, decodeFinal, validateEvidence, sameConversationWake, finalText, finalMedia} from './final-envelope.mjs';
-import {readLegacyFence, conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
+import {assertLifecycleJournal, conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
 
 export const FINAL_RUNTIME = Symbol.for('humanware.final-envelope.v1');
 
@@ -22,9 +22,8 @@ export class FinalRuntime {
   async state(operation) {
     const run = this.pending.catch(() => {}).then(async () => {
       const path = join(this.root, 'final-decisions.json');
-      let state;
-      try { state = JSON.parse(await readFile(path, 'utf8')); }
-      catch (error) { if (error.code !== 'ENOENT') throw error; state = {turns: {}, conversations: {}}; }
+      const state = JSON.parse(await readFile(path, 'utf8'));
+      assertLifecycleJournal(state);
       const result = await operation(state);
       await mkdir(dirname(path), {recursive: true});
       const tmp = `${path}.${process.pid}.tmp`;
@@ -39,20 +38,13 @@ export class FinalRuntime {
     const key = conversationFenceKey(route);
     if (!key) throw new Error('Canonical closure route is unavailable');
     if (!state.conversations[key] && Object.values(state.turns).some(turn => turn.conversation === key)) throw new Error('Orphan turn requires historical reconciliation');
-    const prior = state.conversations[key] ?? {};
-    if (prior.generation !== undefined) {
-      if (!Number.isInteger(prior.generation) || prior.generation < 0 || !['open', 'closing', 'closed'].includes(prior.state)) throw new Error('Invalid lifecycle generation');
+    const prior = state.conversations[key];
+    if (prior) {
+      if (!Number.isSafeInteger(prior.generation) || prior.generation < 0 || !['open', 'closing', 'closed'].includes(prior.state))
+        throw new Error('Invalid lifecycle generation; migration/reconciliation required');
       return prior;
     }
-    const legacy = readLegacyFence(route, {path: join(this.root, 'conversation-fences.json')});
-    if (legacy && !['open', 'closing', 'closed'].includes(legacy.state)) throw new Error('Unknown historical fence state');
-    const conflict = legacy && prior.status && (prior.status === 'closed') !== (legacy.state === 'closed');
-    const pendingLegacyClose = Object.values(state.turns).some(turn => turn.conversation === key && turn.envelope?.status === 'closed' && !['sent', 'failed', 'intentional_non_delivery'].includes(turn.phase));
-    const ambiguous = pendingLegacyClose || conflict || legacy?.state === 'closing' || (!legacy && prior.status === 'closed') ||
-      (legacy?.state === 'closed' && !Number.isFinite(legacy.closedThrough));
-    return state.conversations[key] = {...prior, ...(legacy ?? {}), generation: 0,
-      state: legacy?.state ?? (prior.status === 'closed' ? 'closed' : 'open'),
-      reconciliationRequired: ambiguous, legacyBoundary: legacy ? {...legacy} : undefined};
+    return state.conversations[key] = {generation: 0, state: 'open'};
   }
   eligible(turn, conversation) {
     return conversation.state === 'open' && !conversation.reconciliationRequired &&

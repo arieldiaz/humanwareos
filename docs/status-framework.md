@@ -33,9 +33,15 @@ The existing FinalRuntime journal owns live state, generation and closure stages
 
 Persist the snapshot and `formatCloseReport` output before sending. Write that semantic report to the Markdown session record and send it fully inline in the originating thread. Deterministic parts retain stable outbox identities and receipts. A link, canvas or acknowledgement is not the report. Only after both outputs are confirmed, append one idempotent completion event, then project closed. Failures retain the fence and recoverable stage. Restart recovery reuses the snapshot and receipts without a model turn. Ambiguous or expired receipts require reconciliation, never blind resend.
 
-A new human message after completed closure reopens a new generation; duplicate/older events and machine callbacks cannot reopen. Pre-close results stay recorded and intentionally undelivered even after reopening. Legacy boundaries are read-only import sources until reconciled; ambiguous or conflicting history remains fenced. No competing live fence writer survives.
+A new human message after completed closure reopens a new generation; duplicate/older events and machine callbacks cannot reopen. Pre-close results stay recorded and intentionally undelivered even after reopening. Historical ambiguity remains fenced; no competing live fence writer or runtime legacy reader survives.
 
 Only the projector changes bot-owned lifecycle reactions; human reactions are social input. Provenance belongs on delivered replies. Disable Slack acknowledgement and native status-reaction writers in activation configuration.
+
+## Historical migration
+
+Runtime admission and journal-backed delivery readers require `lifecycleSchemaVersion: 1`, including empty installations. Missing/unversioned journals fail closed. `scripts/migrate-lifecycle-history.mjs --fences FILE --journal FILE` produces a read-only plan; optional `--owners JSONL` and repeated `--events JSONL` label evidence coverage. `--output NEW_FILE` atomically stages a candidate without replacing sources. Discrepancies block staging. Preserve complete legacy boundaries, baseline generation zero, advanced generations, turns, closes and sender identity; never replay historical reports/events. Reruns preserve provenance and produce no duplicate outputs.
+
+During separately approved external cutover, quiesce the single writer, snapshot both stores, reconcile authoritative evidence, require zero discrepancies and complete boundary parity, then install the verified candidate through the existing deployment mechanism before starting this runtime. Recheck source/output hashes; live observations are not quiescent approval. Retain snapshots and newer evidence. Rollback selects only a compatible single-owner A runtime without resetting journal data, never a competing fence writer. No compatible build means forward repair.
 
 ## Verification and release
 
