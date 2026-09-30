@@ -510,21 +510,23 @@ export default {
         const accounts = await import(resolveSlackRuntimeModule('accounts'));
         const token = accounts.resolveSlackAccount({cfg: api.config, accountId: close.accountId})?.botToken;
         const messages = [];
+        const snapshotThrough = Math.max(close.startedAt, Number(close.sourceMessageId) * 1000);
+        const latest = (snapshotThrough / 1000).toFixed(6);
         let cursor;
         do {
-          const page = await slackApi('conversations.replies', token, {channel: close.route.channel, ts: close.route.threadId, latest: close.sourceMessageId, inclusive: true, limit: 200, ...(cursor ? {cursor} : {})});
-          messages.push(...(page.messages ?? []).filter(message => Number(message.ts) <= Number(close.sourceMessageId)));
+          const page = await slackApi('conversations.replies', token, {channel: close.route.channel, ts: close.route.threadId, latest, inclusive: true, limit: 200, ...(cursor ? {cursor} : {})});
+          messages.push(...(page.messages ?? []).filter(message => Number(message.ts) * 1000 <= snapshotThrough));
           cursor = page.response_metadata?.next_cursor;
           if (page.has_more && !cursor) throw new Error('Incomplete thread evidence without a continuation cursor');
         } while (cursor);
         const stats = messages.length ? measureSlackThread(messages) : undefined;
         const usage = await Promise.all(Object.keys(threadOwnershipConfig?.accounts ?? {}).map(async agent => ({agent,
-          usage: await loadThreadUsage({agent, channel: close.route.channel, thread: close.route.threadId, before: Number(close.sourceMessageId) * 1000})})));
+          usage: await loadThreadUsage({agent, channel: close.route.channel, thread: close.route.threadId, before: snapshotThrough})})));
         const outcomes = close.evidence.filter(turn => turn.phase === 'sent' && turn.message).map(turn => turn.message);
         const followUps = close.evidence.filter(turn => !['sent', 'failed', 'intentional_non_delivery'].includes(turn.phase) || turn.status === 'scheduled')
           .map(turn => `${turn.runId}: ${turn.status === 'scheduled' ? 'scheduled work remains unresolved' : 'work unresolved at closure; later output is fenced'}`);
         const snapshot = {summary: 'Recap evidence is limited. Recorded replies are evidence, not independent verification of success.', outcomes, followUps, stats, usage,
-          boundary: `current generation ${close.generation}; thread messages through ${close.sourceMessageId}; usage only with recorded timestamps through that event; later work and this report excluded`};
+          boundary: `current generation ${close.generation}; thread messages and timestamped usage through reservation ${latest} (source ${close.sourceMessageId}); later work and this report excluded`};
         return {...snapshot, report: formatCloseReport({...snapshot, agent: close.accountId})};
       },
       writeReport: close => writeCloseReport({dataRoot: resolveDataRoot(api.config, api.pluginConfig, close.accountId), operationId: close.key, report: close.snapshot.report}),
