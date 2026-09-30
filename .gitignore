@@ -32,3 +32,6 @@ __pycache__/
 
 # Harness shim: Claude Code only auto-loads a file named CLAUDE.md; keep it local, canonical rules live in AGENTS.md
 /CLAUDE.md
+
+# Installed dependencies.
+node_modules/
