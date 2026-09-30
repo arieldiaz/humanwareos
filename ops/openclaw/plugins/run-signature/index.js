@@ -649,8 +649,10 @@ export default {
       if (!principal || !/^U[A-Z0-9]+$/.test(principal)) throw new Error('Owner-only closure requires configured ownerUserId');
       if (message.user !== principal) return false;
       const thread = message.thread_ts;
-      const configuredSender = String(accountId ?? '');
+      const sender = thread ? await finalRuntime.sender({channel: message.channel, threadId: thread}) : undefined;
+      const configuredSender = String(sender ?? accountId ?? '');
       if (!api.config?.channels?.slack?.accounts?.[configuredSender]) throw new Error('Closure requires a configured Slack sender');
+      if (accountId !== configuredSender) return true;
       if (!thread || thread === message.ts) {
         await finalRuntime.send({key: `close-root:${message.channel}:${message.ts}`,
           route: {channel: message.channel, threadId: message.ts}, accountId: configuredSender,
