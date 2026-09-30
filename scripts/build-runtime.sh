@@ -82,6 +82,7 @@ cp "$FRAMEWORK_DIR/scripts/apply-openclaw-patches.sh" "$BUILD_DIR/framework/scri
 cp "$FRAMEWORK_DIR/scripts/runtime-cutover-lease.sh" "$BUILD_DIR/framework/scripts/runtime-cutover-lease.sh"
 cp "$FRAMEWORK_DIR/scripts/runtime-restart-guard.sh" "$BUILD_DIR/framework/scripts/runtime-restart-guard.sh"
 cp "$FRAMEWORK_DIR/scripts/repair-openclaw-terminal-sessions.mjs" "$BUILD_DIR/framework/scripts/repair-openclaw-terminal-sessions.mjs"
+cp "$FRAMEWORK_DIR/scripts/migrate-lifecycle-history.mjs" "$BUILD_DIR/framework/scripts/migrate-lifecycle-history.mjs"
 cp "$FRAMEWORK_DIR/scripts/document-workspace-server.mjs" "$BUILD_DIR/framework/scripts/document-workspace-server.mjs"
 cp -R "$FRAMEWORK_DIR/ops/openclaw/plugins/." "$BUILD_DIR/framework/ops/openclaw/plugins/"
 cp -R "$FRAMEWORK_DIR/ops/openclaw/patches/." "$BUILD_DIR/framework/ops/openclaw/patches/"
