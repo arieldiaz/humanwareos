@@ -1,75 +1,39 @@
 # Traceable activity index
 
-Implementation spec. Draft for review before build. Budget: 900 words.
+Authorized implementation on PR #117. Budget: 900 words.
 
-## Problem
+## Ownership
 
-Operators should be able to inspect everything their agents do: what an agent did, on whose authority, what it touched, and what it cost. [data-plane.md](data-plane.md) already defines the right foundation. The canonical session ledger lives under `evidence/sessions/events/`, conforms to `schemas/session-event.schema.json`, and has a domain session view. In practice, adapters emit lifecycle status and little else. One sampled day on a live instance had 63 ledger events across two identities, and every one was `status.set`. The ledger shows that a turn happened, but not what the agent did.
+Humanware owns a portable event envelope over the canonical [session ledger](docs/data-plane.md), not a platform's native store. Mastra, Agent Engine, and harnesses implement adapters. Evidence remains append-only; [permission-model.md](docs/permission-model.md) remains the authority. This feature observes decisions without granting permissions or promoting memory.
 
-Hosted agent platforms such as MongoDB Atlas Agent Engine sell exactly this capability: every action is logged against an identity and an authorization, and all of it is queryable in one place. Humanware can offer the same thing without a new store, as long as it keeps its privacy tiers.
+The human authorized one coherent production slice on the existing PR: schema, adapter helper, index, Activity and session trace, tests, and documentation. Separate staged implementation PRs are not required. Merge and deployment still require separate human approval.
 
-## Principles
+## Events
 
-- Extend the existing ledger. Don't add a new store or system of record.
-- The index is generated under `generated/indexes/activity/` and can always be rebuilt from evidence.
-- Privacy tiers are unchanged. Projections carry summaries and bounded `sourceRef` links. Tier 0 content is reached by following a link locally and is never copied.
-- Adapters emit action events. Models do not self-report actions.
+Schema version 3 adds `action.tool`, `action.write`, `action.send`, `action.approval`, `action.schedule`, `context.selected`, `context.assembled`, `model.invoked`, `memory.retrieved`, `memory.proposed`, `memory.promoted`, `memory.superseded`, `memory.suppressed`, `memory.deleted`, and `usage.cost`. Historical version 1/2 evidence remains readable and unchanged.
 
-## Changes
+Every event records stable event, logical-session and trace IDs; a run ID when observed; actor identity and profile; UTC timestamp; parent event IDs; a typed source reference; reason code; policy identity, version and result; whether the item entered model context (`true`, `false`, or unavailable `null`); outcome; and reversibility. Missing run IDs stay unavailable, never fabricated. References identify events, human messages, grants, delegations, context items, memory claims, or local raw evidence. Each causal edge must come from observed IDs, never timestamp or prose inference.
 
-### 1. Ledger action events
+Authority results are `not_required`, `human_message`, `standing_grant`, `delegated`, `denied`, and `unknown`. Approving results require the corresponding typed reference. Policy results are `allowed`, `denied`, `not_required`, or `unknown`; evaluated results require policy ID/version. Unknown provenance must remain visible. Targets contain only typed path, channel, host, repository, or schedule identifiers. Requested actions and confirmed delivery/mutation results are distinct outcomes.
 
-Add these event kinds to `schemas/session-event.schema.json`: `action.tool`, `action.write`, `action.send`, `action.approval`, `action.schedule`, and `usage.cost`. Add these optional fields:
+Adapters persist every observed event regardless of presentation level. Outward and irreversible activity displays at normal level. Models cannot self-report authoritative events. OpenClaw trajectory normalization and other host producers use the same metadata-only helper. Unsupported observations remain explicit coverage gaps; no adapter may infer a grant, selected memory, successful delivery, or billing from text.
 
-- `actor`: the agent identity plus the execution profile.
-- `authority`: a reference to the approving human message, a standing grant from [permission-model.md](permission-model.md), or `none`.
-- `target`: a path, a channel, a URL host, or a repository and pull request. Never content.
-- `reversibility`: `reversible`, `outward`, or `irreversible`, using the permission model's categories.
-- `cost`: tokens and currency amount, when the provider reports them.
+## Memory lineage
 
-Each harness adapter normalizes the tool calls and delivery results it already observes. Ordinary actions are emitted at `verbose` level. Outward and irreversible actions are always emitted at `normal` level.
+Memory services assign stable claim IDs before promotion. Memory events carry `claimId`, `introducedBy` event ID, `supersedes` claim IDs, typed source references, visibility scope, and projection membership IDs. Promotion and supersession require an introduction reference. Mutations carry membership snapshots; retrieval and proposal never change membership. Suppression/deletion remove membership without deleting evidence. Current projections must retain claim IDs; legacy prose has unavailable lineage, never inferred matches. The index consumes normalized memory events from `evidence/memory/events/` without becoming a memory writer.
 
-### 2. Generated activity index
+## Storage and privacy
 
-The index is a daily embedded database (SQLite or DuckDB), rebuilt from the session ledger and from `evidence/memory/events`. It supports these queries:
+One rebuildable SQLite store lives at `generated/indexes/activity/index.sqlite`, logically partitioned by UTC day with a day/event primary key and actor/time, session/run, and target indexes. Cross-range queries use the same store. The existing session-console builder also publishes disposable content-addressed daily JSON partitions and a manifest for static private surfaces. These are exports, not additional authorities. Rebuilds deduplicate stable IDs, reject conflicts, preserve the previous publication on invalid evidence, and produce identical ordered rows from identical evidence.
 
-- actions by identity over a time range;
-- the authority chain for a single action;
-- every action that touched a given target;
-- memory lineage: which session introduced each fact in the current memory projection;
-- spend by identity, by profile, and by day.
+All projections construct allowlisted metadata anew, including historical session events. Prompts, messages, commands, arguments, tool output, memory prose, hidden reasoning, credentials and arbitrary details never enter the index or session trace. Raw references are local-only opaque identifiers, never network-fetchable payload URLs. Inspecting raw evidence requires an authorized local tool; the private domain cannot serve it. Existing source titles are replaced by metadata identifiers where they would copy raw messages.
 
-Every row keeps its source event identifiers. Rebuilding is idempotent, and a test covers it.
+## Surfaces and cost
 
-### 3. Domain Activity view
+Activity is the private cross-session index, searchable by identity, date range, kind, target, reversibility, and channel. Its detail shows authority/policy, causal parents, selected context, delivery outcome and source references. Sessions embeds the same trace component, grouped by observed run ID; Activity links into that session and run. Memory lineage displays claim IDs, introduction, scope, membership, and origin session. Data freshness and missing coverage are visible. Instances may restyle through their existing surface overlays without changing privacy or authority.
 
-The framework shell gets one authenticated route with three panes:
-
-- **Timeline:** actions grouped by identity, filterable by kind, reversibility, and channel. Outward and irreversible actions are highlighted.
-- **Trace drawer:** for a selected action, shows the session, the authorizing message, the target, the delivery result, and a local-only link to the raw evidence.
-- **Memory lineage:** for any current memory fact, shows the event that introduced it and the session it came from.
-
-A spend strip shows cost per identity per day. Each pane distinguishes current, stale, and unavailable data, as [domain-surface.md](domain-surface.md) requires. Instances may restyle the view through `surfaces/static/` but may not fork the route or its privacy contract.
-
-## Out of scope
-
-- Hosted memory or governance services.
-- Semantic search over the ledger. Revisit after the plain index proves useful.
-- Policy enforcement. This work only observes; enforcement stays with the permission model.
+Costs are `exact`, `estimated`, or `unavailable`. Known amounts require currency and provider/rate evidence; tokens are independent of amount availability. Totals retain exact and estimated subtotals, missing counts, source event IDs, day, identity, and profile. Unknown is never zero; currencies are never mixed. An exact zero is valid. Reports share a stable invocation `usageId`; append-only corrections replace earlier reports in totals without deleting their evidence. Historical cumulative session estimates are not summed as incremental billing.
 
 ## Acceptance
 
-1. One full day of activity from two identities produces action events for tool calls, writes, sends, and schedules.
-2. For an outward action from the past week, "who authorized this?" resolves to a human message in two clicks or fewer.
-3. Rebuilding the index from evidence alone produces an identical result.
-4. No Tier 0 content appears in the index or in any domain response, and a test covers this.
-5. For one sampled day, the spend strip matches provider billing within 5%.
-
-## Order
-
-Each step is its own pull request, in this order: schema and adapter emitters, then the index, then the timeline and trace drawer, then memory lineage, then spend.
-
-## Open questions
-
-- Should the index reuse the store chosen by the product-side agent-platform evaluation (Mastra versus Agent Engine), so the team learns only one?
-- Should Activity be absorbed into the existing session view, or ship as a sibling route?
+A synthetic two-identity, multi-day run reconstructs actor → authority/policy → selected context → model invocation → tool/memory mutation → delivery using stable references. Tests prove replay, partition queries, cost states, lineage after rebuild, hostile payload exclusion, and run navigation. Full repository checks pass. Live day coverage, provider reconciliation and instance route/authentication acceptance remain deployment checks after separately approved activation; synthetic tests cannot claim them.

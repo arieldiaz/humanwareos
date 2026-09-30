@@ -19,6 +19,11 @@ jobs:
           node-version: 22
       - name: Node contracts
         run: node --test $(find . -name '*.test.mjs' -o -name '*.test.js' | sort)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python schema test dependency
+        run: python3 -m pip install jsonschema==4.23.0
       - name: Python contracts
         run: |
           PYTHONPATH=ops/menubar python3 -m unittest discover -s ops/menubar
