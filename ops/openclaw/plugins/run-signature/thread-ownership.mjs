@@ -75,6 +75,10 @@ export function createThreadOwnershipRuntime({accounts, path = DEFAULT_THREAD_OW
   })();
 
   return {
+    async owner(channel, thread) {
+      await ready;
+      return owners.get(`slack:${String(channel).toLowerCase()}:${thread}`);
+    },
     async claim(event, ctx = {}) {
       const run = async () => {
         await ready;

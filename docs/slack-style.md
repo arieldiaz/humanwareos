@@ -1,6 +1,6 @@
 # Slack style
 
-Canonical and only copy of the **Slack surface** rules. Reply shape is `docs/reply-shape.md`; lifecycle states and which closing header to pick are `docs/status-framework.md`; general agent conduct is `AGENTS.md`. Layer 2 spec — see `docs/agent-context-hierarchy.md`.
+Canonical and only copy of the **Slack surface** rules. Reply shape is `docs/reply-shape.md`; lifecycle states and the host-owned inline close report are `docs/status-framework.md`; general agent conduct is `AGENTS.md`. Layer 2 spec — see `docs/agent-context-hierarchy.md`.
 
 An instance may add a sibling overlay for its own channel registry, tooling paths, and gateway patches. It never restates a rule from this file.
 
@@ -12,13 +12,15 @@ Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words be
 
 **Rich output degrades silently.** Where the gateway upgrades Markdown to Block Kit, `#`/`##` become real header blocks and `- ` becomes a native list — but that conversion falls back to flat mrkdwn (headings gone, lists rendered as literal `•`) when the send is multi-chunk, carries media, or exceeds the converter's block or character limits. A long structured reply therefore renders as junk. Keep the reply short and link the durable object that holds the detail.
 
-**Budget against 4,000 characters.** Gateways chunk well before a converter's own limit, and every degradation fires at once when they do — including a numbered list orphaned from the `## ` header it belonged to. Two deliberately-scoped messages beat one the gateway splits mid-list. Attach media in a separate message from a formatted one, or the formatting dies with it.
+**Budget ordinary replies against 4,000 characters.** Gateways chunk well before a converter's own limit, and every degradation fires at once when they do — including a numbered list orphaned from the `## ` header it belonged to. The host-owned close report remains fully inline; its sender segments one logical report with stable per-part receipts. Attach media in a separate message from a formatted one, or the formatting dies with it.
 
 **Confirm delivery.** Where the runtime requires an explicit send tool, final plain text is not a delivery path — you send through the tool and you check the result. If it errors, persist the reply somewhere durable and never claim a delivery that did not happen. A silent non-delivery looks identical to success, which is why the tool result gets checked and not assumed.
 
 **Never type the run signature.** Where the gateway appends one, typing it duplicates it.
 
 ## Work threads
+
+Root titles follow `<Type>: <brief description>`: “Spec: Restore inline close summaries”, “Goal: Make session closure reliable”, “Brainstorm: Better session navigation”, “Bug: Close command omits summary”, “Build: Implement owner-only closure”, or “Decision: Use one lifecycle owner”. Type is a documentation convention, grants no authority, and changes no lifecycle state.
 
 Every agent-created new channel thread uses the durable sender: a whitespace-normalized title of at most 160 characters at the root, then the complete body and attachments in that thread. Scheduled sends use the job name; conversational sends use the supplied title or existing session label, falling back to “Update” without a title-generation run. Existing-thread replies and DMs are unchanged. Root and body share queue custody, but only body delivery completes the intent.
 

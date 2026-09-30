@@ -68,7 +68,7 @@ test('a failed later run restores the prior committed terminal', async t => {
 });
 test('closure gate rejects a current human message without confirmation', () => {
   assert.throws(() => validateEvidence(decodeFinal(wire('closed')), {humanInput: {messageId: '1', text: 'what changed?'}}));
-  assert.equal(validateEvidence(decodeFinal(wire('closed')), {humanInput: {messageId: '2', text: 'close this thread'}}).status, 'closed');
+  assert.throws(() => validateEvidence(decodeFinal(wire('closed')), {humanInput: {messageId: '2', text: 'close this'}}));
 });
 test('a delivered decision survives projection failure and recovers without another send', async t => {
   const {runtime, params, sends} = await fixture(t);

@@ -10,6 +10,8 @@ const reapplied = fs.existsSync(path.join(dist, "humanware-slack-channel-thread.
 function edit(file, before, after) {
   const source = pending.get(file) ?? fs.readFileSync(path.join(dist, file), "utf8");
   if (source.includes(after)) return pending.set(file, source);
+  const prior = after.replace('entry.slackChannelThread?.liveAuthorityOnly || entry.id?.startsWith("humanware-final:")', 'entry.slackChannelThread?.liveAuthorityOnly');
+  if (prior !== after && source.includes(prior)) return pending.set(file, source.replace(prior, after));
   if (reapplied || source.split(before).length !== 2) throw new Error(`${file}: Slack channel-thread anchor changed`);
   pending.set(file, source.replace(before, after));
 }
@@ -129,7 +131,7 @@ edit(recovery, '\t\tif (reconciliation?.status === "sent") try {', `		if (reconc
 		if (reconciliation?.status === "sent") try {`);
 edit(recovery, '\tconst payloadOutcomes = [];\n\tconst messageSentEvents = [];\n\tlet postSendState;', `	// Gateway runtime authority is process-local and cannot be recreated by recovery.
 	// Reconciliation above may observe success; another dispatch needs the live caller.
-	if (entry.slackChannelThread?.liveAuthorityOnly) {
+	if (entry.slackChannelThread?.liveAuthorityOnly || entry.id?.startsWith("humanware-final:")) {
 		opts.log.info("Slack thread delivery is awaiting its live runtime authority");
 		return "failed";
 	}

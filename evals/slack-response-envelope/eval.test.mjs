@@ -8,7 +8,7 @@ import {acquireLock, gradeEnvelope, parseGatewayHealth} from "./eval.mjs";
 test("grades the explicit field and never headings", () => {
   const wire = (status, message) => JSON.stringify({schemaVersion: 1, status, message});
   assert.equal(gradeEnvelope(wire('act', '## Session Closed'), {status: 'act'}).pass, true);
-  assert.equal(gradeEnvelope(wire('closed', 'Closed.'), {status: 'closed'}).pass, true);
+  assert.equal(gradeEnvelope(wire('closed', 'Closed.'), {status: 'closed'}).pass, false);
   assert.equal(gradeEnvelope(wire('act', 'Scheduled.'), {status: 'scheduled'}).pass, false);
   assert.equal(gradeEnvelope('Plain final', {status: 'act'}).pass, false);
 });
