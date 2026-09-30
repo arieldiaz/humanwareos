@@ -1,22 +1,16 @@
 # Slack style
 
-Canonical and only copy of the **Slack surface** rules. Reply shape is `docs/reply-shape.md`; lifecycle states and which closing header to pick are `docs/status-framework.md`; general agent conduct is `AGENTS.md`. Layer 2 spec — see `docs/agent-context-hierarchy.md`.
+Slack surface behavior. [reply-shape.md](reply-shape.md) owns writing structure; [status-framework.md](status-framework.md) owns lifecycle. Instance overlays supply channel facts and access boundaries, not copies of these rules.
 
-An instance may add a sibling overlay for its own channel registry, tooling paths, and gateway patches. It never restates a rule from this file.
+Budget: 1,500 words.
 
-Budget: 1,500 words. Over it, consolidate — do not extend. Counted in words because these files are not hard-wrapped, so a line count would measure paragraphs rather than substance. This file is short on purpose: read it whole, every Slack turn.
+## Writing and rendering
 
-## What the human sees is not what you wrote
+Write standard Markdown: headings, emphasis, lists, links, and fenced code. Do not hand-write Slack mrkdwn. Use fenced text for small tabular comparisons; link larger datasets. Bold labels are not headings.
 
-**Write standard Markdown** — `**bold**`, `## Heading`, `- item`, `[label](url)`. Never hand-write Slack mrkdwn (`*bold*`, `<url|label>`); it gets double-processed by any gateway that converts on the way out.
+The adapter preserves authored Markdown across ordinary, chunked, and media-bearing delivery. Splitting respects block and character limits without abandoning rich rendering for the entire message. Literal punctuation and code remain literal. Media delivery must not discard the accompanying text structure. These are renderer responsibilities, not model instructions to count characters, split messages manually, avoid punctuation, or separate every attachment.
 
-**Rich output degrades silently.** Where the gateway upgrades Markdown to Block Kit, `#`/`##` become real header blocks and `- ` becomes a native list — but that conversion falls back to flat mrkdwn (headings gone, lists rendered as literal `•`) when the send is multi-chunk, carries media, or exceeds the converter's block or character limits. A long structured reply therefore renders as junk. Keep the reply short and link the durable object that holds the detail.
-
-**Budget against 4,000 characters.** Gateways chunk well before a converter's own limit, and every degradation fires at once when they do — including a numbered list orphaned from the `## ` header it belonged to. Two deliberately-scoped messages beat one the gateway splits mid-list. Attach media in a separate message from a formatted one, or the formatting dies with it.
-
-**Confirm delivery.** Where the runtime requires an explicit send tool, final plain text is not a delivery path — you send through the tool and you check the result. If it errors, persist the reply somewhere durable and never claim a delivery that did not happen. A silent non-delivery looks identical to success, which is why the tool result gets checked and not assumed.
-
-**Never type the run signature.** Where the gateway appends one, typing it duplicates it.
+Verify authored output against delivered Slack blocks: a bold label authored by the model is a writing choice; a lost Markdown heading is a rendering defect. Delivery receipts, splitting, deduplication, and run signatures belong to the adapter. The response contract does not require glossary updates, decorative conventions, or one artifact format for every task.
 
 ## Work threads
 
@@ -24,40 +18,24 @@ Every agent-created new channel thread uses the durable sender: a whitespace-nor
 
 When substantial work gets its own thread, use the atomic work-thread tool with a title and complete brief. It delegates publication to that same sender, then marks the root working and starts the durable high-reasoning session. Do not rebuild publication with separate sends or session-patch calls.
 
-## Mechanics
-
-- `## Heading` for sections. Bold is a label, not a heading. Never a single `*` — that is italic.
-- **Never type a raw `~`.** Write "about". A bare tilde pairs with the next one anywhere later — including inside backticks, striking the code marks with it — and backslash is not an escape, it renders literally. Backticked tildes are safe only when no bare one exists in the message.
-- Use one blank line between a heading and its content, as standard Markdown requires. Do not add extra spacer lines.
-- Lists use `- `, never a literal `•`. One bullet is one uninterrupted list item — a hard line break or manual indent inside it kills the hanging indent. Numbers are reserved for steps performed in order; everything else is a bullet.
-- **No decorative emoji in headings.** The exact lifecycle headings from `docs/status-framework.md` are the only exception because their glyph is semantic state.
-- **Tables:** write a standard Markdown pipe table. The adapter renders it as aligned preformatted text because Slack has no table primitive. For large tables, link the source rather than forcing the full dataset into chat.
-- **Specialized vocabulary:** `**term** (short plain definition)` at first use in a thread, then append the entry to the instance's glossary. Never silently swap in a simpler word. Do not re-define a term already glossed in the same thread.
-- Visual and interactive review work ships as a viewable HTML artifact plus editable source.
-
 ## Channel overrides
 
 **Speaking unprompted.** A runtime prompt saying to reply when you "can add clear value" is a judgment about your own message and is not a licence to talk. Only speak without a mention in a channel the instance has listed as public. Everywhere else, wait to be addressed — including Slack-public channels that are not on that list.
 
 **Guest channels** — channels the instance shares with people outside the household or company: reply **only** when that specific message explicitly @mentions the agent. Thread participation is not a trigger; if the inbound metadata shows the mention was implicit thread-follow, send nothing. No reaction strip at all, and the channel is excluded from thread audits and public stats. Write as a guest: plain prose, no ops vocabulary or repo provenance unless the human asks in-channel.
 
-Enforced by the agent, because gateways generally have no per-channel knob. Do not "fix" that by widening an account-level setting — state the blast radius before touching any account-wide channel config.
+Channel restrictions do not authorize widening account-level access.
 
 **Sensitive channels** have explicit data scopes and fail closed when no approved profile can satisfy them. Style is unchanged; the routing and disclosure boundary are the constraint.
 
-## Showing them a file
+## Participation
 
-Slack renders a raw path as dead text and archives every uploaded copy in the workspace. Upload PDFs only when the human explicitly needs the PDF from Slack; otherwise use the source-of-truth route below. Markdown remains ephemeral on Slack and is never uploaded as a file.
+Existing routing admits messages; the agent interprets the human's request and context. Explicit stand-by or do-not-reply instructions permit silence even when the agent is mentioned. Another agent speaking does not cancel requested work. There is no stored conversation owner, ownership transfer, last-speaker guess, first-responder gate, or keyword-based deferral parser. Execution bookkeeping and source-work isolation do not assign conversational authority.
 
-- **Requested PDF download → document attachment.** Send the PDF with document/file semantics that produce a visible filename and download control, then verify the delivered Slack message has that control. A generic media upload or preview embed is not a downloadable-PDF delivery even when the API reports success. In OpenClaw, use `upload-file` with `asDocument: true` and `forceDocument: true`; do not use the default media attachment path.
-- **Source file → repo link.** Link the blob at a SHA, not a branch, when the version matters. Always give the absolute local path alongside; the link supplements the path, never replaces it.
-- **Markdown → ephemeral thread canvas.** Render Markdown with the instance's markdown-to-canvas tool, never upload the `.md` file to Slack and never edit the canvas by hand. Otherwise link the source file or answer in the thread.
-- **Visual or interactive review → HTML artifact link.** Promote it through the instance's artifact service and link the addressed revision. Never embed or upload the artifact, its frames, or screenshots into Slack; the artifact is the review surface and source of truth.
-- **They ask for a text file inline → inline.** This exception does not turn a visual or interactive artifact into a Slack attachment.
-- **Lives in an external tool → link the object, never name it.** A Notion page, ticket, or doc referenced by bare title or id is not reachable. Give the URL. When such a page is mirrored into the repo, the copy carries `source_url` in its frontmatter so the original stays one click away.
+## Files and links
 
-**A canvas is a requested Markdown preview, not a record — the source file is the record.** Thread canvases are ephemeral and belong to the thread that prompted them; the close tool deletes them when the thread closes, so a canvas outliving its thread is a fault to report, not a chore to remember. A standing canvas is kept only when the human has asked for that specific doc. A channel's native tab canvas is created on first render and edited in place after. Never edit a canvas by hand — the next render overwrites it. A canvas title names its subject, never its channel — the title is permanent and channels get renamed.
+Link the source-of-truth object when available. Provide an attachment when the human requests a download, and verify its download control. Visual review follows the design contract. A requested canvas is an ephemeral preview, not a record; use its renderer rather than editing the projection by hand. Do not upload private source material merely to make a chat link convenient.
 
 ## Precedence
 
-Fixed rules, then channel overrides, then the human's in-thread instruction (which applies to the whole thread going forward), then shape guidance. Brevity never suppresses a real handoff, and shape never creates one.
+Privacy, security, channel access, and authorization boundaries remain binding. Within those boundaries, the human's current request overrides ordinary style and workflow defaults.

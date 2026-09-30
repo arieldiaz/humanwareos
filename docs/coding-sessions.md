@@ -14,11 +14,9 @@ Create a task branch and isolated git worktree before the first product edit whe
 
 A written new-build spec is the bright-line trigger; do not spend another judgment call deciding whether it is sufficiently large. A small, reversible fix may use an existing checkout only when that checkout is clean, no other live session holds it, and the repository's own branch policy permits the change.
 
-## One scope, one workspace
+## Isolate edits, not conversations
 
-The default mapping is one task thread → one owner → one branch → one worktree. Worktree isolation prevents filesystem collisions; single ownership prevents two sessions from independently implementing the same outcome.
-
-Additional harnesses may inspect or verify the work. They do not edit the same scope independently. If the owner divides the implementation, each non-overlapping part gets an explicit owner and branch; the parent owner retains integration responsibility.
+Use a task-owned branch and worktree to avoid filesystem collisions. Parallel implementations need non-overlapping edit scopes and an integration plan. Reviewers may inspect the same work. This does not create a thread owner or restrict who may respond to the human.
 
 ## Start from canonical state
 
