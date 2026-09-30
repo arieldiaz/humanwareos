@@ -13,19 +13,6 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SessionConsoleTest(unittest.TestCase):
-    def test_uses_stable_slack_root_title(self):
-        self.assertEqual(
-            MODULE.root_title({"displayName": "Slack thread #humanware-os: New issue - fix menu links"}),
-            "New issue - fix menu links",
-        )
-        self.assertIsNone(MODULE.root_title({"displayName": "Slack channel #humanware-os"}))
-        self.assertIsNone(MODULE.root_title({
-            "displayName": "Slack thread #humanware-os: Parent thread: C0BKFAFGJ72 1787340997.744889 <@U0BG50JV77D>"
-        }))
-        self.assertIsNone(MODULE.usable_cached_title(
-            "Parent thread: C0BKFAFGJ72 1787340997.744889 <@U0BG50JV77D>"
-        ))
-
     def test_session_bound_never_drops_open_threads(self):
         sessions = [
             {"id": "new-completed", "status": "completed"},
@@ -80,7 +67,8 @@ class SessionConsoleTest(unittest.TestCase):
             self.assertEqual(result["summary"]["active"], 1)
             session = result["sessions"][0]
             self.assertEqual(session["agents"], ["liv", "max"])
-            self.assertEqual(session["title"], "Stable root request")
+            self.assertEqual(session["title"], "#ops · liv, max")
+            self.assertNotIn("Stable root request", json.dumps(result))
             ledger = "".join(path.read_text() for path in (data / "evidence" / "sessions" / "events").glob("*.jsonl"))
             self.assertNotIn("abcdefghijklmnop", ledger)
             self.assertNotIn("xoxb-1234567890abcdef", ledger)
@@ -211,7 +199,7 @@ class CanonicalSessionReaderTest(unittest.TestCase):
         result, additions = MODULE.build(str(self.root/'data'), str(self.root/'agents'), dry_run=True)
         self.assertEqual(additions, 0)
         self.assertEqual(result['summary']['total'], 1)
-        self.assertEqual(result['sessions'][0]['title'], 'A synthetic title')
+        self.assertNotIn('A synthetic title', json.dumps(result))
         self.assertEqual(result['sessions'][0]['inputTokens'], 13)
         self.assertEqual(result['sessions'][0]['status'], 'completed')
         self.assertFalse((self.root/'data').exists())

@@ -15,19 +15,21 @@ import hashlib
 import json
 import os
 import pathlib
-import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from glob import glob
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import activity
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
 from openclaw_sessions import iter_agent_ids, iter_sessions, iter_transcript_records
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_DATA_ROOT = os.environ.get("HUMANWARE_DATA_ROOT", os.path.expanduser("~/humanware-data"))
 DEFAULT_OPENCLAW_ROOT = os.path.expanduser("~/.openclaw/agents")
 SLACK_TEAM_ID = os.environ.get("HUMANWARE_SLACK_TEAM_ID", "")
@@ -35,16 +37,6 @@ SLACK_WORKSPACE_DOMAIN = os.environ.get("HUMANWARE_SLACK_WORKSPACE_DOMAIN", "")
 MAX_SESSIONS = 150
 MAX_EVENTS_PER_SESSION = 100
 
-SECRET_PATTERNS = (
-    re.compile(r"\b(?:xox[baprs]-|gh[pousr]_|sk-(?:proj-)?)[A-Za-z0-9_\-]{8,}"),
-    re.compile(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+\-/=]{8,}"),
-    re.compile(r"(?i)(\b(?:api[_-]?key|token|secret|password|authorization)\b\s*[:=]\s*)[^\s,;]+"),
-)
-SAFE_ARGUMENTS = {
-    "action", "agentId", "branch", "channelId", "cwd", "emoji", "file",
-    "messageId", "message_id", "model", "number", "path", "pr", "repo",
-    "remove", "sessionKey", "threadId", "url",
-}
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -54,67 +46,6 @@ def iso_from_ms(value) -> str | None:
         return datetime.fromtimestamp(float(value) / 1000, timezone.utc).isoformat().replace("+00:00", "Z")
     except (TypeError, ValueError, OSError):
         return None
-
-
-def redact(value, limit=280) -> str:
-    text = re.sub(r"\s+", " ", str(value or "")).strip()
-    for pattern in SECRET_PATTERNS:
-        text = pattern.sub(lambda match: (match.group(1) if match.lastindex else "") + "[redacted]", text)
-    if len(text) > limit:
-        text = text[:limit].rsplit(" ", 1)[0].rstrip(" ,.;:-") + "…"
-    return text
-
-
-def safe_url(value) -> str:
-    try:
-        parts = urlsplit(str(value))
-        return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
-    except ValueError:
-        return "[invalid URL]"
-
-
-def text_content(content) -> str:
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return ""
-    return " ".join(
-        str(part.get("text") or "")
-        for part in content
-        if isinstance(part, dict) and part.get("type") in ("text", "input_text")
-    )
-
-
-def clean_title(value, limit=160) -> str:
-    text = str(value or "")
-    text = re.sub(r"<https?://[^|>]+\|([^>]+)>", r"\1", text)
-    text = re.sub(r"<@[A-Z0-9]+>(?:\s*\([^)]+\))?", "", text)
-    text = re.sub(r"<#[A-Z0-9]+>", "", text)
-    text = re.sub(r"\[Slack file:[^]]+\]", "", text)
-    text = re.sub(r"^\[Image\]\s*User text:\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"^\[Slack #[^]]+\]\s*[^:]+:\s*", "", text, flags=re.IGNORECASE)
-    return redact(text, limit)
-
-
-def root_title(meta: dict) -> str | None:
-    """Return the stable Slack root title carried by the session registry."""
-    display_name = meta.get("displayName")
-    if not isinstance(display_name, str):
-        return None
-    match = re.match(r"^Slack thread #[^:]+:\s*(.+)$", display_name.strip())
-    if not match:
-        return None
-    title = clean_title(match.group(1), 160)
-    if re.match(r"^Parent thread:\s+[A-Z0-9]+\s+\d+(?:\.\d+)?\s*$", title):
-        return None
-    return title
-
-
-def usable_cached_title(value) -> str | None:
-    title = clean_title(value, 160)
-    if re.match(r"^Parent thread:\s+[A-Z0-9]+\s+\d+(?:\.\d+)?\s*$", title):
-        return None
-    return title or None
 
 
 def bounded_sessions(sessions: list[dict], limit: int = MAX_SESSIONS) -> list[dict]:
@@ -156,114 +87,95 @@ def agent_from_path(path: str) -> str:
         return "unknown"
 
 
-def safe_arguments(arguments) -> dict:
-    if not isinstance(arguments, dict):
-        return {}
-    result = {}
-    for key in SAFE_ARGUMENTS:
-        if key not in arguments:
-            continue
-        value = arguments[key]
-        if key == "url":
-            value = safe_url(value)
-        result[key] = value if isinstance(value, (bool, int, float)) else redact(value, 180)
-    command = arguments.get("command") or arguments.get("cmd")
-    if command:
-        result["command"] = redact(command, 220)
-    return result
-
-
-def result_preview(data) -> str | None:
-    if not isinstance(data, dict):
-        return None
-    value = data.get("output")
-    if value is None:
-        value = data.get("result")
-    if isinstance(value, dict):
-        value = value.get("message") or value.get("error") or value.get("status")
-    if isinstance(value, (str, int, float, bool)):
-        return redact(value, 260) or None
-    return None
-
-
 def normalize(record: dict, raw: str, source_path: str, logical_id: str) -> dict | None:
-    kind = str(record.get("type") or "unknown")
+    """Translate observed trajectory metadata; never project raw text or arguments."""
+    kind = record.get("type")
     data = record.get("data") if isinstance(record.get("data"), dict) else {}
-    ts = record.get("ts") or utc_now()
-    trace_id = record.get("traceId") or record.get("sessionId") or pathlib.Path(source_path).stem
-    seq = record.get("seq")
+    ts = record.get("ts") or record.get("timestamp")
+    if not ts:
+        return None
+    trace_id = activity.identifier(record.get("traceId") or record.get("sessionId"), pathlib.Path(source_path).stem)
+    agent = agent_from_path(source_path)
     digest = hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
-    event_id = f"openclaw:{trace_id}:{seq if seq is not None else digest}"
-    base = {
-        "schemaVersion": SCHEMA_VERSION,
-        "id": event_id,
-        "ts": ts,
-        "logicalSessionId": logical_id,
-        "runtimeSessionId": record.get("sessionId"),
-        "runId": record.get("runId"),
-        "turnId": data.get("turnId"),
-        "agent": agent_from_path(source_path),
-        "source": "openclaw",
-        "provider": record.get("provider"),
-        "model": record.get("modelId"),
-        "kind": kind,
-        "level": "verbose",
-        "summary": kind.replace(".", " ").capitalize(),
-        "details": {},
-        "rawRef": {"file": pathlib.Path(source_path).name, "seq": record.get("sourceSeq")},
-    }
+    seq = record.get("seq")
+    event_id = f"openclaw:{agent}:{trace_id}:{seq if type(seq) is int else digest}"
+    source_ref = {"type": "raw", "id": event_id, "localOnly": True}
+    tool = activity.identifier(data.get("name"))
+    args = data.get("arguments") if isinstance(data.get("arguments"), dict) else {}
+    target = None
+    normalized_kind = {"context.compiled": "context.assembled", "model.started": "model.invoked",
+                       "tool.call": "action.tool", "tool.result": "action.tool"}.get(kind, kind)
+    outcome = "unknown"
+    reversibility = "unknown"
+    if kind in ("tool.call", "tool.result"):
+        outcome = "requested" if kind == "tool.call" else ("failed" if data.get("isError") or data.get("success") is False else "succeeded" if data.get("success") is True or data.get("isError") is False else "unknown")
+        if tool in ("write", "edit", "apply_patch"):
+            normalized_kind, reversibility = "action.write", "reversible"
+        elif tool == "message" and args.get("action") in ("send", "react", "edit", "delete"):
+            # Reads/searches through the same tool are not deliveries.
+            normalized_kind, reversibility = "action.send", "outward"
+        elif tool in ("cron", "schedule") and args.get("action") in ("add", "update", "remove", "run"):
+            normalized_kind, reversibility = "action.schedule", "outward"
+        # Only dedicated target fields, never shell commands or tool output.
+        for key, target_type in (("path", "path"), ("file", "path"), ("channelId", "channel"), ("repo", "repository")):
+            if activity.identifier(args.get(key)):
+                target = {"type": target_type, "id": args[key]}
+                break
+        if not target and isinstance(args.get("url"), str):
+            try:
+                host = urlsplit(args['url']).hostname
+                if activity.identifier(host):
+                    target = {"type": "host", "id": host}
+            except ValueError:
+                pass
+    cost = None
+    if kind in ("model.completed", "turn.completed", "run.completed"):
+        # Only a per-invocation report is billable, never cumulative run counters.
+        if kind == "model.completed":
+            normalized_kind = "usage.cost"
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+            cost = {"status": "unavailable", "tokens": usage, "usageId": record.get("invocationId") or event_id}
+            if isinstance(data.get("cost"), dict):
+                cost = dict(data["cost"], tokens=usage, usageId=record.get("invocationId") or event_id)
+    if normalized_kind not in activity.KINDS:
+        return {"schemaVersion": 2, "id": event_id, "traceId": trace_id,
+                "logicalSessionId": logical_id, "runId": activity.identifier(record.get("runId")),
+                "ts": activity.timestamp(ts), "agent": agent, "source": "openclaw",
+                "kind": activity.identifier(kind, "unknown"), "level": "normal",
+                "summary": activity.identifier(kind, "unknown").replace(".", " "),
+                "sourceRef": source_ref, "details": {}}
+    return activity.event(event_id=event_id, ts=ts, session_id=logical_id,
+                          kind=normalized_kind, actor={"identity": agent, "profileId": record.get("profileId")},
+                          source_ref=source_ref, run_id=record.get("runId"), trace_id=trace_id,
+                          target=target, reversibility=reversibility, outcome=outcome, tool=tool,
+                          channel=record.get("channel"), cost=cost,
+                          # These are host trajectory metadata, not tool response contents.
+                          authority=record.get("authority"), policy=record.get("policy"),
+                          parent_ids=record.get("parentIds", []),
+                          reason_code=record.get("reasonCode", "observed"),
+                          entered_context=record.get("enteredContext"),
+                          source_refs=record.get("sourceRefs", []), memory=record.get("memory"))
 
-    if kind == "session.started":
-        base.update(level="normal", summary="Session started")
-        base["details"] = {k: data.get(k) for k in ("toolCount", "workspaceDir") if data.get(k) is not None}
-    elif kind == "prompt.submitted":
-        base.update(level="normal", summary="Request received")
-        prompt = redact(data.get("prompt"), 220)
-        base["details"] = {"objective": prompt, "imagesCount": data.get("imagesCount")}
-    elif kind == "context.compiled":
-        base["summary"] = "Context and tools prepared"
-        base["details"] = {"imagesCount": data.get("imagesCount"), "toolCount": len(data.get("tools") or [])}
-    elif kind == "tool.call":
-        tool = str(data.get("name") or "tool")
-        args = safe_arguments(data.get("arguments"))
-        base["summary"] = f"Called {tool}"
-        base["details"] = {"tool": tool, "arguments": args}
-        if tool == "message" and args.get("action") in ("send", "react"):
-            base["level"] = "normal"
-    elif kind == "tool.result":
-        tool = str(data.get("name") or "tool")
-        failed = bool(data.get("isError")) or data.get("success") is False or data.get("status") in ("error", "failed")
-        base["level"] = "normal" if failed else "verbose"
-        base["summary"] = f"{tool} {'failed' if failed else 'completed'}"
-        base["details"] = {
-            "tool": tool,
-            "failed": failed,
-            "status": data.get("status"),
-            "preview": result_preview(data),
-        }
-    elif kind.endswith("completed"):
-        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-        base.update(level="normal", summary=kind.replace(".", " ").capitalize())
-        base["details"] = {
-            "durationMs": data.get("durationMs") or data.get("runtimeMs"),
-            "stopReason": data.get("stopReason"),
-            "usage": {k: usage.get(k) for k in ("input", "output", "cacheRead", "cacheWrite", "total") if usage.get(k) is not None},
-        }
-    elif "reason" in kind or "thinking" in kind:
-        # Provider-visible reasoning summaries are allowed; hidden CoT is never available here.
-        base["summary"] = redact(data.get("summary") or data.get("text") or "Provider reasoning checkpoint", 260)
-        base["details"] = {"providerVisible": True}
-    else:
-        base["level"] = "forensic"
 
-    base["details"] = {k: v for k, v in base["details"].items() if v not in (None, "", {}, [])}
-    return base
+def projected_session_event(record):
+    projected = activity.project(record)
+    if projected is not None:
+        return projected
+    # Historical ledgers are immutable, including old payload-bearing details.
+    # Reconstruct only metadata at the read boundary.
+    return {key: value for key, value in {
+        "id": activity.identifier(record.get("id")), "ts": record.get("ts"),
+        "runId": activity.identifier(record.get("runId")),
+        "kind": activity.identifier(record.get("kind"), "unknown"),
+        "agent": activity.identifier(record.get("agent")), "level": "normal",
+        "summary": activity.identifier(record.get("kind"), "unknown").replace(".", " "),
+        "details": {}, "sourceRef": {"type": "event", "id": activity.identifier(record.get("id"), "unavailable")},
+    }.items() if value is not None}
 
 
 def registry_index(openclaw_root: str, state: dict):
     runtime_to_logical = {}
     descriptors = {}
-    title_cache = state.setdefault("titles", {})
     runtime_cache = state.setdefault("runtimeByPath", {})
     trajectory_files = glob(os.path.join(openclaw_root, "*", "sessions", "*.trajectory.jsonl"))
 
@@ -289,7 +201,7 @@ def registry_index(openclaw_root: str, state: dict):
                 "id": logical_id, "agents": set(), "models": set(), "providers": set(),
                 "channel": None, "channelId": None, "threadId": None, "title": None,
                 "startedAt": None, "updatedAt": None, "runStatuses": [], "runtimeMs": 0,
-                "inputTokens": 0, "outputTokens": 0, "costUsd": 0.0, "slackUrl": None,
+                "inputTokens": 0, "outputTokens": 0, "slackUrl": None,
                 "slackAppUrl": None,
             })
             descriptor["agents"].add(agent)
@@ -313,39 +225,11 @@ def registry_index(openclaw_root: str, state: dict):
             descriptor["runtimeMs"] += int(meta.get("runtimeMs") or 0)
             descriptor["inputTokens"] += int(meta.get("inputTokens") or 0)
             descriptor["outputTokens"] += int(meta.get("outputTokens") or 0)
-            descriptor["costUsd"] += float(meta.get("estimatedCostUsd") or 0)
             if channel_id and thread_id.replace(".", "").isdigit():
                 compact = thread_id.replace(".", "")
                 if SLACK_WORKSPACE_DOMAIN:
                     descriptor["slackUrl"] = f"https://{SLACK_WORKSPACE_DOMAIN}.slack.com/archives/{channel_id}/p{compact}"
                 descriptor["slackAppUrl"] = f"slack://channel?team={SLACK_TEAM_ID}&id={channel_id}&message={thread_id}"
-
-            session_file = meta.get("sessionFile")
-            if session_file and not descriptor["title"]:
-                stable_title = root_title(meta)
-                cached = stable_title or usable_cached_title(title_cache.get(session_file))
-                if cached:
-                    descriptor["title"] = cached
-                    if stable_title:
-                        title_cache[session_file] = stable_title
-                else:
-                    fallback = None
-                    for record in iter_transcript_records(state_root, agent, meta):
-                        message = record.get("message") if isinstance(record, dict) else None
-                        if record.get("type") != "message" or not isinstance(message, dict) or message.get("role") != "user":
-                            continue
-                        candidate = clean_title(text_content(message.get("content")), 160)
-                        if not candidate:
-                            continue
-                        if candidate.startswith("[System]"):
-                            continue
-                        fallback = fallback or candidate
-                        descriptor["title"] = candidate
-                        title_cache[session_file] = candidate
-                        break
-                    if not descriptor["title"] and fallback:
-                        descriptor["title"] = fallback
-                        title_cache[session_file] = fallback
 
     for path in trajectory_files:
         session_hint = pathlib.Path(path).name.removesuffix(".trajectory.jsonl")
@@ -363,7 +247,7 @@ def registry_index(openclaw_root: str, state: dict):
             "id": logical_id, "agents": {agent_from_path(path)}, "models": set(), "providers": set(),
             "channel": None, "channelId": None, "threadId": None, "title": None,
             "startedAt": None, "updatedAt": None, "runStatuses": [], "runtimeMs": 0,
-            "inputTokens": 0, "outputTokens": 0, "costUsd": 0.0, "slackUrl": None,
+            "inputTokens": 0, "outputTokens": 0, "slackUrl": None,
             "slackAppUrl": None,
         })
     return trajectory_files, runtime_to_logical, descriptors
@@ -403,18 +287,7 @@ def existing_events(events_root: str):
     return seen, events
 
 
-def append_events(events_root: str, additions: list[dict]):
-    by_day = defaultdict(list)
-    for event in additions:
-        day = str(event.get("ts") or utc_now())[:10]
-        by_day[day].append(event)
-    os.makedirs(events_root, mode=0o700, exist_ok=True)
-    for day, events in by_day.items():
-        path = os.path.join(events_root, f"{day}.jsonl")
-        with open(path, "a", encoding="utf-8") as handle:
-            for event in events:
-                handle.write(json.dumps(event, separators=(",", ":"), sort_keys=True) + "\n")
-        os.chmod(path, 0o600)
+append_events = activity.append_events
 
 
 OUTBOUND_LIFECYCLE = {
@@ -485,9 +358,9 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
     events_root = os.path.join(data_root, "evidence", "sessions", "events")
     derived_root = os.path.join(data_root, "generated", "sessions")
     state_path = os.path.join(derived_root, "state.json")
-    state = read_json(state_path, {"schemaVersion": 1, "sources": {}, "titles": {}, "runtimeByPath": {}})
+    state = read_json(state_path, {"schemaVersion": 1, "sources": {}, "runtimeByPath": {}})
     state.setdefault("sources", {})
-    state.setdefault("titles", {})
+    state.pop("titles", None)
     state.setdefault("runtimeByPath", {})
     trajectory_files, runtime_map, descriptors = registry_index(openclaw_root, state)
     seen, ledger = existing_events(events_root)
@@ -510,11 +383,19 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
             if event and event["id"] not in seen:
                 seen.add(event["id"])
                 additions.append(event)
-        state["sources"][path] = {"inode": stat.st_ino, "offset": stat.st_size, "mtimeNs": stat.st_mtime_ns}
+        with open(path, "rb") as source:
+            source.seek(offset)
+            committed_offset = offset
+            for line in source:
+                if not line.endswith(b"\n"):
+                    break
+                committed_offset += len(line)
+        state["sources"][path] = {"inode": stat.st_ino, "offset": committed_offset, "mtimeNs": stat.st_mtime_ns}
 
     if additions and not dry_run:
         append_events(events_root, additions)
     ledger.extend(additions)
+    ledger.extend(e for e in activity.evidence_records(data_root, ("memory",)) if activity.project(e) is not None)
     ledger.sort(key=lambda item: item.get("ts") or "")
     grouped = defaultdict(list)
     for event in ledger:
@@ -529,7 +410,7 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
             "id": logical_id, "agents": set(), "models": set(), "providers": set(),
             "channel": None, "channelId": None, "threadId": None, "title": None,
             "startedAt": None, "updatedAt": None, "runStatuses": [], "runtimeMs": 0,
-            "inputTokens": 0, "outputTokens": 0, "costUsd": 0.0, "slackUrl": None,
+            "inputTokens": 0, "outputTokens": 0, "slackUrl": None,
             "slackAppUrl": None,
         }
         events = grouped.get(logical_id, [])
@@ -547,7 +428,7 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
         )
         status = classify(descriptor, workflow, now)
         errors = sum(1 for event in events if (event.get("details") or {}).get("failed"))
-        title = descriptor.get("title") or (
+        title = (
             f"{descriptor.get('channel')} · {', '.join(sorted(descriptor['agents']))}"
             if descriptor.get("channel") else f"OpenClaw · {', '.join(sorted(descriptor['agents'])) or 'session'}"
         )
@@ -571,11 +452,12 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
             "runtimeMs": descriptor.get("runtimeMs") or 0,
             "inputTokens": descriptor.get("inputTokens") or 0,
             "outputTokens": descriptor.get("outputTokens") or 0,
-            "costUsd": round(descriptor.get("costUsd") or 0, 6),
+            "spend": activity.read_model(events)[1]["spend"],
             "eventCount": len(events),
             "errors": errors,
-            "lastEvent": events[-1].get("summary") if events else None,
-            "events": events[-MAX_EVENTS_PER_SESSION:],
+            "lastEvent": projected_session_event(events[-1])["summary"] if events else None,
+            "events": [projected_session_event(e) for e in events[-MAX_EVENTS_PER_SESSION:]],
+            "traceTruncated": len(events) > MAX_EVENTS_PER_SESSION,
         })
 
     sessions.sort(key=lambda item: item.get("updatedAt") or item.get("startedAt") or "", reverse=True)
@@ -599,6 +481,7 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
         "sessions": sessions,
     }
     if not dry_run:
+        activity.rebuild(data_root)
         os.makedirs(derived_root, mode=0o700, exist_ok=True)
         target = os.path.join(derived_root, "current.json")
         temp = target + ".tmp"

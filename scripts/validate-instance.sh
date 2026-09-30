@@ -86,6 +86,15 @@ for profile_file in "$INSTANCE_DIR"/channels/*.json "$INSTANCE_DIR"/surfaces/*.j
   }
 done
 
+# Activity and session traces are private projections, including their data routes.
+"$JQ" -e '
+  [.routes[]? | select(.id == "activity" or .id == "sessions" or
+    (.mount | test("^/(activity|sessions)(/|$)")))] | all(.visibility == "private")
+' "$INSTANCE_DIR/surfaces/domain.json" >/dev/null || {
+  printf '%s\n' "validate-instance: activity and sessions require private routes" >&2
+  exit 1
+}
+
 if git -C "$INSTANCE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   forbidden=$(git -C "$INSTANCE_DIR" ls-files | /usr/bin/awk '/^(evidence|current|working|artifacts|generated|operations|memory|sessions|workspaces|stream|derived|cache)\// { print }')
   [ -z "$forbidden" ] || {

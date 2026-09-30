@@ -41,6 +41,9 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -f "$RUNTIME/current/framework/ops/openclaw/patches/slack-plugin-root.mjs" ]
 [ -f "$RUNTIME/current/framework/ops/openclaw/patches/slack-rich-text/markdown-to-rich-text.mjs" ]
 [ -f "$RUNTIME/current/framework/ops/session-console/build-session-console.py" ]
+[ -f "$RUNTIME/current/framework/ops/session-console/activity.py" ]
+[ -f "$RUNTIME/current/surface/activity/index.html" ]
+[ -f "$RUNTIME/current/surface/sessions/index.html" ]
 [ -f "$RUNTIME/current/framework/ops/lib/openclaw_sessions.py" ]
 [ -f "$RUNTIME/current/framework/ops/menubar/thread_status.py" ]
 [ -f "$RUNTIME/current/framework/ops/calendar/service.js" ]
@@ -69,6 +72,15 @@ DEPENDENCY_BUILD=$(printf '%s\n' "$DEPENDENCY_OUTPUT" | sed -n 's/^build-runtime
 [ -d "$DEPENDENCY_BUILD" ]
 [ -f "$DEPENDENCY_BUILD/config/services/runtime-fixture/package-lock.json" ]
 [ ! -e "$DEPENDENCY_BUILD/config/services/runtime-fixture/install-script-ran" ]
+
+# Route declarations cannot make either trace feed public.
+cp "$INSTANCE/surfaces/domain.json" "$TEST_ROOT/domain.json"
+"$JQ" '(.routes[] | select(.id == "activity").visibility) = "public"' "$TEST_ROOT/domain.json" > "$INSTANCE/surfaces/domain.json"
+if "$FRAMEWORK/scripts/validate-instance.sh" "$FRAMEWORK" "$INSTANCE" >/dev/null 2>&1; then
+  printf '%s\n' "runtime-boundaries: public activity was not rejected" >&2
+  exit 1
+fi
+cp "$TEST_ROOT/domain.json" "$INSTANCE/surfaces/domain.json"
 
 mkdir -p "$INSTANCE/memory"
 printf '%s\n' "must not be tracked" > "$INSTANCE/memory/example.md"
