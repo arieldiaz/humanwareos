@@ -28,10 +28,6 @@ Channel restrictions do not authorize widening account-level access.
 
 **Sensitive channels** have explicit data scopes and fail closed when no approved profile can satisfy them. Style is unchanged; the routing and disclosure boundary are the constraint.
 
-## Participation
-
-Existing routing admits messages; the agent interprets the human's request and context. Explicit stand-by or do-not-reply instructions permit silence even when the agent is mentioned. Another agent speaking does not cancel requested work. There is no stored conversation owner, ownership transfer, last-speaker guess, first-responder gate, or keyword-based deferral parser. Execution bookkeeping and source-work isolation do not assign conversational authority.
-
 ## Files and links
 
 Link the source-of-truth object when available. Provide an attachment when the human requests a download, and verify its download control. Visual review follows the design contract. A requested canvas is an ephemeral preview, not a record; use its renderer rather than editing the projection by hand. Do not upload private source material merely to make a chat link convenient.

@@ -6,7 +6,7 @@ Budget: 400 words.
 
 ## Boundary
 
-The control plane marks an admitted turn working. The selected execution path returns one final envelope or the silence outcome defined in [status-framework.md](status-framework.md); the adapter publishes a response once or nothing for silence. Models do not post kickoff messages, progress narration, transport state, or run signatures. Checkpoints remain in the session ledger.
+The control plane marks an admitted turn working. The selected execution path returns one final envelope; the adapter publishes a response once or nothing for silence. Models do not post kickoff messages, progress narration, transport state, or run signatures. Checkpoints remain in the session ledger.
 
 ## Final message
 
@@ -15,7 +15,3 @@ Lead with the result. For substantive replies, default to `## TLDR`, `## Backgro
 Complete authorized, in-scope work before yielding; a milestone is not the objective. Ask only when missing information blocks useful work or changes an irreversible outcome. State the concrete blocking action when one exists. Name a scheduled continuation only after a real durable wake exists. A concise close acknowledgement is enough after explicit human confirmation; never substitute operational telemetry for the model's message.
 
 Never emit generic status footers, run signatures, or narration about loading context and internal routing. An ordinary answer ends naturally without manufacturing an approval or closure recommendation.
-
-## Acceptance
-
-Both identities follow the same delivery contract: a response is delivered once with its effective run signature; intentional silence produces no message or signature and settles only that execution. Missing requested output, duplicate delivery, inferred lifecycle state, or stranded working is a contract failure.
