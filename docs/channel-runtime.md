@@ -16,6 +16,8 @@ Liv and Max are durable identity templates with separate role, voice, authority,
 
 Both identities receive the same approved execution-profile catalog unless an explicit security boundary narrows one. A profile difference must be visible policy, not an incidental command-line flag hidden in one agent definition.
 
+A conversation has participants, not a persistent agent owner. Channel mention and thread-participation routing admit messages; the agent follows the human’s words and conversation context. With one participating agent, ordinary follow-ups continue naturally. With multiple agents, explicit addressing and instructions to stand down govern who acts. A mention is not an ownership transfer, and mention order never assigns future control.
+
 ## Execution profile
 
 An execution profile binds:
