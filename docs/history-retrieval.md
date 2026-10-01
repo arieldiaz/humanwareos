@@ -10,19 +10,19 @@ Budget: 700 words. Over it, consolidate.
 goal → broad local search (50–200 candidates) → Jev keep-probability per candidate → pack (~15 kept + dropped ids)
 ```
 
-1. **Retrieve broadly.** A local MongoDB text index returns up to 200 candidates for the goal, ordered by text score then recency. Search favors recall; precision is Jev's job.
+1. **Retrieve broadly.** Local MongoDB text search returns up to 200 candidates by text score, then recency. Search favors recall; Jev supplies precision.
 2. **Score.** Each candidate's egress view is sent to Jev (`typesafe/jev-1.13` through OpenRouter's decisions endpoint), which answers one typed question per candidate: the probability the record is needed for the goal. Jev estimates relevance; it does not rewrite, summarize, delete, or change policy.
-3. **Pack.** Candidates are ranked by keep-probability, with search rank breaking ties, and the top 15 at or above the keep threshold (default 0.25) are kept. Every candidate that was not kept is listed by id and score so a reader can fetch it locally with `ask-history --show <id>`.
+3. **Pack.** Candidates are ranked by keep-probability, with search rank breaking ties, and the top 15 at or above the keep threshold (default 0.25) are kept. Every other candidate is listed by id and score for local `--show`.
 
-The pack reports the provider's input tokens, output tokens, and cost for every request, and marks usage unknown when a request fails before a usage response.
+The pack reports provider input tokens, output tokens, and cost per request, and marks usage unknown when a request fails first.
 
 ## Fail keep
 
-A missing, non-numeric, out-of-range, or unavailable probability is treated as keep and labeled `unscored`. An HTTP error, timeout, or malformed body marks that batch unscored rather than failing the pack. Unscored candidates rank after scored keeps and before scored drops. Jev can shrink a pack; it can never make evidence disappear.
+An invalid or missing probability, HTTP error, timeout, or malformed body leaves the affected candidates `unscored`, treated as keep; the pack never fails. Unscored candidates rank after scored keeps and before scored drops. Jev can shrink a pack; it can never make evidence disappear.
 
 ## Bounded requests
 
-A request carries at most 16 candidates, 10,000 characters of candidate text, and 64 KiB of body. A pack makes at most 16 requests, runs them with bounded concurrency, and times each out. Candidates beyond the request limit are unscored. Source text is labeled as data and cannot change the retention question.
+A request carries at most 16 candidates, 10,000 characters of candidate text, and 64 KiB of body. A pack makes at most 16 bounded-concurrency requests, each with a timeout. Candidates beyond the request limit are unscored. Source text is labeled as data and cannot change the retention question.
 
 ## Privacy
 
@@ -36,11 +36,15 @@ Raw conversation text, tool output, Slack root-message excerpts, and raw channel
 
 Local search may use raw text because the index never leaves the host.
 
-## Index
+## Sources and index
 
-MongoDB is a rebuildable index under `generated/`, never a system of record. Ingest reads each agent's harness transcript store read-only, memory events, and a repository's pull-request history, and upserts one document per session window, pull request, or decision by stable id. Deleting the database and re-running ingest reproduces it. Each document records its source reference and the ingest time.
+This feature is a retrieval layer: it owns search, scoring, and packing, never records. A source adapter yields `{id, kind, ts, title, meta, sourceRef, localText?}`. `meta` is the allowlisted source of the egress view; `localText` is optional and host-only. Adapters never infer fields their source lacks.
 
-The instance installs and supervises the server, bound to loopback only. The OpenRouter key is read from the environment at invocation, injected by the instance secrets provider; it is never stored in the index, a pack, or a log.
+The intended source is the Activity index (PR #117): sessions and decisions come from its events and memory lineage, keyed by its ids. Until it is active, an interim adapter reads harness transcript stores read-only and memory events; it is deleted once the Activity adapter passes adapter parity in `docs/history-retrieval-eval.md`. Pull requests keep their own adapter until Activity records them.
+
+MongoDB is a rebuildable index under `generated/`, never a system of record. Ingest upserts one document per record by stable id with its source reference and ingest time; deleting the database and re-running ingest reproduces it.
+
+The instance supervises the server on loopback only. The instance secrets provider injects the OpenRouter key into the environment; it is never stored in the index, a pack, or a log.
 
 ## Command
 
@@ -52,8 +56,8 @@ ask-history --show <id>         one local document
 ask-history --ingest --days 14 --pr-repo <owner/name>
 ```
 
-Output is JSON by default and a short text rendering with `--text`. `--egress full` is the per-invocation opt-in.
+Output is JSON, or text with `--text`. `--egress full` is the per-invocation opt-in.
 
 ## Limits
 
-Keep-probabilities are uncalibrated model estimates, not a correctness guarantee. In metadata mode a session is judged only by its agent, channel, label, tools, and files, so sessions whose relevance lives in conversation text score low and are dropped even when local search ranked them first. Jev filtering therefore suits goals answered by pull requests and recorded decisions better than personal-life goals.
+Keep-probabilities are uncalibrated. In metadata mode a session is judged only by agent, channel, label, tools, and files, so sessions whose relevance lives in conversation text are dropped even when search ranked them first; Jev suits pull-request and decision goals better than personal ones. Whether it beats search is measured by `docs/history-retrieval-eval.md`.
