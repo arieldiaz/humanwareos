@@ -232,12 +232,15 @@ test("copied recovery cannot recreate a gateway caller's process-local authority
     needsUnknownSendReconciliation: () => false,
   });
   vm.runInContext(extract(readBundle("delivery-queue-recovery-CAUTn65F.js"), "drainQueuedEntry"), context);
-  const result = await context.drainQueuedEntry({
-    entry: { id: "queue", slackChannelThread: { rootMessageId: "1.0", liveAuthorityOnly: true } },
-    log: { info() {} },
-    deliver() { assert.fail("recovery dispatched without live authority"); },
-  });
-  assert.equal(result, "failed");
+  for (const entry of [
+    {id: 'queue', slackChannelThread: {rootMessageId: '1.0', liveAuthorityOnly: true}},
+    {id: 'humanware-final:conversation:close:0:part:0'},
+    {id: 'humanware-final:conversation:old-run'},
+  ]) {
+    const result = await context.drainQueuedEntry({entry, log: {info() {}},
+      deliver() {assert.fail('recovery dispatched without live lifecycle authority');}});
+    assert.equal(result, 'failed');
+  }
 });
 
 test('copied storage: final replies retain their receipt and cannot re-enqueue after completion', {skip: !rehearsal}, async () => {
