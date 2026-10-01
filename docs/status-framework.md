@@ -1,6 +1,6 @@
 # Status framework
 
-Lifecycle answers who owns the next move. The LLM is the only semantic terminal authority; the host owns admission, validation, persistence, and projection.
+Lifecycle answers who owns the next move. The model chooses ordinary `act` or `scheduled`; the host alone owns authenticated closure, admission, validation, persistence, and projection.
 
 Budget: 900 words. Over it, consolidate.
 
@@ -15,11 +15,11 @@ Budget: 900 words. Over it, consolidate.
 
 ## Final wire contract
 
-Every ordinary response from an enabled conversational execution path returns exactly `{schemaVersion: 1, message: string, status: "act" | "scheduled" | "closed"}`. The message must be nonempty. Extra fields are rejected. The adapter never infers status from headings, keywords, reactions, tool results, or send metadata.
+Every ordinary response from an enabled conversational execution path returns exactly `{schemaVersion: 1, message: string, status: "act" | "scheduled"}`. The message must be nonempty. Extra fields are rejected. The adapter never infers status from headings, keywords, reactions, tool results, or send metadata. `closed` is a host lifecycle state, never a model terminal choice.
 
 Codex uses app-server `turn/start.outputSchema`. Cursor uses its supported stream-JSON transport; its entire final result string must itself be the JSON object. Decode the complete string once and validate it strictly. Do not extract objects from prose, strip fences, or guess missing fields. Both transports enter the same validator and commit path. Unsupported enabled harnesses fail the integration gate; disabling or rerouting a profile needs a separate human decision.
 
-A scheduled decision requires an enabled durable `agentTurn` wake with a future next-run time, bound to this exact canonical session and configured for delivery. Read scheduler storage at validation time; a tool success claim is insufficient. Existing verified wakes may support rescheduling or status repair. Closure requires a current trusted human input explicitly authorizing closure; neither old conversation context nor machine input supplies that authority.
+A scheduled decision requires an enabled durable `agentTurn` wake with a future next-run time, bound to this exact canonical session and configured for delivery. Read scheduler storage at validation time; a tool success claim is insufficient. Existing verified wakes may support rescheduling or status repair. The authenticated instance owner's exact close command is intercepted before model admission; quotes, prior context, other senders, bots, and model text cannot authorize closure.
 
 If the envelope message is exactly `NO_REPLY`, send nothing and finish the execution without changing the conversation disposition.
 
@@ -31,7 +31,7 @@ Invalid schema or evidence gets one repair in the same harness/session, with no 
 
 Only the projector can add/remove bot-owned lifecycle reactions. Human reactions remain untouched social input and cannot suppress canonical state. Agent reaction tools reject the lifecycle vocabulary. Provenance reactions belong on the delivered reply, not the root. Remove retired provenance tiles only through a bounded migration, not steady-state projection.
 
-An accepted closed final fences automated continuations. A new human message reopens through normal admission; stale work from before closure remains fenced. Closure measurements belong in the session ledger/generated operational view, never a replacement reply. Machine workflows, including email receipts, may report domain state but cannot choose conversation lifecycle. Slack acknowledgement and native status-reaction writers must be disabled in the activation configuration.
+A reserved host close fences automated continuations, freezes one measured report, publishes it inline and to the generated session view, then projects closed only after both receipts and the completion event exist. A new human message reopens through normal admission; stale work from before closure remains fenced. Machine workflows, including email receipts, may report domain state but cannot choose conversation lifecycle. Slack acknowledgement and native status-reaction writers must be disabled in the activation configuration.
 
 ## Verification and release
 

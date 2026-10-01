@@ -639,12 +639,14 @@ export default {
 
     finalRuntime.slackClose = async ({message, accountId}) => {
       if (isExcludedChannel(message.channel) || message.bot_id || message.subtype || message.is_forwarded || message._ambiguousThreadReply) return false;
-      const accounts = await import(resolveSlackRuntimeModule("accounts"));
       const botUserIds = [];
-      for (const candidate of Object.keys(api.config?.channels?.slack?.accounts ?? {})) {
-        const token = accounts.resolveSlackAccount({cfg: api.config, accountId: candidate})?.botToken;
-        const botUserId = token ? await resolveBotUserId(token, botIdCache) : undefined;
-        if (botUserId) botUserIds.push(botUserId);
+      if (String(message.text ?? '').trim().startsWith('<@')) {
+        const accounts = await import(resolveSlackRuntimeModule("accounts"));
+        for (const candidate of Object.keys(api.config?.channels?.slack?.accounts ?? {})) {
+          const token = accounts.resolveSlackAccount({cfg: api.config, accountId: candidate})?.botToken;
+          const botUserId = token ? await resolveBotUserId(token, botIdCache) : undefined;
+          if (botUserId) botUserIds.push(botUserId);
+        }
       }
       if (!isCloseCommand(message.text, botUserIds)) return false;
       const principal = api.pluginConfig?.ownerUserId;

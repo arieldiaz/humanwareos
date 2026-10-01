@@ -25,18 +25,18 @@ async function fixture(t) {
   return {options, root, receipts, completed, files, order, runtime: new FinalRuntime(options)};
 }
 test('exact command grammar never strips untrusted text into a command', () => {
-  for (const text of ['close this', ' Close this. ', 'CLOSE THIS!', '<@ULIV> close this', '<@ULIV> <@UMAX> Close this!']) assert.equal(isCloseCommand(text, ['ULIV','UMAX']), true, text);
+  for (const text of ['close this', 'close it', 'mark this closed', 'OK, mark this closed', 'close this thread', ' Close this. ', 'CLOSE THIS!', '<@ULIV> close this', '<@ULIV> <@UMAX> Close this!']) assert.equal(isCloseCommand(text, ['ULIV','UMAX']), true, text);
   for (const text of ['please close this', 'close this?', 'close this and start another', "don't close this", '"close this"', '> close this', '`close this`', '```close this```', '<@UOTHER> close this', '<@ULIV>close this', 'close this!!', 'close this\nnow']) assert.equal(isCloseCommand(text, ['ULIV','UMAX']), false, text);
 });
 test('principal config and raw bot/forwarded text gates; non-owner callback performs no reservation', async () => {
   const register = pluginConfig => {
-    plugin.register({config: {}, pluginConfig, on() {}});
+    plugin.register({config: {channels: {slack: {accounts: {max: {}, liv: {}}}}}, pluginConfig, on() {}});
     const runtime = globalThis[Symbol.for('humanware.final-envelope.v1')];
-    runtime.sender = async () => undefined;
+    runtime.sender = async () => 'max';
     return runtime;
   };
   const message = {channel: 'C123', ts: input.messageId, thread_ts: route.threadId, text: 'close this', user: 'UOWNER'};
-  const config = {ownerUserId: 'UOWNER', threadOwnership: {accounts: {max: 'UMAX', liv: 'ULIV'}, defaultAccounts: {C123: 'max'}}};
+  const config = {ownerUserId: 'UOWNER'};
   let runtime = register(config), reservations = 0;
   runtime.closeCommand = async () => {reservations++;};
   for (const patch of [{user: 'UOTHER'}, {bot_id: 'BBOT'}, {subtype: 'message_changed'}, {is_forwarded: true}, {text: '> close this'}, {text: '', attachments: [{text: 'close this'}]}]) assert.equal(await runtime.slackClose({message: {...message, ...patch}, accountId: 'max'}), false);
@@ -46,7 +46,8 @@ test('principal config and raw bot/forwarded text gates; non-owner callback perf
   assert.equal(reservations, 1);
   runtime = register({...config, ownerUserId: undefined});
   await assert.rejects(runtime.slackClose({message, accountId: 'max'}), /ownerUserId/);
-  runtime = register({...config, threadOwnership: {accounts: config.threadOwnership.accounts}});
+  runtime = register(config);
+  runtime.sender = async () => 'other';
   await assert.rejects(runtime.slackClose({message, accountId: 'max'}), /sender/);
 });
 for (const accountId of ['liv','max']) test(`${accountId}: duplicate callbacks freeze once and complete after identical file/report`, async t => {
@@ -150,7 +151,7 @@ test('completion event is operation-idempotent and matches the already written M
 });
 
 test('root command gives only a thread instruction, never a closure reservation', async () => {
-  plugin.register({config: {}, pluginConfig: {ownerUserId: 'UOWNER', threadOwnership: {accounts: {max: 'UMAX'}, defaultAccounts: {C123: 'max'}}}, on() {}});
+  plugin.register({config: {channels: {slack: {accounts: {max: {}}}}}, pluginConfig: {ownerUserId: 'UOWNER'}, on() {}});
   const runtime = globalThis[Symbol.for('humanware.final-envelope.v1')], sends = [];
   runtime.send = async turn => {sends.push(turn); return {messageId: 'receipt'};};
   runtime.closeCommand = async () => assert.fail('root must not reserve a closure');
