@@ -32,11 +32,11 @@ Labels are frozen before a run; the receipt records the file hash. Each unlabele
 For each goal and arm:
 
 - **Recall:** packed fraction of critical ids, and of critical plus relevant ids.
-- **Critical misses:** each absent critical id, listed.
+- **Critical misses:** each absent critical id with its cause: not a candidate (search ceiling), unscored overflow, or ranked out.
 - **Precision:** relevant packed ids ÷ pack size; partial counts half, superseded zero.
 - **Threshold sensitivity:** J re-packed from the same scores at 0.25 (default), 0.4, and 0.5, with pack size, recall, and precision; no extra requests.
 - **Stability:** mean pairwise Jaccard overlap of J's packs across repeats.
-- **Latency:** wall-clock search and Jev time per pack; p50 and p95 by nearest rank across goals and repeats.
+- **Latency:** wall-clock search and Jev time per pack; nearest-rank p50 and p95.
 - **Cost:** provider-reported input and output tokens, dollars, requests, failed requests, unknown-usage requests, and unscored candidates by reason, including overflow.
 
 Unknown usage is unknown, never zero. Under 20 samples, p95 is the maximum.
