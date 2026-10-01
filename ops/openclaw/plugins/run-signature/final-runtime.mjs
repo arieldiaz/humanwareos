@@ -199,7 +199,7 @@ export class FinalRuntime {
         }
       }
       await this.state(state => {
-        state.turns[key] = {...state.turns[key], envelope, phase: 'reserved'};
+        state.turns[key] = {...state.turns[key], envelope, deliveryFormat: 'text-v1', phase: 'reserved'};
       });
       await this.deliver(key);
       return result;

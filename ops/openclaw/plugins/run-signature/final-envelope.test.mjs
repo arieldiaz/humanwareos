@@ -131,6 +131,7 @@ test('host media cannot change final delivery from text to an attachment payload
   const {runtime, params, sends} = await fixture(t);
   await runtime.run(params, async () => ({assistantTexts: [wire()], toolMediaUrls: ['first.png']}), 'codex');
   assert.equal(sends[0].mediaUrls, undefined);
+  assert.equal(sends[0].deliveryFormat, 'text-v1');
 });
 
 test('legacy attachment directives are omitted without suppressing the text response', () => {
