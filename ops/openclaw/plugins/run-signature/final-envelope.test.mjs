@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {decodeFinal, validateEvidence} from './final-envelope.mjs';
+import {decodeFinal, textOnlyFinal, validateEvidence} from './final-envelope.mjs';
 import {FinalRuntime} from './final-runtime.mjs';
 const wire = (status = 'act', message = 'A result.\n\n## Session Closed') => JSON.stringify({schemaVersion: 1, message, status});
 
@@ -127,10 +127,19 @@ test('repeated inbound delivery does not supersede its own running turn', async 
   }, 'codex');
   assert.equal(sends.length, 1);
 });
-test('host attachments survive final delivery without duplicating tool-sent media', async t => {
+test('host media cannot change final delivery from text to an attachment payload', async t => {
   const {runtime, params, sends} = await fixture(t);
-  await runtime.run(params, async () => ({assistantTexts: [wire()], toolMediaUrls: ['first.png','sent.png'], messagingToolSentMediaUrls: ['sent.png']}), 'codex');
-  assert.deepEqual(sends[0].mediaUrls, ['first.png']);
+  await runtime.run(params, async () => ({assistantTexts: [wire()], toolMediaUrls: ['first.png']}), 'codex');
+  assert.equal(sends[0].mediaUrls, undefined);
+});
+
+test('legacy attachment directives are omitted without suppressing the text response', () => {
+  const final = textOnlyFinal(decodeFinal(wire('act', 'Useful result.\n\nMEDIA:/private/result.png')));
+  assert.equal(final.message, 'Useful result.\n\nMedia omitted from this message.');
+  const linked = textOnlyFinal(decodeFinal(wire('act', '![Review](https://os.example/artifacts/project/revision/)')));
+  assert.equal(linked.message, '[Review](https://os.example/artifacts/project/revision/)');
+  const local = textOnlyFinal(decodeFinal(wire('act', '![Preview](/private/result.png)')));
+  assert.equal(local.message, 'Preview\n\nMedia omitted from this message.');
 });
 
 test('uncertain delivery retains the reserved decision for receipt recovery without model replay', async t => {

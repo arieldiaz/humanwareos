@@ -1,6 +1,6 @@
 import {mkdir, readFile, writeFile, rename} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
-import {FINAL_SCHEMA, FINAL_INSTRUCTION, decodeFinal, validateEvidence, sameConversationWake, finalText, finalMedia} from './final-envelope.mjs';
+import {FINAL_SCHEMA, FINAL_INSTRUCTION, decodeFinal, validateEvidence, sameConversationWake, finalText, textOnlyFinal} from './final-envelope.mjs';
 import {readLegacyFence, conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
 
 export const FINAL_RUNTIME = Symbol.for('humanware.final-envelope.v1');
@@ -187,7 +187,7 @@ export class FinalRuntime {
         if (result.meta?.aborted) throw new Error('CLI execution interrupted before a valid final');
         if (result.terminal && result.terminal.kind !== 'ok') throw new Error(`Harness terminated: ${result.terminal.kind}`);
         try {
-          envelope = decodeFinal(finalText(result, kind));
+          envelope = textOnlyFinal(decodeFinal(finalText(result, kind)));
           const jobs = envelope.status === 'scheduled' ? await this.wakes(params.sessionKey) : [];
           validateEvidence(envelope, {wakes: jobs.filter(job => sameConversationWake(job, params.sessionKey)).map(job => ({enabled: job.enabled, nextRunAtMs: job.state.nextRunAtMs}))});
           break;
@@ -199,7 +199,7 @@ export class FinalRuntime {
         }
       }
       await this.state(state => {
-        state.turns[key] = {...state.turns[key], envelope, mediaUrls: finalMedia(result), phase: 'reserved'};
+        state.turns[key] = {...state.turns[key], envelope, phase: 'reserved'};
       });
       await this.deliver(key);
       return result;
