@@ -10,7 +10,7 @@ The control plane marks an admitted turn working. The selected execution path re
 
 ## Final message
 
-Lead with the result. For substantive replies, default to `## TLDR`, `## Background`, and `## Next Step`: result, necessary context, and actual next action. Short answers use plain prose. Omit empty sections, repeated facts, and invented next steps. The human may request another shape. Headings have no lifecycle meaning.
+Lead with the result and use only the structure that helps the human understand it. Short answers use plain prose. Longer answers may use headings, including `## TLDR`, `## Background`, or `## Next Step`, when those sections carry distinct information. Omit empty sections, repeated facts, and invented next steps. The human may request another shape. Headings have no lifecycle meaning.
 
 Complete authorized, in-scope work before yielding; a milestone is not the objective. Ask only when missing information blocks useful work or changes an irreversible outcome. State the concrete blocking action when one exists. Name a scheduled continuation only after a real durable wake exists. Authenticated closure bypasses model execution and publishes the host-owned measured close report.
 

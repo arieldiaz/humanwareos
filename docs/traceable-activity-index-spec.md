@@ -1,12 +1,14 @@
 # Traceable activity index
 
-Authorized implementation on PR #117. Budget: 900 words.
+Authorized implementation. Budget: 900 words.
 
 ## Ownership
 
 Humanware owns a portable event envelope over the canonical [session ledger](docs/data-plane.md), not a platform's native store. Mastra, Agent Engine, and harnesses implement adapters. Evidence remains append-only; [permission-model.md](docs/permission-model.md) remains the authority. This feature observes decisions without granting permissions or promoting memory.
 
-The human authorized one coherent production slice on the existing PR: schema, adapter helper, index, Activity and session trace, tests, and documentation. Separate staged implementation PRs are not required. Merge and deployment still require separate human approval.
+The human authorized one coherent production slice: schema, adapter helper, index, Activity and session trace, tests, and documentation.
+
+The ledger is also the home for progress and operational detail that should not inflate channel replies. Adapters capture observed activity automatically; agents do not narrate it into Slack or self-report authoritative events. The conversation adapter publishes only the validated final response, once, while the private session surfaces retain the complete sanitized trace. Separate staged implementation PRs are not required. Merge and deployment still require separate human approval.
 
 ## Events
 
@@ -37,3 +39,5 @@ Costs are `exact`, `estimated`, or `unavailable`. Known amounts require currency
 ## Acceptance
 
 A synthetic two-identity, multi-day run reconstructs actor → authority/policy → selected context → model invocation → tool/memory mutation → delivery using stable references. Tests prove replay, partition queries, cost states, lineage after rebuild, hostile payload exclusion, and run navigation. Full repository checks pass. Live day coverage, provider reconciliation and instance route/authentication acceptance remain deployment checks after separately approved activation; synthetic tests cannot claim them.
+
+For a tool-using Slack turn, the delivered thread contains one concise final response and no kickoff or progress narration, while the session trace contains the observed model invocation, tool calls and results, retries or errors, mutations, and confirmed delivery with stable source references. Missing adapter coverage is shown as unavailable rather than filled by model prose.
