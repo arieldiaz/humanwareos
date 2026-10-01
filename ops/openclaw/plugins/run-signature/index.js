@@ -21,7 +21,7 @@ import {
   recordSessionClose,
 } from "./session-close.mjs";
 import {FinalRuntime, FINAL_RUNTIME} from "./final-runtime.mjs";
-import {textOnlyMessage} from "./final-envelope.mjs";
+import {hasFinalMedia, textOnlyMessage} from "./final-envelope.mjs";
 import { startSlackWorkThread } from "../../slack-spin-out.mjs";
 import { readConversationFence, shouldSuppressConversationDelivery, conversationFenceRoute, isHumanSlackUserProfile } from "./conversation-fence.mjs";
 
@@ -443,7 +443,8 @@ export async function sendFinalEnvelope(config, turn, sdk) {
   const parts = turn.closeOperation ? reportParts(turn.envelope.message) : [textOnlyMessage(turn.envelope.message)];
   const receipts = [];
   for (const [index, text] of parts.entries()) {
-  const id = `humanware-final:${turn.key}${turn.closeOperation ? ':part:' + index : ''}`;
+  const textNamespace = !turn.closeOperation && (turn.deliveryFormat === 'text-v1' || hasFinalMedia(turn.envelope.message)) ? 'text-v1:' : '';
+  const id = `humanware-final:${textNamespace}${turn.key}${turn.closeOperation ? ':part:' + index : ''}`;
   const sent = await sdk.sendDurableMessageBatch({
     cfg: config, channel: 'slack', accountId: turn.accountId,
     to: `channel:${turn.route.channel}`, threadId: turn.route.threadId,

@@ -574,9 +574,13 @@ test('final publication uses the supported durable sender with stable queue cust
   const turn = {key: 'conversation:run', accountId: 'max', sessionKey: 'session', route: {channel: 'C123', threadId: 'root'}, envelope: {message: 'Unchanged.\n\nMEDIA:broken.png'}, mediaUrls: ['broken.png']};
   const sdk = {buildOutboundSessionContext: params => params, sendDurableMessageBatch: async params => {calls.push(params); return {status: 'sent', results: [{messageId: 'receipt'}]};}};
   assert.equal((await sendFinalEnvelope({}, turn, sdk)).messageId, 'receipt');
-  assert.equal(calls[0].deliveryIntentId, 'humanware-final:conversation:run');
+  assert.equal(calls[0].deliveryIntentId, 'humanware-final:text-v1:conversation:run');
   assert.equal(calls[0].durability, 'required');
   assert.equal(calls[0].requireUnknownSendReconciliation, true);
   assert.equal(calls[0].payloads[0].text, 'Unchanged.\n\nMedia omitted from this message.');
   assert.equal(calls[0].payloads[0].mediaUrls, undefined);
+  await sendFinalEnvelope({}, {...turn, key: 'legacy:plain', envelope: {message: 'Plain legacy response.'}, mediaUrls: undefined}, sdk);
+  assert.equal(calls[1].deliveryIntentId, 'humanware-final:legacy:plain');
+  await sendFinalEnvelope({}, {...turn, key: 'current:plain', envelope: {message: 'Plain current response.'}, mediaUrls: undefined, deliveryFormat: 'text-v1'}, sdk);
+  assert.equal(calls[2].deliveryIntentId, 'humanware-final:text-v1:current:plain');
 });

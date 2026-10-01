@@ -39,6 +39,10 @@ export function finalText(result, kind) {
   return result.assistantTexts?.join('\n\n') ?? '';
 }
 
+export function hasFinalMedia(input) {
+  return /(?:^|\n)[ \t]*MEDIA:[^\n]*/iu.test(input) || /!\[[^\]\n]*\]\([^)\n]+\)/u.test(input);
+}
+
 // Final delivery is text-only. A missed legacy attachment directive must not
 // change the payload kind or suppress the useful response.
 export function textOnlyMessage(input) {
