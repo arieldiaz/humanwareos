@@ -2,60 +2,257 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanwareos.com/schemas/session-event.schema.json",
   "title": "Humanware OS normalized session event",
-  "type": "object",
-  "required": [
-    "schemaVersion",
-    "id",
-    "traceId",
-    "ts",
-    "logicalSessionId",
-    "source",
-    "kind",
-    "level",
-    "summary",
-    "details"
-  ],
-  "properties": {
-    "schemaVersion": {"const": 2},
-    "id": {"type": "string", "minLength": 1},
-    "traceId": {"type": "string", "minLength": 1},
-    "ts": {"type": "string", "format": "date-time"},
-    "logicalSessionId": {"type": "string", "minLength": 1},
-    "runtimeSessionId": {"type": ["string", "null"]},
-    "runId": {"type": ["string", "null"]},
-    "turnId": {"type": ["string", "null"]},
-    "agent": {"type": ["string", "null"]},
-    "source": {"type": "string", "minLength": 1},
-    "provider": {"type": ["string", "null"]},
-    "model": {"type": ["string", "null"]},
-    "profileId": {"type": ["string", "null"]},
-    "harness": {"type": ["string", "null"]},
-    "kind": {"type": "string", "minLength": 1},
-    "level": {"enum": ["normal", "verbose", "forensic"]},
-    "summary": {"type": "string"},
-    "details": {"type": "object"},
-    "sourceRef": {
+  "$defs": {
+    "reference": {
       "type": "object",
       "properties": {
-        "file": {"type": "string"},
-        "seq": {"type": ["integer", "null"]},
-        "sessionKey": {"type": ["string", "null"]},
+        "type": {"enum": ["event", "human_message", "grant", "delegation", "context", "memory_claim", "raw"]},
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+        "localOnly": {"const": true}
+      },
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "allOf": [{"if": {"properties": {"type": {"const": "raw"}}}, "then": {"required": ["localOnly"]}}]
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["schemaVersion", "id", "ts", "logicalSessionId", "source", "kind", "level", "summary", "details"],
+      "allOf": [{"if": {"properties": {"schemaVersion": {"const": 2}}}, "then": {"required": ["traceId"]}}],
+      "properties": {
+        "schemaVersion": {"enum": [1, 2]},
+        "id": {"type": "string", "minLength": 1},
+        "traceId": {"type": "string", "minLength": 1},
+        "ts": {"type": "string", "format": "date-time"},
+        "logicalSessionId": {"type": "string", "minLength": 1},
+        "runtimeSessionId": {"type": ["string", "null"]},
         "runId": {"type": ["string", "null"]},
-        "messageId": {"type": ["string", "null"]}
+        "turnId": {"type": ["string", "null"]},
+        "agent": {"type": ["string", "null"]},
+        "source": {"type": "string", "minLength": 1},
+        "provider": {"type": ["string", "null"]},
+        "model": {"type": ["string", "null"]},
+        "profileId": {"type": ["string", "null"]},
+        "harness": {"type": ["string", "null"]},
+        "kind": {"type": "string", "minLength": 1},
+        "level": {"enum": ["normal", "verbose", "forensic"]},
+        "summary": {"type": "string"},
+        "details": {"type": "object"},
+        "sourceRef": {
+          "type": "object",
+          "properties": {
+            "file": {"type": "string"},
+            "seq": {"type": ["integer", "null"]},
+            "sessionKey": {"type": ["string", "null"]},
+            "runId": {"type": ["string", "null"]},
+            "messageId": {"type": ["string", "null"]}
+          }
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "text", "status"],
+            "properties": {
+              "id": {"type": "integer", "minimum": 1},
+              "text": {"type": "string", "minLength": 1},
+              "status": {"enum": ["addressed", "deferred", "blocked"]}
+            },
+            "additionalProperties": false
+          }
+        }
       }
     },
-    "coverage": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id", "text", "status"],
-        "properties": {
-          "id": {"type": "integer", "minimum": 1},
-          "text": {"type": "string", "minLength": 1},
-          "status": {"enum": ["addressed", "deferred", "blocked"]}
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {"const": 3},
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+        "traceId": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+        "logicalSessionId": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+        "runId": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+        "ts": {"type": "string", "format": "date-time"},
+        "source": {"const": "adapter"},
+        "kind": {
+          "enum": [
+            "action.tool",
+            "action.write",
+            "action.send",
+            "action.approval",
+            "action.schedule",
+            "context.selected",
+            "context.assembled",
+            "model.invoked",
+            "usage.cost",
+            "memory.retrieved",
+            "memory.proposed",
+            "memory.promoted",
+            "memory.superseded",
+            "memory.suppressed",
+            "memory.deleted"
+          ]
         },
-        "additionalProperties": false
-      }
+        "summary": {"type": "string"},
+        "details": {"type": "object", "properties": {}, "required": [], "additionalProperties": false},
+        "level": {"enum": ["normal", "verbose", "forensic"]},
+        "actor": {
+          "type": "object",
+          "properties": {
+            "identity": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+            "profileId": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}
+          },
+          "required": ["identity", "profileId"],
+          "additionalProperties": false
+        },
+        "agent": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+        "profileId": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+        "authority": {
+          "type": "object",
+          "properties": {
+            "result": {"enum": ["not_required", "human_message", "standing_grant", "delegated", "denied", "unknown"]},
+            "ref": {"anyOf": [{"$ref": "#/$defs/reference"}, {"type": "null"}]}
+          },
+          "required": ["result", "ref"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {"properties": {"result": {"const": "human_message"}}},
+              "then": {"properties": {"ref": {"allOf": [{"$ref": "#/$defs/reference"}, {"properties": {"type": {"const": "human_message"}}}]}}}
+            },
+            {
+              "if": {"properties": {"result": {"const": "standing_grant"}}},
+              "then": {"properties": {"ref": {"allOf": [{"$ref": "#/$defs/reference"}, {"properties": {"type": {"const": "grant"}}}]}}}
+            },
+            {
+              "if": {"properties": {"result": {"const": "delegated"}}},
+              "then": {"properties": {"ref": {"allOf": [{"$ref": "#/$defs/reference"}, {"properties": {"type": {"const": "delegation"}}}]}}}
+            }
+          ]
+        },
+        "policy": {
+          "type": "object",
+          "properties": {
+            "id": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+            "version": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+            "result": {"enum": ["allowed", "denied", "not_required", "unknown"]}
+          },
+          "required": ["id", "version", "result"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {"properties": {"result": {"enum": ["allowed", "denied", "not_required"]}}},
+              "then": {
+                "properties": {
+                  "id": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+                  "version": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}
+                }
+              }
+            }
+          ]
+        },
+        "sourceRef": {"$ref": "#/$defs/reference"},
+        "sourceRefs": {"type": "array", "items": {"$ref": "#/$defs/reference"}, "maxItems": 100},
+        "parentIds": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, "uniqueItems": true},
+        "reasonCode": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+        "enteredContext": {"type": ["boolean", "null"]},
+        "reversibility": {"enum": ["reversible", "outward", "irreversible", "unknown"]},
+        "outcome": {"enum": ["requested", "succeeded", "failed", "denied", "unknown"]},
+        "channel": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+        "tool": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+        "target": {
+          "type": "object",
+          "properties": {
+            "type": {"enum": ["path", "channel", "host", "repository", "schedule"]},
+            "id": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}
+          },
+          "required": ["type", "id"],
+          "additionalProperties": false
+        },
+        "memory": {
+          "type": "object",
+          "properties": {
+            "claimId": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+            "introducedBy": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+            "supersedes": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, "uniqueItems": true},
+            "visibility": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+            "projections": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, "uniqueItems": true}
+          },
+          "required": ["claimId", "introducedBy", "supersedes", "visibility", "projections"],
+          "additionalProperties": false
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "status": {"enum": ["exact", "estimated", "unavailable"]},
+            "usageId": {"type": "string", "minLength": 1, "maxLength": 256},
+            "tokens": {
+              "type": "object",
+              "properties": {
+                "input": {"type": "integer", "minimum": 0},
+                "output": {"type": "integer", "minimum": 0},
+                "cacheRead": {"type": "integer", "minimum": 0},
+                "cacheWrite": {"type": "integer", "minimum": 0},
+                "total": {"type": "integer", "minimum": 0}
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "amount": {"type": "number", "minimum": 0},
+            "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+            "basisRef": {"$ref": "#/$defs/reference"}
+          },
+          "required": ["status", "usageId", "tokens"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {"properties": {"status": {"enum": ["exact", "estimated"]}}},
+              "then": {"required": ["amount", "currency", "basisRef"]},
+              "else": {"not": {"anyOf": [{"required": ["amount"]}, {"required": ["currency"]}, {"required": ["basisRef"]}]}}
+            }
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "traceId",
+        "logicalSessionId",
+        "runId",
+        "ts",
+        "source",
+        "kind",
+        "summary",
+        "details",
+        "level",
+        "actor",
+        "agent",
+        "profileId",
+        "authority",
+        "policy",
+        "sourceRef",
+        "sourceRefs",
+        "parentIds",
+        "reasonCode",
+        "enteredContext",
+        "reversibility",
+        "outcome",
+        "channel",
+        "tool"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {"if": {"properties": {"kind": {"pattern": "^memory\\."}}}, "then": {"required": ["memory"]}},
+        {"if": {"properties": {"kind": {"const": "usage.cost"}}}, "then": {"required": ["cost"]}},
+        {
+          "if": {"properties": {"kind": {"enum": ["memory.promoted", "memory.superseded", "memory.suppressed", "memory.deleted"]}}},
+          "then": {"properties": {"memory": {"properties": {"introducedBy": {"type": "string", "minLength": 1}}}}}
+        },
+        {
+          "if": {"properties": {"authority": {"properties": {"result": {"const": "denied"}}}}},
+          "then": {"properties": {"policy": {"properties": {"result": {"const": "denied"}}}}}
+        }
+      ]
     }
-  }
+  ]
 }

@@ -22,6 +22,20 @@
       "mount": "/artifacts",
       "source": "framework:artifacts",
       "data": "data:artifacts"
+    },
+    {
+      "id": "sessions",
+      "visibility": "private",
+      "mount": "/sessions/",
+      "source": "framework-static:sessions",
+      "data": "data:generated/sessions/current.json"
+    },
+    {
+      "id": "activity",
+      "visibility": "private",
+      "mount": "/activity/",
+      "source": "framework-static:activity",
+      "data": "data:generated/indexes/activity"
     }
   ]
 }

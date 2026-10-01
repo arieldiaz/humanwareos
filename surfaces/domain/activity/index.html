@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Activity · Humanware OS</title><link rel="stylesheet" href="/humanware.css"><link rel="stylesheet" href="/activity/activity.css"></head>
+<body><main>
+<nav aria-label="System"><a href="/">System</a><a href="/sessions/">Sessions</a><a href="/activity/" aria-current="page">Activity</a></nav>
+<h1>Activity</h1><p id="health" role="status">Loading activity…</p>
+<form id="filters">
+<label>From (UTC)<input name="from" type="date"></label><label>Through (UTC)<input name="to" type="date"></label>
+<label>Identity<input name="identity" type="search"></label><label>Kind<input name="kind" type="search" placeholder="context, memory, action…"></label>
+<label>Target<input name="target" type="search"></label><label>Channel<input name="channel" type="search"></label>
+<label>Reversibility<select name="reversibility"><option value="">All</option><option>reversible</option><option>outward</option><option>irreversible</option><option>unknown</option></select></label>
+<button type="submit">Search</button></form>
+<h2>Spend by day and profile</h2><div id="spend" class="scroll"></div>
+<h2>Timeline</h2><p id="coverage" class="muted"></p><div id="timeline"></div>
+<h2>Memory lineage</h2><div id="lineage"></div>
+</main><script type="module" src="/activity/activity.js"></script></body></html>
