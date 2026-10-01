@@ -9,7 +9,7 @@ export const FINAL_SCHEMA = Object.freeze({
     status: {type: 'string', enum: ['act', 'scheduled']},
   },
 });
-export const FINAL_INSTRUCTION = 'Return your entire final response as one JSON object, without Markdown fences or surrounding prose: {"schemaVersion":1,"message":"your natural-language reply","status":"act|scheduled"}. The status is your explicit decision: act returns the turn to the human (including an ordinary answer); scheduled requires a verified durable wake in this conversation. Headings and reactions have no protocol meaning. Closure is host-owned and never a model status.';
+export const FINAL_INSTRUCTION = 'Return your entire final response as one JSON object, without Markdown fences or surrounding prose: {"schemaVersion":1,"message":"your natural-language reply","status":"act|scheduled"}. The status is your explicit decision: act returns the turn to the human (including an ordinary answer); scheduled requires a verified durable wake in this conversation. The message is text-only: never include MEDIA directives, attachments, or embedded images. Promote generated media through the instance artifact service and include its normal artifact link; if promotion fails, still return the useful text response and say the artifact is unavailable. Headings and reactions have no protocol meaning. Closure is host-owned and never a model status.';
 
 export function decodeFinal(text) {
   let value;
@@ -39,11 +39,23 @@ export function finalText(result, kind) {
   return result.assistantTexts?.join('\n\n') ?? '';
 }
 
-// Attachments are host-produced delivery facts, not extra model schema fields.
-export function finalMedia(result) {
-  const sent = new Set(result.messagingToolSentMediaUrls ?? []);
-  return [...new Set([
-    ...(result.payloads ?? []).flatMap(p => [...(p.mediaUrls ?? []), ...(p.mediaUrl ? [p.mediaUrl] : [])]),
-    ...(result.toolMediaUrls ?? []), ...(result.toolAutoDeliveryMediaUrls ?? []),
-  ])].filter(url => typeof url === 'string' && !sent.has(url));
+// Final delivery is text-only. A missed legacy attachment directive must not
+// change the payload kind or suppress the useful response.
+export function textOnlyMessage(input) {
+  let omitted = false;
+  const message = input
+    .replace(/^[ \t]*MEDIA:[^\n]*(?:\n|$)/gimu, () => { omitted = true; return ''; })
+    .replace(/!\[([^\]\n]*)\]\(([^)\n]+)\)/gu, (_match, label, target) => {
+      const name = label.trim() || 'Media';
+      if (/^https:\/\//iu.test(target.trim())) return `[${name}](${target.trim()})`;
+      omitted = true;
+      return name;
+    })
+    .replace(/\n{3,}/gu, '\n\n')
+    .trim();
+  return `${message || 'The media artifact is unavailable.'}${omitted ? '\n\nMedia omitted from this message.' : ''}`;
+}
+
+export function textOnlyFinal(final) {
+  return Object.freeze({...final, message: textOnlyMessage(final.message)});
 }

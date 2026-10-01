@@ -21,6 +21,7 @@ import {
   recordSessionClose,
 } from "./session-close.mjs";
 import {FinalRuntime, FINAL_RUNTIME} from "./final-runtime.mjs";
+import {textOnlyMessage} from "./final-envelope.mjs";
 import { startSlackWorkThread } from "../../slack-spin-out.mjs";
 import { readConversationFence, shouldSuppressConversationDelivery, conversationFenceRoute, isHumanSlackUserProfile } from "./conversation-fence.mjs";
 
@@ -439,7 +440,7 @@ const finalTransport = new AsyncLocalStorage();
 export async function sendFinalEnvelope(config, turn, sdk) {
   return finalTransport.run(turn, async () => {
   sdk ??= await loadCoreSdk('channel-outbound');
-  const parts = turn.closeOperation ? reportParts(turn.envelope.message) : [turn.envelope.message];
+  const parts = turn.closeOperation ? reportParts(turn.envelope.message) : [textOnlyMessage(turn.envelope.message)];
   const receipts = [];
   for (const [index, text] of parts.entries()) {
   const id = `humanware-final:${turn.key}${turn.closeOperation ? ':part:' + index : ''}`;
@@ -447,7 +448,7 @@ export async function sendFinalEnvelope(config, turn, sdk) {
     cfg: config, channel: 'slack', accountId: turn.accountId,
     to: `channel:${turn.route.channel}`, threadId: turn.route.threadId,
     session: sdk.buildOutboundSessionContext({cfg: config, agentId: turn.accountId, sessionKey: turn.sessionKey}),
-    payloads: [{text, ...(turn.mediaUrls?.length ? {mediaUrls: turn.mediaUrls} : {})}],
+    payloads: [{text}],
     deliveryIntentId: id, reusePendingDeliveryIntent: true,
     durability: 'required', queuePolicy: 'required', requireUnknownSendReconciliation: true,
     completionRetention: {idPrefix: 'humanware-final:', maxAgeMs: 86400000, maxEntries: 2000},
