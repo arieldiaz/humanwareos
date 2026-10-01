@@ -7,6 +7,7 @@ import {FinalRuntime} from './final-runtime.mjs';
 import {isCloseCommand, formatCloseReport, reportParts, summarizeTrajectory, writeCloseReport, recordSessionClose} from './session-close.mjs';
 import {conversationFenceKey} from './conversation-fence.mjs';
 import plugin, {sendFinalEnvelope} from './index.js';
+const manifest = JSON.parse(await readFile(new URL('./openclaw.plugin.json', import.meta.url)));
 const route = {channel: 'C123', threadId: '1790050400.000001'};
 const input = {messageId: '1790050402.000001', principal: 'UOWNER', accountId: 'max'};
 const params = {sessionKey: 'agent:max:slack:channel:c123:thread:1790050400.000001', runId: 'r1', agentId: 'max'};
@@ -24,6 +25,9 @@ async function fixture(t) {
     project: async status => {order.push(status);}};
   return {options, root, receipts, completed, files, order, runtime: new FinalRuntime(options)};
 }
+test('plugin schema accepts the owner principal required by host closure', () => {
+  assert.deepEqual(manifest.configSchema.properties.ownerUserId, {type: 'string', pattern: '^U[A-Z0-9]+$'});
+});
 test('exact command grammar never strips untrusted text into a command', () => {
   for (const text of ['close this', 'close it', 'mark this closed', 'OK, mark this closed', 'close this thread', ' Close this. ', 'CLOSE THIS!', '<@ULIV> close this', '<@ULIV> <@UMAX> Close this!']) assert.equal(isCloseCommand(text, ['ULIV','UMAX']), true, text);
   for (const text of ['please close this', 'close this?', 'close this and start another', "don't close this", '"close this"', '> close this', '`close this`', '```close this```', '<@UOTHER> close this', '<@ULIV>close this', 'close this!!', 'close this\nnow']) assert.equal(isCloseCommand(text, ['ULIV','UMAX']), false, text);
