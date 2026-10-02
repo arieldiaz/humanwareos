@@ -3,27 +3,26 @@ import {mkdtemp, readFile, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
-import {FinalRuntime} from './final-runtime.mjs';
+import {ThreadLifecycle} from './lifecycle.mjs';
 import {isCloseCommand, formatCloseReport, reportParts, summarizeTrajectory, writeCloseReport, recordSessionClose} from './session-close.mjs';
 import {conversationFenceKey} from './conversation-fence.mjs';
-import plugin, {sendFinalEnvelope} from './index.js';
+import plugin, {sendThreadMessage} from './index.js';
 const manifest = JSON.parse(await readFile(new URL('./openclaw.plugin.json', import.meta.url)));
 const route = {channel: 'C123', threadId: '1790050400.000001'};
 const input = {messageId: '1790050402.000001', principal: 'UOWNER', accountId: 'max'};
-const params = {sessionKey: 'agent:max:slack:channel:c123:thread:1790050400.000001', runId: 'r1', agentId: 'max'};
-const result = {assistantTexts: [JSON.stringify({schemaVersion: 1, message: 'Recorded result', status: 'act'})]};
+const params = {sessionKey: 'agent:max:slack:channel:c123:thread:1790050400.000001', runId: 'r1'};
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'host-close-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   const receipts = new Map(), completed = new Set(), files = new Map(), order = [];
   const options = {root,
-    record: async () => {}, fault: async () => {}, wakes: async () => [],
+    record: async () => {}, fault: async () => {},
     snapshot: async close => {order.push('snapshot'); return {report: formatCloseReport({agent: close.accountId}), evidence: close.evidence};},
     writeReport: async close => {order.push('file'); files.set(close.key, close.snapshot.report);},
     send: async close => {order.push('send'); if (!receipts.has(close.key)) receipts.set(close.key, {messageId: 'receipt:' + close.key}); return receipts.get(close.key);},
     completeClose: async close => {order.push('completion'); completed.add(close.key);},
     project: async status => {order.push(status);}};
-  return {options, root, receipts, completed, files, order, runtime: new FinalRuntime(options)};
+  return {options, root, receipts, completed, files, order, runtime: new ThreadLifecycle(options)};
 }
 test('plugin schema accepts the owner principal required by host closure', () => {
   assert.deepEqual(manifest.configSchema.properties.ownerUserId, {type: 'string', pattern: '^U[A-Z0-9]+$'});
@@ -73,10 +72,10 @@ for (const boundary of ['snapshot', 'writeReport', 'send', 'completeClose', 'pro
   const state = JSON.parse(await readFile(join(f.root, 'final-decisions.json')));
   assert.notEqual(Object.values(state.closes)[0].phase, 'complete');
   assert.notEqual(state.conversations[conversationFenceKey(route)].status, 'closed');
-  await new FinalRuntime(f.options).recover();
+  await new ThreadLifecycle(f.options).recover();
   assert.equal(f.receipts.size, 1); assert.equal(f.completed.size, 1);
   assert.equal(f.order.at(-1), 'closed');
-  await new FinalRuntime(f.options).recover();
+  await new ThreadLifecycle(f.options).recover();
   assert.equal(f.receipts.size, 1);
 });
 test('closed is soft: the next admitted run replaces ✅ through ordinary admission and can be closed again', async t => {
@@ -85,35 +84,34 @@ test('closed is soft: the next admitted run replaces ✅ through ordinary admiss
   assert.equal(f.order.at(-1), 'closed');
   await f.runtime.closeCommand(route, {...input, messageId: '1790050403.000001'});
   assert.equal(f.receipts.size, 1);
-  await f.runtime.run({...params, runId: 'r2'}, async () => result, 'codex');
-  assert.deepEqual(f.order.slice(-3), ['working', 'send', 'act']);
+  await f.runtime.start({...params, runId: 'r2'});
+  await f.runtime.start({...params, runId: 'r2'});
+  await f.runtime.end({...params, runId: 'r2'});
+  assert.deepEqual(f.order.slice(-2), ['working', 'act']);
   assert.equal((await f.runtime.state(state => state.conversations[key])).status, 'act');
-  assert.equal(f.receipts.size, 2);
   await f.runtime.closeCommand(route, {...input, messageId: '1790050404.000001'});
   assert.equal(f.order.at(-1), 'closed');
-  assert.equal(f.receipts.size, 3); assert.equal(f.completed.size, 2);
+  assert.equal(f.receipts.size, 2); assert.equal(f.completed.size, 2);
 });
-test('a transport that suppressed every payload settles the decision instead of retrying', async t => {
-  const f = await fixture(t);
-  f.runtime.send = async () => ({suppressed: ['no_visible_payload'], parts: []});
-  await f.runtime.run(params, async () => result, 'codex');
-  const turn = await f.runtime.state(state => Object.values(state.turns)[0]);
-  assert.equal(turn.phase, 'sent'); assert.deepEqual(turn.suppressed, ['no_visible_payload']);
-  assert.equal(f.order.at(-1), 'act');
+test('a send the hook suppressed is reported as settled, not retried', async () => {
   const sdk = {buildOutboundSessionContext: value => value, sendDurableMessageBatch: async () => ({status: 'suppressed', payloadOutcomes: [{reason: 'cancelled_by_message_sending_hook'}]})};
-  assert.deepEqual(await sendFinalEnvelope({}, {key: 'k', route, envelope: {message: 'text'}}, sdk), {parts: [], suppressed: ['cancelled_by_message_sending_hook']});
+  assert.deepEqual(await sendThreadMessage({}, {key: 'k', route, text: 'text'}, sdk), {parts: [], suppressed: ['cancelled_by_message_sending_hook']});
 });
-test('an already-started send settles before reservation; later final cannot overwrite closed tile', async t => {
-  const f = await fixture(t); let release, entered;
-  const started = new Promise(resolve => {entered = resolve;});
-  const gate = new Promise(resolve => {release = resolve;});
-  f.runtime.send = async turn => {if (!turn.closeOperation) {entered(); await gate;} return f.options.send(turn);};
-  const task = f.runtime.run(params, async () => result, 'codex');
-  await started;
-  const close = f.runtime.closeCommand(route, input);
-  release(); await Promise.all([task, close]);
+test('a run that ends after a close cannot overwrite the closed tile', async t => {
+  const f = await fixture(t);
+  await f.runtime.start(params);
+  await f.runtime.closeCommand(route, input);
+  await f.runtime.end(params);
   assert.equal(f.order.at(-1), 'closed');
-  assert.equal(f.receipts.size, 2);
+});
+test('a run interrupted by restart restores the prior status', async t => {
+  const f = await fixture(t);
+  await f.runtime.start(params);
+  await f.runtime.end(params);
+  await f.runtime.start({...params, runId: 'r2'});
+  await new ThreadLifecycle(f.options).recover();
+  assert.deepEqual(f.order, ['working', 'act', 'working', 'act']);
+  assert.equal((await f.runtime.state(state => Object.values(state.turns).at(-1))).phase, 'failed');
 });
 test('missing metrics are not zero; partial counters and context are labeled', () => {
   const usage = summarizeTrajectory([{type: 'model.completed', modelId: 'model', data: {usage: {input: 0}}}, {type: 'model.completed', modelId: 'model', data: {usage: {output: 4}}}]);
@@ -135,9 +133,9 @@ test('segmented report retries reuse stable per-part receipts and preserve seman
     if (fail && receipts.size === 2) {fail = false; throw new Error('ambiguous receipt');}
     return {status: 'sent', results: [receipts.get(value.deliveryIntentId)]};
   }};
-  const turn = {key: 'close:0', closeOperation: 'close:0', accountId: 'max', route, envelope: {message: report}};
-  await assert.rejects(sendFinalEnvelope({}, turn, sdk));
-  await sendFinalEnvelope({}, turn, sdk);
+  const turn = {key: 'close:0', closeOperation: 'close:0', accountId: 'max', route, text: report};
+  await assert.rejects(sendThreadMessage({}, turn, sdk));
+  await sendThreadMessage({}, turn, sdk);
   assert.equal(sent.join(''), report); assert.equal(receipts.size, parts.length);
 });
 test('completion event is operation-idempotent and matches the already written Markdown', async t => {
@@ -155,7 +153,7 @@ test('root command gives only a thread instruction, never a closure reservation'
   runtime.send = async turn => {sends.push(turn); return {messageId: 'receipt'};};
   runtime.closeCommand = async () => assert.fail('root must not reserve a closure');
   assert.equal(await runtime.slackClose({accountId: 'max', message: {channel: 'C123', ts: input.messageId, user: 'UOWNER', text: 'close this'}}), true);
-  assert.match(sends[0].envelope.message, /inside the thread/);
+  assert.match(sends[0].text, /inside the thread/);
   assert.equal(sends[0].route.threadId, input.messageId);
 });
 test('expired uncertain close receipt stops for reconciliation', async t => {
@@ -163,7 +161,7 @@ test('expired uncertain close receipt stops for reconciliation', async t => {
   f.runtime.send = async () => {throw new Error('unknown');};
   await assert.rejects(f.runtime.closeCommand(route, input));
   await f.runtime.state(state => {Object.values(state.closes)[0].sendStartedAt = Date.now() - 86400001;});
-  await new FinalRuntime(f.options).recover();
+  await new ThreadLifecycle(f.options).recover();
   assert.equal(f.receipts.size, 0);
   assert.equal((await f.runtime.state(state => Object.values(state.closes)[0])).phase, 'sending');
   assert.notEqual((await f.runtime.state(state => state.conversations[conversationFenceKey(route)])).status, 'closed');
@@ -179,7 +177,7 @@ for (const phase of ['reserved', 'snapshot', 'file', 'sending', 'delivered', 're
     return result;
   });
   await assert.rejects(f.runtime.closeCommand(route, input), /persistence/);
-  const restarted = new FinalRuntime(f.options);
+  const restarted = new ThreadLifecycle(f.options);
   // The durable ingress retries the same raw source event if reservation itself
   // never committed. Once reserved, startup recovery needs no inbound/model turn.
   if (phase === 'reserved') await restarted.closeCommand(route, input);
@@ -195,18 +193,6 @@ test('existing journal owner binds sender even when the routing projection is ab
     state.conversations[key] = {status: 'act', owner: key + ':old'};
   });
   assert.equal(await f.runtime.sender(route), 'liv');
-  await f.runtime.run(params, async () => result, 'codex');
+  await f.runtime.start(params);
   assert.equal(await f.runtime.sender(route), 'max');
-});
-
-test('an old delivered model-closed decision is retained as a fault, not completed by recovery', async t => {
-  const f = await fixture(t), conversation = conversationFenceKey(route), key = conversation + ':legacy-close';
-  await f.runtime.state(state => {
-    state.conversations[conversation] = {owner: key, status: 'act'};
-    state.turns[key] = {key, route, conversation, phase: 'delivered', messageId: 'old-ack', envelope: {schemaVersion: 1, message: 'Closed.', status: 'closed'}};
-  });
-  await f.runtime.recover();
-  assert.equal((await f.runtime.state(state => state.turns[key])).phase, 'delivered');
-  assert.equal(f.completed.size, 0); assert.equal(f.receipts.size, 0);
-  assert.equal(f.order.includes('closed'), false);
 });

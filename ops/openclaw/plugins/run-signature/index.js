@@ -19,8 +19,7 @@ import {
   measureSlackThread,
   recordSessionClose,
 } from "./session-close.mjs";
-import {FinalRuntime, FINAL_RUNTIME} from "./final-runtime.mjs";
-import {textOnlyMessage} from "./final-envelope.mjs";
+import {ThreadLifecycle, CLOSE_OWNER} from "./lifecycle.mjs";
 import { startSlackWorkThread } from "../../slack-spin-out.mjs";
 
 export {
@@ -45,7 +44,6 @@ const FAULT_JOURNAL = `${STATE_ROOT}/run-signature/faults.jsonl`;
 const OUTBOUND_EMOJI = {
   act: "raised_hand",
   working: "arrows_counterclockwise",
-  scheduled: "calendar",
   closed: "white_check_mark",
 };
 
@@ -433,12 +431,14 @@ export function loadCoreSdk(name) {
   return import(join(process.env.OPENCLAW_PACKAGE_ROOT || '/opt/homebrew/lib/node_modules/openclaw', 'dist', 'plugin-sdk', `${name}.js`));
 }
 
-const finalTransport = new AsyncLocalStorage();
+const closeTransport = new AsyncLocalStorage();
 
-export async function sendFinalEnvelope(config, turn, sdk) {
-  return finalTransport.run(turn, async () => {
+// Host-owned thread messages (the close report and the root close hint) go
+// through the supported durable sender; model replies use stock delivery.
+export async function sendThreadMessage(config, turn, sdk) {
+  return closeTransport.run(turn, async () => {
   sdk ??= await loadCoreSdk('channel-outbound');
-  const parts = turn.closeOperation ? reportParts(turn.envelope.message) : [textOnlyMessage(turn.envelope.message)];
+  const parts = turn.closeOperation ? reportParts(turn.text) : [turn.text];
   const receipts = [];
   let suppressed;
   for (const [index, text] of parts.entries()) {
@@ -483,7 +483,7 @@ export default {
     const faultedRoots = new Set();
     const serializeRunStrip = createKeyedSerialQueue();
 
-    const finalRuntime = new FinalRuntime({
+    const lifecycle = new ThreadLifecycle({
       root: join(STATE_ROOT, 'run-signature'),
       excluded: isExcludedChannel,
       project: async (status, turn) => {
@@ -499,12 +499,7 @@ export default {
         channel: turn.route.channel, threadId: turn.route.threadId, status: turn.status,
         agent: turn.accountId, sessionKey: turn.sessionKey, runId: turn.runId, recovery: turn.recovery}),
       fault: (turn, reason) => appendFaultJournal({runId: turn.runId, channel: turn.route.channel, rootTs: turn.route.threadId, reason}),
-      send: turn => sendFinalEnvelope(api.config, turn),
-      wakes: async sessionKey => {
-        const sdk = await loadCoreSdk('cron-store-runtime');
-        const store = await sdk.loadCronStore(sdk.resolveCronStorePath(api.config?.cron?.store));
-        return (store.jobs ?? []).filter(job => job.sessionKey === sessionKey);
-      },
+      send: turn => sendThreadMessage(api.config, turn),
       snapshot: async close => {
         const accounts = await import(resolveSlackRuntimeModule('accounts'));
         const token = accounts.resolveSlackAccount({cfg: api.config, accountId: close.accountId})?.botToken;
@@ -521,10 +516,8 @@ export default {
         const stats = messages.length ? measureSlackThread(messages) : undefined;
         const usage = await Promise.all(Object.keys(api.config?.channels?.slack?.accounts ?? {}).map(async agent => ({agent,
           usage: await loadThreadUsage({agent, channel: close.route.channel, thread: close.route.threadId, before: snapshotThrough})})));
-        const outcomes = close.evidence.filter(turn => turn.phase === 'sent' && turn.message).map(turn => turn.message);
-        const followUps = close.evidence.filter(turn => !['sent', 'failed'].includes(turn.phase) || turn.status === 'scheduled')
-          .map(turn => `${turn.runId}: ${turn.status === 'scheduled' ? 'scheduled work remains unresolved' : 'work unresolved at closure'}`);
-        const snapshot = {summary: 'Recap evidence is limited. Recorded replies are evidence, not independent verification of success.', outcomes, followUps, stats, usage,
+        const followUps = close.evidence.filter(turn => turn.phase === 'running').map(turn => `${turn.runId}: work unresolved at closure`);
+        const snapshot = {summary: 'Recap evidence is limited. Recorded replies are evidence, not independent verification of success.', followUps, stats, usage,
           boundary: `thread messages and timestamped usage through reservation ${latest} (source ${close.sourceMessageId}); later work and this report excluded`};
         return {...snapshot, report: formatCloseReport({...snapshot, agent: close.accountId})};
       },
@@ -536,11 +529,15 @@ export default {
         await recordOutboundStatus({dataRoot: resolveDataRoot(api.config, api.pluginConfig, close.accountId), channel: close.route.channel, threadId: close.route.threadId, status: 'closed', agent: close.accountId, sessionKey: close.sessionKey, runId: close.key});
       },
     });
-    globalThis[FINAL_RUNTIME] = finalRuntime;
-    api.on('gateway_start', () => finalRuntime.recover());
-    api.on('before_tool_call', (event, ctx) => {
-      if (finalRuntime.active.get(ctx.runId ?? event.runId)?.repair)
-        return {block: true, blockReason: 'Final-envelope repair cannot repeat tools'};
+    globalThis[CLOSE_OWNER] = lifecycle;
+    api.on('gateway_start', () => lifecycle.recover());
+    const lifecycleHook = transition => async (event, ctx) => {
+      try { await lifecycle[transition]({sessionKey: event.sessionKey ?? ctx.sessionKey, runId: event.runId ?? ctx.runId}); }
+      catch (error) { await appendFaultJournal({runId: event.runId ?? ctx.runId, reason: `Lifecycle ${transition}: ${String(error)}`}); }
+    };
+    api.on('llm_input', lifecycleHook('start'));
+    api.on('agent_end', lifecycleHook('end'));
+    api.on('before_tool_call', (event) => {
       const params = event.params ?? {};
       const emoji = String(params.emoji ?? '').replaceAll(':', '');
       if (/(?:^|__)message$/.test(event.toolName) && params.action === 'react' &&
@@ -611,7 +608,7 @@ export default {
       };
     }, { name: "start_work_thread" });
 
-    finalRuntime.slackClose = async ({message, accountId}) => {
+    lifecycle.slackClose = async ({message, accountId}) => {
       if (isExcludedChannel(message.channel) || message.bot_id || message.subtype || message.is_forwarded || message._ambiguousThreadReply) return false;
       const botUserIds = [];
       if (String(message.text ?? '').trim().startsWith('<@')) {
@@ -627,18 +624,18 @@ export default {
       if (!principal || !/^U[A-Z0-9]+$/.test(principal)) throw new Error('Owner-only closure requires configured ownerUserId');
       if (message.user !== principal) return false;
       const thread = message.thread_ts;
-      const sender = thread ? await finalRuntime.sender({channel: message.channel, threadId: thread}) : undefined;
+      const sender = thread ? await lifecycle.sender({channel: message.channel, threadId: thread}) : undefined;
       const configuredSender = String(sender ?? accountId ?? '');
       if (!api.config?.channels?.slack?.accounts?.[configuredSender]) throw new Error('Closure requires a configured Slack sender');
       if (accountId !== configuredSender) return true;
       if (!thread || thread === message.ts) {
-        await finalRuntime.send({key: `close-root:${message.channel}:${message.ts}`,
+        await lifecycle.send({key: `close-root:${message.channel}:${message.ts}`,
           route: {channel: message.channel, threadId: message.ts}, accountId: configuredSender,
           sessionKey: `agent:${configuredSender}:slack:channel:${message.channel.toLowerCase()}:thread:${message.ts}`,
-          envelope: {message: 'Reply “close this” inside the thread you want to close.'}});
+          text: 'Reply “close this” inside the thread you want to close.'});
         return true;
       }
-      await finalRuntime.closeCommand({channel: message.channel, threadId: thread}, {
+      await lifecycle.closeCommand({channel: message.channel, threadId: thread}, {
         messageId: message.ts, principal, accountId: configuredSender});
       return true;
     };
@@ -709,20 +706,13 @@ export default {
       await appendFaultJournal({ channel, rootTs, recovered: true });
     };
 
-    api.on('reply_payload_sending', async (event, ctx) => {
-      try { return await finalRuntime.prepare(event, ctx); }
-      catch (error) {
-        await appendFaultJournal({runId: event.runId, reason: String(error)});
-        return {cancel: true, reason: 'Final contract rejected delivery'};
-      }
-    });
     api.on('message_sent', async (event, ctx) => {
       try { await reactToSentMessage(event, ctx); }
       catch (error) { await appendFaultJournal({reason: `Run signature: ${String(error)}`}); }
     });
 
     async function reactToSentMessage(event, ctx) {
-      if (finalTransport.getStore()?.closeOperation) return;
+      if (closeTransport.getStore()?.closeOperation) return;
       if (ctx.channelId !== "slack" || !event.success || !event.messageId) return;
       const channel = resolveSlackChannelId(event, ctx);
       // Guest channel: no signature, no tile — no ops provenance at all there.
