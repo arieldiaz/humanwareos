@@ -1,12 +1,12 @@
 # Response envelope
 
-The one conversational contract for every identity and harness. Identity owns voice and judgment; [status-framework.md](status-framework.md) owns the machine envelope and lifecycle.
+The one conversational contract for every identity and harness. Identity owns voice and judgment; [status-framework.md](status-framework.md) owns lifecycle.
 
 Budget: 400 words.
 
 ## Boundary
 
-The control plane marks an admitted turn working. The selected execution path returns one final envelope; the adapter publishes a response once or nothing for silence. Models do not post kickoff messages, progress narration, transport state, or run signatures. Checkpoints remain in the session ledger.
+The control plane marks an admitted turn working. The selected execution path returns one plain Markdown final; `NO_REPLY` is silence. Models do not post kickoff messages, progress narration, transport state, or run signatures. Checkpoints remain in the session ledger.
 
 ## Final message
 

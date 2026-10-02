@@ -49,7 +49,9 @@ test("registers transport hooks without semantic collaboration hooks", () => {
   assert.equal(hooks.includes("before_dispatch"), false);
   assert.equal(hooks.includes("before_prompt_build"), false);
   assert.equal(hooks.includes("before_tool_call"), true);
-  assert.ok(hooks.includes("reply_payload_sending"));
+  assert.equal(hooks.includes("reply_payload_sending"), false);
+  assert.ok(hooks.includes("llm_input"));
+  assert.ok(hooks.includes("agent_end"));
   assert.ok(hooks.includes("message_sent"));
 });
 
@@ -567,15 +569,14 @@ test('agent reaction calls cannot add, remove, or clear lifecycle tiles', () => 
   assert.equal(guard({toolName: 'message', params: {action: 'react', emoji: 'thumbsup'}}, {}), undefined);
 });
 
-test('final publication uses the supported durable sender with stable queue custody', async () => {
-  const {sendFinalEnvelope} = await import('./index.js');
+test('host thread messages use the supported durable sender with stable queue custody', async () => {
+  const {sendThreadMessage} = await import('./index.js');
   const calls = [];
-  const turn = {key: 'conversation:run', accountId: 'max', sessionKey: 'session', route: {channel: 'C123', threadId: 'root'}, envelope: {message: 'Unchanged.\n\nMEDIA:broken.png'}, mediaUrls: ['broken.png']};
+  const turn = {key: 'conversation:run', accountId: 'max', sessionKey: 'session', route: {channel: 'C123', threadId: 'root'}, text: 'Unchanged.'};
   const sdk = {buildOutboundSessionContext: params => params, sendDurableMessageBatch: async params => {calls.push(params); return {status: 'sent', results: [{messageId: 'receipt'}]};}};
-  assert.equal((await sendFinalEnvelope({}, turn, sdk)).messageId, 'receipt');
+  assert.equal((await sendThreadMessage({}, turn, sdk)).messageId, 'receipt');
   assert.equal(calls[0].deliveryIntentId, 'humanware-final:conversation:run');
   assert.equal(calls[0].durability, 'required');
   assert.equal(calls[0].requireUnknownSendReconciliation, true);
-  assert.equal(calls[0].payloads[0].text, 'Unchanged.\n\nMedia omitted from this message.');
-  assert.equal(calls[0].payloads[0].mediaUrls, undefined);
+  assert.equal(calls[0].payloads[0].text, 'Unchanged.');
 });
