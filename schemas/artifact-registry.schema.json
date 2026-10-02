@@ -5,15 +5,19 @@
   "type": "object",
   "required": ["schemaVersion", "projects"],
   "properties": {
-    "schemaVersion": {"const": 1},
+    "schemaVersion": {"const": 2},
     "projects": {
       "type": "array",
       "items": {
         "type": "object",
         "required": ["id", "name", "artifacts"],
         "properties": {
-          "id": {"$ref": "#/$defs/slug"},
+          "id": {"$ref": "versioned-item.schema.json#/$defs/slug"},
           "name": {"type": "string", "minLength": 1},
+          "aliases": {
+            "type": "array",
+            "items": {"$ref": "versioned-item.schema.json#/$defs/slug"}
+          },
           "artifacts": {
             "type": "array",
             "items": {"$ref": "#/$defs/artifact"}
@@ -25,19 +29,22 @@
   },
   "additionalProperties": false,
   "$defs": {
-    "slug": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
     "artifact": {
+      "description": "A stable artifact is a versioned item (docs/versioning.md). Its url is derived as /artifacts/<project>/<id>/.",
       "type": "object",
-      "required": ["id", "project", "title", "number", "date_label", "type"],
+      "required": ["id", "project", "title", "type", "current_version", "versions"],
       "properties": {
-        "id": {"$ref": "#/$defs/slug"},
-        "project": {"$ref": "#/$defs/slug"},
+        "id": {"$ref": "versioned-item.schema.json#/$defs/slug"},
+        "project": {"$ref": "versioned-item.schema.json#/$defs/slug"},
         "title": {"type": "string", "minLength": 1},
-        "number": {"type": ["string", "integer"]},
-        "date_label": {"type": "string", "minLength": 1},
         "type": {"const": "html"},
         "target": {"type": "string", "minLength": 1},
-        "supersedes": {"type": "string", "minLength": 1}
+        "current_version": {"$ref": "versioned-item.schema.json#/$defs/slug"},
+        "versions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "versioned-item.schema.json#/$defs/version"}
+        }
       },
       "additionalProperties": false
     }
