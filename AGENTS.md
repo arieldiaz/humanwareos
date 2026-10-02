@@ -40,6 +40,7 @@ Memory stores facts, decisions, and project state, never behavioral rules. Apply
 - `docs/system-boundaries.md` and `docs/data-plane.md` — placement, provenance, and durability.
 - `docs/runtime.md` — immutable builds, activation, rollback, and restart safety.
 - `docs/design-agent.md` — visual and interface work.
+- `docs/figure-style.md` — decks, slides, and figures.
 - `docs/domain-surface.md` — public and private domain surfaces.
 
 Instance facts belong in `AGENTS-instance.md` and `docs/*-instance.md`. Those files may narrow declared choices but may not copy generic rules.
