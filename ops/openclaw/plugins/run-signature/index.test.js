@@ -64,8 +64,7 @@ test("registers one atomic Slack work-thread tool with the normal high-reasoning
       tools.push({ factory, options });
     },
   });
-  assert.equal(tools.length, 1);
-  assert.equal(tools[0].options.name, "start_work_thread");
+  assert.deepEqual(tools.map(tool => tool.options.name), ["start_work_thread", "close_thread"]);
   assert.equal(tools[0].factory({ messageChannel: "discord", agentId: "max" }), undefined);
   const tool = tools[0].factory({
     messageChannel: "slack",

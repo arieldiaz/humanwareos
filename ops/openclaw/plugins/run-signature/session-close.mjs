@@ -129,17 +129,6 @@ export async function writeCloseReport({dataRoot, operationId, report}) {
   return viewPath;
 }
 
-// No stripping of quotations, arbitrary prefixes or attachments into commands.
-export function isCloseCommand(text, botIds = []) {
-  let remaining = String(text ?? '').trim();
-  while (remaining.startsWith('<@')) {
-    const match = remaining.match(/^<@([A-Z0-9]+)>\s+/);
-    if (!match || !botIds.includes(match[1])) return false;
-    remaining = remaining.slice(match[0].length);
-  }
-  return /^(?:ok[,!]?\s+)?(?:close this|close it|mark this closed|close (?:this )?thread)[.!]?$/i.test(remaining);
-}
-
 export function reportParts(report, limit = 3000) {
   const parts = [];
   let rest = report;

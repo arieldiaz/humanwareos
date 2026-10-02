@@ -2,10 +2,6 @@ import {mkdir, readFile, writeFile, rename} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
 import {conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
 
-// Read by the installed Slack owner-close edit. The symbol keeps its historical
-// name because already-patched bundles look it up.
-export const CLOSE_OWNER = Symbol.for('humanware.final-envelope.v1');
-
 // Durable per-thread lifecycle journal; the append-only session ledger is its
 // public projection. Status derives from the run lifecycle (working → act) plus
 // host close. Status is soft: the latest admitted run owns the root tile, and a
@@ -41,12 +37,6 @@ export class ThreadLifecycle {
     if (!key) throw new Error('Canonical closure route is unavailable');
     return state.conversations[key] ??= {};
   }
-  async sender(route) {
-    return this.state(state => {
-      const conversation = state.conversations[conversationFenceKey(route)];
-      return conversation?.sender ?? state.turns[conversation?.owner]?.accountId ?? state.closes?.[conversation?.closeOperation]?.accountId;
-    });
-  }
   async reserveClose(route, {messageId, principal, accountId}) {
     if (!messageId || !principal || !accountId) throw new Error('Closure requires source, principal and configured sender');
     return this.state(state => {
@@ -69,6 +59,12 @@ export class ThreadLifecycle {
       Object.assign(conversation, {owner: key, closeOperation: key});
       return key;
     });
+  }
+  // The owner's request is recorded during the run and takes effect when it ends.
+  async requestClose(sessionKey, input) {
+    const route = this.route(sessionKey);
+    if (!route) throw new Error('Closure needs a Slack thread');
+    await this.state(state => {this.conversation(state, route).pendingClose = input;});
   }
   async closeCommand(route, input) {
     const key = await this.reserveClose(route, input);
@@ -129,7 +125,7 @@ export class ThreadLifecycle {
       const turn = {key, route, conversation, runId, sessionKey, accountId: sessionKey.split(':')[1],
         previous: boundary.status, phase: 'running', startedAt: Date.now()};
       state.turns[key] = turn;
-      Object.assign(boundary, {owner: key, sender: turn.accountId});
+      boundary.owner = key;
       await this.settle(state, turn, 'working');
     });
   }
@@ -137,12 +133,17 @@ export class ThreadLifecycle {
   async end({sessionKey, runId}) {
     const route = this.route(sessionKey);
     if (!route || !runId) return;
-    await this.state(async state => {
+    const close = await this.state(async state => {
       const turn = state.turns[`${conversationFenceKey(route)}:${runId}`];
       if (turn?.phase !== 'running') return;
       turn.phase = 'done';
       await this.settle(state, turn, 'act');
+      const conversation = state.conversations[turn.conversation];
+      const pending = conversation.pendingClose;
+      delete conversation.pendingClose;
+      return pending;
     });
+    if (close) await this.closeCommand(route, close);
   }
   async settle(state, turn, status, recovery) {
     const conversation = state.conversations[turn.conversation];
@@ -162,6 +163,8 @@ export class ThreadLifecycle {
     await this.state(async state => {
       for (const turn of Object.values(state.turns).filter(turn => turn.phase === 'running')) {
         turn.phase = 'failed';
+        // A close requested by an interrupted run is dropped, never applied to a later run.
+        delete state.conversations[turn.conversation]?.pendingClose;
         try {
           await this.fault(turn, 'Execution interrupted by restart');
           await this.settle(state, turn, turn.previous ?? null, true);
