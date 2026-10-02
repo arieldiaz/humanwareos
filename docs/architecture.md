@@ -1,6 +1,6 @@
 # Architecture
 
-Humanware OS is the reusable framework for durable human-agent systems. An installation combines a pinned framework release, a private instance configuration, and a separately governed data plane into an immutable runtime. Conversation surfaces, model providers, and coding harnesses are adapters around that core.
+Humanware OS is the reusable framework for durable human-agent systems. An installation combines a pinned framework release, My Humanware configuration, and separately governed Humanware Data into an immutable runtime. Conversation surfaces, model providers, and coding harnesses are adapters around that core.
 
 Budget: 1,200 words. Over it, consolidate into the owning specification.
 
@@ -9,10 +9,10 @@ Budget: 1,200 words. Over it, consolidate into the owning specification.
 ```text
 Humanware OS framework ─┐
                        ├─► immutable runtime ─► agent core ─► tools and data
-private instance config ┘          ▲                  ▲
+My Humanware config    ┘          ▲                  ▲
                                   │                  │
-                        channel adapters      Ariel Data plane
-                        Slack · app · Buzz     stream · memory · work
+                        channel adapters      Humanware Data
+                        Slack · app           stream · memory · work
                                   │
                                   ▼
                                 human
@@ -32,7 +32,7 @@ The detailed contract is in [Channels, agents, and execution profiles](channel-r
 
 ## Replaceable interfaces
 
-Slack is the supported reference channel, not the architecture. Buzz and a first-party Humanware application can implement the same adapter contract. A channel adapter translates inbound identity and thread metadata into a canonical conversation event, then translates the agent's final response and lifecycle state back to the surface. Channel-specific rendering never owns agent identity or memory.
+Slack is the supported reference channel, not the architecture. A first-party Humanware application can implement the same adapter contract. A channel adapter translates inbound identity and thread metadata into a canonical conversation event, then translates the agent's final response and lifecycle state back to the surface. Channel-specific rendering never owns agent identity or memory.
 
 ## Data and memory
 
@@ -51,11 +51,11 @@ Data does not live in either source repository. Behavioral rules never enter thr
 
 A complete installation has a domain surface with public and private halves. The public half explains and publishes intentionally shared work. The private half exposes dashboards, usage, tokens, sessions, security, artifacts, and operational controls to authorized clients. The framework provides the shell, route contract, deployment adapters, and access-control hooks. The instance supplies the domain, branding, enabled routes, private origin, and publication policy.
 
-The reference Ariel installation uses `os.arieldiaz.com` for its private frontend. The same framework can run on an always-on Mac, behind Tailscale, or in a cloud deployment. See [Domain surface](domain-surface.md).
+The reference installation uses `os.arieldiaz.com` for its private frontend. The same framework can run on an always-on Mac, behind Tailscale, or in a cloud deployment. See [Domain surface](domain-surface.md).
 
 ## Source and deployment flow
 
-Humanware OS is the upstream. A private instance pins a tested framework revision and contains only instance-owned configuration or code. Generic improvements return upstream first; the instance adopts them by advancing its lock. Temporary downstream patches carry an upstream reference, owner, and expiration.
+Humanware OS is the upstream. My Humanware pins a tested framework revision and contains only instance-owned configuration or code. Generic improvements return upstream first; the instance adopts them by advancing its lock. Temporary downstream patches carry an upstream reference, owner, and expiration.
 
 All changes use isolated task worktrees. The deployed checkout and generated runtime are read-only. A deployment builds a new runtime directory, verifies its manifest and end-to-end health, then atomically changes a `current` reference. Rollback changes that reference to the previous verified build.
 

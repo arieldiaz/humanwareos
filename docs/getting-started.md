@@ -4,7 +4,7 @@ This guide creates one Humanware OS installation and verifies a real conversatio
 
 ## 1. Prepare the host and accounts
 
-The reference host is an always-on Apple Silicon Mac. You need Git, `jq`, a supported model or subscription, a secrets manager, and a channel. GitHub CLI is recommended for the private instance. Slack plus OpenClaw is the supported first channel; neither is part of the core architecture.
+The reference host is an always-on Apple Silicon Mac. You need Git, `jq`, a supported model or subscription, a secrets manager, and a channel. GitHub CLI is recommended for My Humanware. Slack plus OpenClaw is the supported first channel; neither is part of the core architecture.
 
 For the complete reference setup, add a Cloudflare-managed domain. Its public half can describe the system or publish selected artifacts. Its private half can expose status, usage, tokens, design review, and artifact modules from the local host. A later cloud deployment uses the same route manifest.
 
@@ -13,21 +13,21 @@ For the complete reference setup, add a Cloudflare-managed domain. Its public ha
 Run the installer from a Humanware OS checkout:
 
 ```bash
-./install.sh /absolute/path/to/my-instance --repo OWNER/my-instance
+./install.sh /absolute/path/to/my-humanware --repo OWNER/my-humanware
 ```
 
 It creates or resolves these independent roots:
 
 - a public Humanware OS checkout whose revision each build records;
-- a private instance repository containing configuration only;
-- an external data plane containing stream, memory, strategy, sessions, workspaces, and artifacts;
+- My Humanware, a private repository containing configuration only;
+- Humanware Data, an external data root containing stream, memory, strategy, sessions, workspaces, and artifacts;
 - a generated runtime root containing immutable builds and the active `current` symlink.
 
 The runtime is output rather than a fourth source. The installer validates the boundaries and prints the exact paths.
 
 ## 3. Configure the first agent
 
-Edit the private instance, not the framework. Start with one agent overlay under `agents/`, and keep it narrow: local role, private relationships, approved tone differences, and trust limits. Generic identity behavior belongs upstream in Humanware OS. Personal facts and evolving context belong in the data plane.
+Edit My Humanware, not the framework. Start with one agent overlay under `agents/`, and keep it narrow: local role, private relationships, approved tone differences, and trust limits. Generic identity behavior belongs upstream in Humanware OS. Personal facts and evolving context belong in the data plane.
 
 Fill the first honest strategy at `<DATA_ROOT>/current/strategy/current.md` and the compact memory index at `<DATA_ROOT>/current/memory/index.md`. Do not commit either file.
 
@@ -36,8 +36,8 @@ The instance's `runtime/profiles.json` separates identity from execution. Begin 
 Validate the configuration and build a new runtime:
 
 ```bash
-/absolute/path/to/humanwareos/scripts/validate-instance.sh /absolute/path/to/humanwareos /absolute/path/to/my-instance
-/absolute/path/to/humanwareos/scripts/build-runtime.sh /absolute/path/to/humanwareos /absolute/path/to/my-instance --activate
+/absolute/path/to/humanwareos/scripts/validate-instance.sh /absolute/path/to/humanwareos /absolute/path/to/my-humanware
+/absolute/path/to/humanwareos/scripts/build-runtime.sh /absolute/path/to/humanwareos /absolute/path/to/my-humanware --activate
 ```
 
 ## 4. Establish secrets without secret files
