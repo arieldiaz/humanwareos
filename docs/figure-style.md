@@ -36,8 +36,8 @@ Each slide's headline states the conclusion a reader should keep, as a sentence,
 ## Numbering and captions
 
 - Sections are numbered `1.`, `2.`, … in reading order. Never use the section symbol (`§`) in headings, labels, captions or references.
-- Figures are numbered `Figure 1`, `Figure 2`, … across the whole deck, independent of sections.
-- Every figure carries a visible caption beginning `Figure N.` followed by one plain sentence.
+- Figures are numbered by section: `Figure 5.1` is the first figure in section 5, `Figure 5.2` the second.
+- Every figure carries a visible caption beginning `Figure S.N.` followed by one plain sentence.
 - Numbers are natural, never zero-padded, and are renumbered whenever a section or figure is inserted.
 
 ## Slides
