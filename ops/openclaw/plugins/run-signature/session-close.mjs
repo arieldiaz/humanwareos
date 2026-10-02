@@ -184,6 +184,5 @@ export async function recordSessionClose({ dataRoot, channel, thread, agent, clo
     if (error?.code !== "ENOENT") throw error;
   }
   if (!prior.includes(`\"id\":\"${id}\"`)) await appendFile(eventsPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
-  await writeFile(viewPath, `${report ?? formatCloseReport({ summary, stats, usage, agent, ownerLabel })}\n`, { mode: 0o600 });
   return { event, viewPath };
 }
