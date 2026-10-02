@@ -15,7 +15,7 @@ Budget: 1,200 words. Over it, consolidate.
   current -> runtime/...     active build
 ```
 
-The instance pins a framework revision in `humanware.lock.json`. It does not merge framework history into its own repository. Generic framework files are referenced from the pinned checkout and copied only into generated runtime builds.
+The instance does not pin or merge framework history. Each build takes the framework revision from the clean framework checkout and records it in the runtime manifest. Generic framework files are referenced from that checkout and copied only into generated runtime builds.
 
 ## Create an instance
 
@@ -29,20 +29,19 @@ Creating a private GitHub repository is optional. Without `--repo`, the instance
 
 ## Update the framework
 
-Framework adoption is a version bump, not a merge:
+Framework adoption is a checkout update, not a merge or an instance change:
 
-1. Fetch Humanware OS in its own clean checkout.
+1. Fast-forward the clean Humanware OS checkout to the reviewed revision.
 2. Review release notes and migrations.
-3. Change the instance lock to the selected revision in an instance worktree.
-4. Build a new runtime without activating it.
-5. Run instance, data-schema, adapter, domain, and end-to-end checks.
-6. Merge the instance lock change and atomically activate that build.
+3. Build a new runtime; its manifest records the framework revision.
+4. Run instance, data-schema, adapter, domain, and end-to-end checks.
+5. Atomically activate that build.
 
 The deployed instance and framework checkouts remain clean. A failed upgrade leaves the previous runtime active.
 
 ## Send an improvement upstream
 
-The stranger test decides ownership: if another installation would benefit, the change belongs in Humanware OS. Create the framework task from current Humanware OS `origin/main`, implement the generic fix, and verify it against an example instance. After the framework PR merges, update the private instance lock.
+The stranger test decides ownership: if another installation would benefit, the change belongs in Humanware OS. Create the framework task from current Humanware OS `origin/main`, implement the generic fix, and verify it against an example instance. After the framework PR merges, deploy from the updated framework checkout.
 
 Do not prototype a generic rule by copying a framework file into the instance. When urgent containment must ship before upstream review, place the smallest patch under the instance's declared compatibility-patch directory with:
 
@@ -58,7 +57,7 @@ The instance validator fails expired or unreferenced compatibility patches.
 
 Humanware OS contains reusable rules, specs, agent templates, skills, schemas, adapters, builders, generic services, frontend components, and tests.
 
-The private instance contains the framework lock, agent overlays, runtime-profile selections, channel and account identifiers, secret references, domain routes, private integration configuration, branding, and truly private plugins.
+The private instance contains agent overlays, runtime-profile selections, channel and account identifiers, secret references, domain routes, private integration configuration, branding, and truly private plugins.
 
 The data plane contains strategy, memory evidence and projections, sessions, working documents, artifacts, media, records, stream events, and derived indexes. Ordinary data writes do not use PRs.
 

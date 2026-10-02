@@ -122,7 +122,6 @@ replace_tokens() {
     -e "s|__DATA_ROOT__|$(escape_replacement "$DATA_ROOT")|g" \
     -e "s|__RUNTIME_ROOT__|$(escape_replacement "$RUNTIME_ROOT")|g" \
     -e "s|__WORKTREE_ROOT__|$(escape_replacement "$WORKTREE_ROOT")|g" \
-    -e "s|__FRAMEWORK_REVISION__|$(escape_replacement "$FRAMEWORK_REVISION")|g" \
     "$file" > "$temporary"
   mv "$temporary" "$file"
 }
@@ -144,7 +143,7 @@ if [ -n "$PRIVATE_REPO" ]; then
   if gh repo view "$PRIVATE_REPO" >/dev/null 2>&1; then
     die "GitHub repo $PRIVATE_REPO already exists"
   fi
-  git -C "$TARGET_DIR" add AGENTS-instance.md README.md agents channels humanware.instance.json humanware.lock.json runtime surfaces .gitignore
+  git -C "$TARGET_DIR" add AGENTS-instance.md README.md agents channels humanware.instance.json runtime surfaces .gitignore
   git -C "$TARGET_DIR" commit -m "Initialize Humanware OS instance"
   gh repo create "$PRIVATE_REPO" --private
   git -C "$TARGET_DIR" remote add origin "https://github.com/$PRIVATE_REPO.git"
@@ -152,7 +151,7 @@ if [ -n "$PRIVATE_REPO" ]; then
 fi
 
 printf '\nHumanware OS instance: %s\n' "$TARGET_DIR"
-printf 'Pinned framework: %s at %s\n' "$FRAMEWORK_DIR" "$FRAMEWORK_REVISION"
+printf 'Framework: %s at %s\n' "$FRAMEWORK_DIR" "$FRAMEWORK_REVISION"
 printf 'Mutable data plane: %s\n' "$DATA_ROOT"
 printf 'Active generated runtime: %s/current\n' "$RUNTIME_ROOT"
 printf 'Mutating worktrees: %s\n' "$WORKTREE_ROOT"

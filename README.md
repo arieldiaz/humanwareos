@@ -11,7 +11,7 @@ Humanware installations have three sources and one generated output:
 1. **Humanware OS** is the public framework. Reusable fixes and capabilities land here through reviewed pull requests.
 2. **The private instance** pins one framework revision and contains only local configuration: agent overlays, channel routing, model and harness profiles, domain routes, host paths, and secret identifiers.
 3. **The data plane** holds the stream, memory, strategy, sessions, working documents, artifacts, derived indexes, and caches outside Git. Most durable evidence is append-only; current projections and working documents are versioned.
-4. **The runtime** is a checksummed immutable build assembled from the pinned framework and instance. Services use its `current` symlink. It is output, never source.
+4. **The runtime** is a checksummed immutable build assembled from recorded framework and instance revisions. Services use its `current` symlink. It is output, never source.
 
 This separation makes updates reviewable, restores mechanical, and debugging local: a behavior defect belongs to the framework, a deployment fact belongs to the instance, accumulated material belongs to data, and a runtime discrepancy is fixed by rebuilding.
 
