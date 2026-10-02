@@ -2,7 +2,7 @@ import {mkdir, readFile, writeFile, rename} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
 import {conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
 
-// Read by the installed final-envelope Slack, CLI, and harness edits.
+// Read by the owner-close Slack patch; the name predates it and stays stable.
 export const CLOSE_OWNER = Symbol.for('humanware.final-envelope.v1');
 
 // Durable per-thread lifecycle journal; the append-only session ledger is its
@@ -15,10 +15,6 @@ export class ThreadLifecycle {
     this.pending = Promise.resolve();
     this.closing = new Map();
   }
-  // Bundles still carrying the retired final-envelope edits wrap every harness
-  // run and Codex turn/start; replies now pass through as plain text.
-  run(params, execute) { return execute(params); }
-  schema() { return undefined; }
   route(sessionKey) {
     const route = conversationFenceRoute({sessionKey});
     return route && !this.excluded(route.channel) ? route : undefined;
