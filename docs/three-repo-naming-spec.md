@@ -1,65 +1,61 @@
-# Three-repo naming and skill reset — spec
+# Three-part naming and skill reset — cutover plan
 
-Status: draft for human approval. Nothing moves until this is approved.
+Status: framework changes are in this PR; instance changes and the restart wait for human approval.
 
 ## Decision
 
-Humanware has three named parts:
-
 | Name | Slug | Holds | Git |
 |---|---|---|---|
-| Humanware OS | `humanwareos` | Reusable framework, specs, software, skills | Public upstream |
-| My Humanware | `my-humanware` | Personal configuration and overrides (domain, styles, tones, identities, routes, secret references) plus curated working documents | Private repo |
-| Humanware Data | `humanware-data` | Evidence, current memory, artifacts, generated output, operations, agent workspaces, sessions | Local data root, not a repo |
+| Humanware OS | `humanwareos` | Reusable framework, specs, software, capability skills | Public upstream |
+| My Humanware | `my-humanware` | Configuration only: domain, styles, tones, identity overlays, routes, service definitions, secret references | Private repo |
+| Humanware Data | `humanware-data` | Everything observed, produced, or worked on, including working documents | Local data root, backed up, never a repo |
 
-"Ariel" leaves every generic name. A fork gets `my-humanware` and `humanware-data` without renaming anything.
+The existing placement rules are unchanged. Only the names change.
 
-## Change from today's rules
+## Skills
 
-Today, mutable working documents live in the data plane, and rule 7 bars them from instance source. This spec moves **curated human working documents** into My Humanware so they get history, review, and backup. Rule 7 and `docs/data-plane.md` change to:
-
-- My Humanware may hold human-authored working documents (plans, notes, house, health, research write-ups).
-- Agent workspaces, sessions, Slack scratch, media, operations, caches, and anything large or machine-generated stay in Humanware Data.
-- Secrets stay in the secret manager. The privacy tiers are unchanged: Tier 0 raw evidence never enters a repo.
-
-Size check (current `working/`, 17 GB): `ops` 13 GB, `agents` 1.6 GB, `projects` 1.4 GB, `humanware-os` 645 MB, `sessions` 114 MB stay in the data root. Candidates to move are the small human folders: `house`, `health`, `inbox`, `research`, `house-purchase-scenarios`, and `market-map.md`. Large binaries stay in the data root and are referenced by path.
+A Skill-tool audit (2026-10-02, every `~/.claude/projects` transcript plus `evidence/sessions`) found zero invocations of observe, orient, decide, act, review, rederive, and challenge, and one of compound. This PR deletes them and `commands/`. Google Workspace stays as a capability skill until the integration moves to the harness side. The loop continues as practiced: channel feedback is evidence, and recurring corrections become reviewed source changes.
 
 ## Renames
 
+Paths:
+
 | From | To |
 |---|---|
-| GitHub `ariel-os` | `my-humanware` (GitHub keeps a redirect) |
+| GitHub `arieldiaz/ariel-os` | `arieldiaz/my-humanware` (GitHub redirects the old URL) |
 | `/Users/admin/github/ariel-os` | `/Users/admin/github/my-humanware` |
 | `/Users/admin/github/ariel-os-worktrees` | `/Users/admin/github/my-humanware-worktrees` |
 | `/Users/admin/ariel-os-data` | `/Users/admin/humanware-data` |
 | `~/Library/Application Support/HumanwareOS/ariel-os` | `~/Library/Application Support/HumanwareOS/my-humanware` |
-| launchd labels `com.arielos.*` | `com.humanware.*` |
 
-Hard-coded references at `origin/main`: about 30 in Humanware OS (mostly `AGENTS.md`, `STREAM.md`, `ops/stream-paths.env.example`, two skills, the session console, the run-signature plugin) and about 100 across about 30 files in the instance repo (Caddyfile, `humanware.instance.json`, `services/openclaw.json`, launchd plists, observability scripts). Each one should read `HUMANWARE_DATA_ROOT` or the instance config rather than a literal path.
+launchd labels: today they use three prefixes (`com.arielos.*`, `com.humanwareos.*`, `com.ariel.caddy`). All become `com.humanware.<service>`. `ai.openclaw.gateway` keeps its vendor label. Eleven stale `com.humanwareos.cutover.*` jobs are still loaded and will be removed.
 
-## Skill reset
+Secrets (Doppler): today there is a shared core project plus one project per agent. The instance code names `arielos-liv` and `arielos-max`; the full project list needs a Doppler token to confirm. This becomes one project, `my-humanware`, with one root config `prd` for shared keys and branch configs `prd_liv` and `prd_max` that inherit it and add only agent-scoped keys. Service tokens stay scoped per config, so the agent boundary survives with one project to manage. Key names don't change.
 
-Audit of all transcripts in `~/.claude/projects` and `evidence/sessions` (Skill-tool invocations), on 2026-10-02:
+## Inventory at `origin/main`
 
-| Framework skill | Invocations |
-|---|---|
-| observe, orient, decide, act, review, rederive, challenge | 0 |
-| compound | 1 |
-| google-workspace | 0 as a skill; the connector it describes is in use |
+- Framework: no instance paths remain after this PR. The example backup paths now use `humanware-data`. Reference-installation prose in `architecture.md` and `domain-surface.md` is updated in the instance step, when the names become real.
+- Instance: 91 files contain an old path, repo name, or label. The largest are the Caddyfile, `humanware.instance.json`, `services/openclaw.json`, 22 plists, observability scripts, and Doppler project literals in ingest, heartbeat, and token tracking. Each literal path becomes a read of `HUMANWARE_DATA_ROOT` or the instance config, so a future rename is a config change.
 
-Delete `skills/{observe,orient,decide,act,review,compound,rederive,challenge}` and `commands/*`. Keep `google-workspace` until the connector's tool descriptions carry its steps, then delete it too. Add a skill back only when real work repeats a procedure. The feedback loop stays as it works now: the human's channel feedback is evidence, and recurring corrections become source changes through review.
+## Cutover sequence
 
-## Order (one PR each, each reversible)
+Preparation (no restart, can merge any time):
 
-1. **Framework:** remove literal paths, add the skill deletions, amend rule 7 and the data-plane spec. No behavior depends on the new names yet.
-2. **Instance:** rename the repo on GitHub, parameterize paths, rename launchd labels. Rebuild the runtime and verify.
-3. **Data root:** stop services, move `ariel-os-data` → `humanware-data`, leave a symlink at the old path for one release, restart, then verify both agents load context. Requires explicit human approval for the restart.
-4. **Working documents:** move the curated folders into `my-humanware/working/`, with a symlink back during transition.
-5. **Cleanup:** remove the symlinks after one clean week.
+1. **Framework PR (this one):** delete the skills and commands, remove the `commands` copy from the runtime build, and update the docs. Tests pass, and the runtime build is unaffected.
+2. **Instance PR:** parameterize every literal path and Doppler project, rename the plists and labels, and add `ops/cutover/my-humanware.sh`. The script is idempotent, has a `--dry-run` that prints every move, and has a `--rollback`.
+3. **Doppler:** create `my-humanware` with `prd`, `prd_liv`, and `prd_max`, copy the keys, and verify key-name parity with a names-only diff. Leave the old projects untouched.
 
-Rollback for steps 2–4 is the reverse move plus the previous runtime build.
+Cutover (one approved window, about 30 minutes):
 
-## Open questions
+4. Freeze: stop all `com.arielos.*`, `com.humanwareos.*`, and `com.ariel.*` jobs, then the gateway.
+5. Move: rename the GitHub repo, move the local checkout, worktree root, data root, and runtime root. Leave symlinks at every old path.
+6. Activate: point service tokens at the new Doppler configs, rebuild the runtime from the new paths, load the `com.humanware.*` plists, and start the gateway.
+7. Verify: both agents answer in Slack and load context from `humanware-data`. Caddy serves `os.arieldiaz.com`. Each `com.humanware.*` job is running or exited 0. The heartbeat and token jobs write to the new root. Search the live processes for the old paths and expect nothing.
 
-1. Is `com.humanware.*` acceptable for launchd labels, or should it be `com.myhumanware.*`?
-2. Confirm the folder list for working documents.
+Rollback: stop the new jobs, run `--rollback` to reverse the moves, reload the old plists, and reactivate the previous runtime build. The old Doppler projects remain until cleanup.
+
+Cleanup (after one clean week): remove the symlinks and old Doppler projects, then search the host for old names.
+
+## Open question
+
+Should the paused Buzz ACP plists be deleted rather than renamed? Buzz is paused, so deleting them is the simpler choice.

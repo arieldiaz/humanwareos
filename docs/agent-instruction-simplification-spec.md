@@ -21,7 +21,7 @@ Humanware OS will use the simplest sufficient instruction architecture:
 
 ## Consolidation
 
-The core loop skills remain because each names a distinct procedure: observe, orient, decide, act, review, compound, and rederive. Their repeated philosophy, rationalization tables, mandatory handoffs, and copies of global rules are removed. Challenge remains available when explicitly useful but is no longer an automatic gate. Google Workspace remains a narrow capability skill.
+The loop skills (observe, orient, decide, act, review, compound, rederive, challenge) were removed after an audit found them unused; the human's channel feedback already drives the loop. Google Workspace remains a narrow capability skill. A skill is added back only when real work repeats a procedure.
 
 Liv and Max keep different domains and judgment. Their templates lose skill menus, session-opening rituals, response formats, recurring review mandates, and duplicate counterweight mechanics. The yin-and-yang note remains explanatory, not executable policy.
 

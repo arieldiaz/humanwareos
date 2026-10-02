@@ -49,10 +49,10 @@ Continue with [Getting Started](docs/getting-started.md) to configure an agent a
 humanwareos/
 ├── AGENTS.md          global operating rules
 ├── agents/            reusable identity templates
-├── commands/          operating-loop commands
 ├── docs/              architecture and behavior contracts
 ├── ops/               reusable host and data-plane mechanisms
 ├── schemas/           typed instance contracts
+├── skills/            optional bounded procedures
 ├── scripts/           validation, data initialization, runtime build
 └── templates/         private-instance and data-plane seeds
 ```
