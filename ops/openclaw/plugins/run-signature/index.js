@@ -5,7 +5,6 @@ import { basename, dirname, isAbsolute, join } from "node:path";
 import {loadSessionEntry} from "./session-store.mjs";
 import { homedir } from "node:os";
 import {
-  ADMITTED_STATUS,
   normalizeReactions,
   resolveModelTile,
   resolveHarnessTile,
@@ -23,7 +22,6 @@ import {
 import {FinalRuntime, FINAL_RUNTIME} from "./final-runtime.mjs";
 import {textOnlyMessage} from "./final-envelope.mjs";
 import { startSlackWorkThread } from "../../slack-spin-out.mjs";
-import { readConversationFence, shouldSuppressConversationDelivery, conversationFenceRoute, isHumanSlackUserProfile } from "./conversation-fence.mjs";
 
 export {
   normalizeReactions,
@@ -442,6 +440,7 @@ export async function sendFinalEnvelope(config, turn, sdk) {
   sdk ??= await loadCoreSdk('channel-outbound');
   const parts = turn.closeOperation ? reportParts(turn.envelope.message) : [textOnlyMessage(turn.envelope.message)];
   const receipts = [];
+  let suppressed;
   for (const [index, text] of parts.entries()) {
   const id = `humanware-final:${turn.key}${turn.closeOperation ? ':part:' + index : ''}`;
   const sent = await sdk.sendDurableMessageBatch({
@@ -454,12 +453,15 @@ export async function sendFinalEnvelope(config, turn, sdk) {
     completionRetention: {idPrefix: 'humanware-final:', maxAgeMs: 86400000, maxEntries: 2000},
     mirror: {sessionKey: turn.sessionKey, agentId: turn.accountId, text, idempotencyKey: id},
   });
+  // 'suppressed' means the transport settled every payload without a visible
+  // message (hook-cancelled or empty after stripping): nothing is left to retry.
+  if (sent.status === 'suppressed') { suppressed = sent.payloadOutcomes?.map(outcome => outcome.reason) ?? true; continue; }
   if (sent.status !== 'sent') throw sent.error ?? new Error(`Final send ${sent.status}`);
   const receipt = sent.results.at(-1);
   if (!receipt?.messageId) throw new Error('Missing part receipt');
   receipts.push(receipt);
   }
-  return {...receipts.at(-1), parts: receipts};
+  return {...receipts.at(-1), parts: receipts, ...(receipts.length ? {} : {suppressed})};
   });
 }
 
@@ -478,13 +480,11 @@ export default {
     const rootCache = new Map();
     const acpBoundThreads = new Map();
     const botIdCache = new Map();
-    const humanUserCache = new Map();
     const faultedRoots = new Set();
     const serializeRunStrip = createKeyedSerialQueue();
-    const conversationFences = {read: readConversationFence, shouldSuppress: shouldSuppressConversationDelivery};
 
     const finalRuntime = new FinalRuntime({
-      root: join(STATE_ROOT, 'run-signature'), fences: conversationFences,
+      root: join(STATE_ROOT, 'run-signature'),
       excluded: isExcludedChannel,
       project: async (status, turn) => {
         const accounts = await import(resolveSlackRuntimeModule('accounts'));
@@ -522,10 +522,10 @@ export default {
         const usage = await Promise.all(Object.keys(api.config?.channels?.slack?.accounts ?? {}).map(async agent => ({agent,
           usage: await loadThreadUsage({agent, channel: close.route.channel, thread: close.route.threadId, before: snapshotThrough})})));
         const outcomes = close.evidence.filter(turn => turn.phase === 'sent' && turn.message).map(turn => turn.message);
-        const followUps = close.evidence.filter(turn => !['sent', 'failed', 'intentional_non_delivery'].includes(turn.phase) || turn.status === 'scheduled')
-          .map(turn => `${turn.runId}: ${turn.status === 'scheduled' ? 'scheduled work remains unresolved' : 'work unresolved at closure; later output is fenced'}`);
+        const followUps = close.evidence.filter(turn => !['sent', 'failed'].includes(turn.phase) || turn.status === 'scheduled')
+          .map(turn => `${turn.runId}: ${turn.status === 'scheduled' ? 'scheduled work remains unresolved' : 'work unresolved at closure'}`);
         const snapshot = {summary: 'Recap evidence is limited. Recorded replies are evidence, not independent verification of success.', outcomes, followUps, stats, usage,
-          boundary: `current generation ${close.generation}; thread messages and timestamped usage through reservation ${latest} (source ${close.sourceMessageId}); later work and this report excluded`};
+          boundary: `thread messages and timestamped usage through reservation ${latest} (source ${close.sourceMessageId}); later work and this report excluded`};
         return {...snapshot, report: formatCloseReport({...snapshot, agent: close.accountId})};
       },
       writeReport: close => writeCloseReport({dataRoot: resolveDataRoot(api.config, api.pluginConfig, close.accountId), operationId: close.key, report: close.snapshot.report}),
@@ -547,33 +547,6 @@ export default {
           (!emoji || ['arrows_counterclockwise', 'raised_hand', 'hand', 'calendar', 'white_check_mark', '🔄', '✋', '🗓', '🗓️', '✅'].includes(emoji)))
         return {block: true, blockReason: 'Lifecycle reactions belong to the projector'};
     });
-
-    const isHumanSlackInbound = async (event, ctx) => {
-      if (event.senderIsOwner === true) return true;
-      const senderId = String(event.senderId ?? ctx.senderId ?? "").trim();
-      if (!senderId) return false;
-      const accounts = await import(resolveSlackRuntimeModule("accounts"));
-      const accountIds = Object.keys(api.config?.channels?.slack?.accounts ?? {});
-      const botUserIds = new Set();
-      for (const accountId of accountIds) {
-        const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
-        if (!token) continue;
-        const botUserId = await resolveBotUserId(token, botIdCache);
-        if (botUserId) botUserIds.add(botUserId);
-      }
-      if (botUserIds.has(senderId)) return false;
-      if (humanUserCache.has(senderId)) return humanUserCache.get(senderId);
-      const accountId = event.accountId ?? ctx.accountId;
-      const token = accounts.resolveSlackAccount({ cfg: api.config, accountId })?.botToken;
-      if (!token) return false;
-      try {
-        const humanAuthored = isHumanSlackUserProfile((await slackApi("users.info", token, { user: senderId }))?.user);
-        humanUserCache.set(senderId, humanAuthored);
-        return humanAuthored;
-      } catch {
-        return false;
-      }
-    };
 
     api.registerTool?.((context) => {
       if (context.messageChannel !== "slack") return;
@@ -670,47 +643,6 @@ export default {
       return true;
     };
 
-    api.on("inbound_claim", async (event, ctx) => {
-      const route = rememberInboundThreadRoot(event, ctx, rootCache);
-      if (route && !isExcludedChannel(route.channel)) {
-        const humanAuthored = await isHumanSlackInbound(event, ctx);
-        if (humanAuthored) {
-          await finalRuntime.human({channel: route.channel, threadId: route.rootTs}, {
-            messageId: String(event.messageId ?? ctx.messageId ?? ''), text: event.content,
-          });
-        } else if (conversationFences.shouldSuppress({ channel: route.channel, threadId: route.rootTs })) {
-          api.logger?.info?.(`run-signature fenced non-human inbound for closed conversation ${route.channel}:${route.rootTs}`);
-          return { handled: true };
-        }
-      }
-      if (!route || isExcludedChannel(route.channel)) return;
-      const accountId = event.accountId ?? ctx.accountId;
-      try {
-        const accounts = await import(resolveSlackRuntimeModule("accounts"));
-        const token = accounts.resolveSlackAccount({cfg: api.config, accountId})?.botToken;
-        if (!token) throw new Error(`the admitted account ${accountId ?? "unknown"} has no Slack token`);
-        await maintainStatusTile(ADMITTED_STATUS, ctx, {
-          channel: route.channel, rootTs: route.rootTs,
-          routeKey: `${route.channel.toLowerCase()}:${route.rootTs}`, accountId, token,
-        });
-      } catch (error) {
-        api.logger?.error?.(`run-signature could not mark the admitted turn working: ${String(error)}`);
-      }
-    });
-
-    api.on("before_agent_run", (_event, ctx) => {
-      const route = conversationFenceRoute({ sessionKey: ctx.sessionKey });
-      if (route && conversationFences.shouldSuppress(route, {workCreatedAt: Date.now()})) {
-        return {
-          outcome: "block",
-          reason: "conversation lifecycle fence is closing or closed",
-          category: "conversation_closed",
-        };
-      }
-
-    });
-
-
     // Seed the last-resort fallback from the previous process's snapshot, so
     // the first reply after a restart still carries tiles. Live events win.
     let agentSnapshotSerialized;
@@ -783,13 +715,6 @@ export default {
         await appendFaultJournal({runId: event.runId, reason: String(error)});
         return {cancel: true, reason: 'Final contract rejected delivery'};
       }
-    });
-    api.on('message_sending', (event, ctx) => {
-      if (ctx.channelId !== 'slack') return;
-      const route = conversationFenceRoute({channel: resolveSlackChannelId(event, ctx),
-        threadId: event.threadId ?? event.replyToId, sessionKey: ctx.sessionKey});
-      if (route && !finalTransport.getStore() && conversationFences.shouldSuppress(route, {workCreatedAt: finalRuntime.active.get(ctx.runId)?.startedAt}))
-        return {cancel: true, cancelReason: 'Conversation is closed'};
     });
     api.on('message_sent', async (event, ctx) => {
       try { await reactToSentMessage(event, ctx); }

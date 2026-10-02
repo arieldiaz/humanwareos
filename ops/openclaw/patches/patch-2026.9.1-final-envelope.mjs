@@ -27,14 +27,17 @@ export function patchFinalBoundary(source, kind) {
   }
   throw new Error(`Unknown final boundary ${kind}`);
 }
+// Without a loaded plugin the message falls through to stock handling; a
+// plugin mismatch must never become a Slack ingress outage.
 export function patchSlackCloseBoundary(source) {
   const anchor = '\tconst { senderId, allowFromLower } = authorization;';
+  const failClosed = '\tif (!closeOwner?.slackClose) throw new Error("Host closure owner is unavailable");\n\tif (await closeOwner.slackClose(';
   const after = `${anchor}
 	// humanware:owner-close-before-admission
 	const closeOwner = globalThis[Symbol.for("humanware.final-envelope.v1")];
-	if (!closeOwner?.slackClose) throw new Error("Host closure owner is unavailable");
-	if (await closeOwner.slackClose({message, accountId: account.accountId})) return null;`;
+	if (closeOwner?.slackClose && await closeOwner.slackClose({message, accountId: account.accountId})) return null;`;
   if (source.includes(after)) return source;
+  if (source.includes(failClosed)) return source.replace(failClosed, '\tif (closeOwner?.slackClose && await closeOwner.slackClose(');
   if (source.split(anchor).length !== 2) throw new Error('Slack authenticated raw-message boundary changed');
   return source.replace(anchor, after);
 }

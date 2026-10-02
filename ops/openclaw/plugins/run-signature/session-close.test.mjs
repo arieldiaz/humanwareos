@@ -107,5 +107,4 @@ test("records one idempotent completion event and one generated view", async () 
   await recordSessionClose(params);
   const events = await readFile(join(dataRoot, "evidence", "sessions", "events", "2026-08-25.jsonl"), "utf8");
   assert.equal(events.trim().split("\n").length, 1);
-  assert.match(await readFile(first.viewPath, "utf8"), /## Session Closed/);
 });

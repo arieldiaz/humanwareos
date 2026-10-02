@@ -22,7 +22,7 @@ async function fixture(t, agent = 'max') {
   t.after(() => rm(root, {recursive: true, force: true}));
   const records = [], projections = [], faults = [], sends = [];
   const sessionKey = `agent:${agent}:slack:channel:c123:thread:1790050400.000001`;
-  const runtime = new FinalRuntime({root, humanInputs: new Map(), fences: {shouldSuppress: () => false},
+  const runtime = new FinalRuntime({root,
     project: async s => projections.push(s), record: async s => records.push(s), fault: async (_, e) => faults.push(e),
     wakes: async () => [], close: async () => {}, send: async turn => { sends.push(turn); return {messageId: 'receipt'}; }});
   return {runtime, projections, records, faults, sends, params: {sessionKey, runId: 'r1', agentId: agent, prompt: 'Answer'}};
@@ -90,21 +90,6 @@ test('a live same-session wake validates scheduling, a different-session wake ca
   await assert.rejects(runtime.run({...params, runId: 'r2'}, async () => ({assistantTexts: [wire('scheduled')]}), 'codex'));
   assert.equal(sends.length, 1);
 });
-test('a newer admission owns the root tile but never discards an older finished reply', async t => {
-  const {runtime, params, sends, projections} = await fixture(t);
-  runtime.fences.reopenFromHuman = async () => {};
-  let finish;
-  const waiting = new Promise(resolve => { finish = resolve; });
-  let started;
-  const entered = new Promise(resolve => { started = resolve; });
-  const old = runtime.run(params, async () => {started(); await waiting; return {assistantTexts: [wire()]};}, 'codex');
-  await entered;
-  await runtime.human(runtime.route(params), {messageId: 'new', text: 'Different request'});
-  finish();
-  await old;
-  assert.equal(sends.length, 1);
-  assert.deepEqual(projections, ['working']);
-});
 test('Liv and Max both deliver in one thread; the last admitted owns the tile', async t => {
   const liv = await fixture(t, 'liv');
   const maxKey = liv.params.sessionKey.replace('agent:liv:', 'agent:max:');
@@ -115,17 +100,6 @@ test('Liv and Max both deliver in one thread; the last admitted owns the tile', 
   finish();
   await first;
   assert.deepEqual(liv.sends.map(turn => turn.accountId), ['max', 'liv']);
-});
-test('repeated inbound delivery does not supersede its own running turn', async t => {
-  const {runtime, params, sends} = await fixture(t);
-  runtime.fences.reopenFromHuman = async () => {};
-  const input = {messageId: 'same', text: 'Answer'};
-  await runtime.human(runtime.route(params), input);
-  await runtime.run(params, async () => {
-    await runtime.human(runtime.route(params), input);
-    return {assistantTexts: [wire()]};
-  }, 'codex');
-  assert.equal(sends.length, 1);
 });
 test('host media cannot change final delivery from text to an attachment payload', async t => {
   const {runtime, params, sends} = await fixture(t);

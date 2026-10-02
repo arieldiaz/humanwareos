@@ -27,93 +27,7 @@ Focused verification: run the adjacent patch test and `../slack-channel-thread.t
 
 `patch-2026.9.1-manual-cancel-notify.mjs` prevents an agent-requested `process kill` from enqueueing a background-exec failure merely because the cancelled process emitted partial output. The initiating turn already observes the cancellation; converting its expected SIGTERM into a later heartbeat event falsely reopens completed work. Unexpected signals and other failed background exits keep their existing notification behavior. The patch is version-scoped, idempotent, fails closed when the bundle shape changes, and requires a gateway restart after application.
 
-`patch-2026.9.1-conversation-lifecycle-fence.mjs` connects the run-signature plugin's durable `open → closing → closed` Slack conversation fence to OpenClaw's subagent completion and requester-settle paths. Completion retries and settle wakes check the fence before model admission and visible delivery; closed targets settle as `intentional_non_delivery` without a follow-up wake. Existing kill reconciliation remains the owner of `suppressCompletionDelivery` for retired children, and yielded multi-child requesters retain one consolidated settle owner. The patch copies the shared fence reader into the pinned OpenClaw dist, verifies every reviewed lifecycle invariant, is idempotent, and fails closed when the bundle shape changes.
-
 `patch-2026.9.1-slack-response-reliability.mjs` makes a terminal event from the session's current writer authoritative when restart bookkeeping still names an older recovery run, preventing a successful Slack turn from remaining falsely `running`. Session-start conflicts remain retryable until the ordinary age floor rather than being dead-lettered after eight quick attempts, and persisted or inspected ingress payloads redact credential-shaped fields. Run `scripts/repair-openclaw-terminal-sessions.mjs` after stopping the gateway to preview existing rows with durable terminal evidence, then rerun it with `--apply --session-key <EXACT_KEY>` before activation. Apply mode refuses an unscoped mutation, and the repair does not close a row unless that exact session's current lifecycle writer has a latest durable event of `session.ended`.
-
-## 2026.7.1 session model + thinking switch
-
-`patch-2026.7.1-session-status-thinking.mjs` extends the native `session_status` control with the session store's existing `thinkingLevel` field. A single call can therefore set both `model` and `thinking`, and either accepts `default` to clear its override. This fixes mid-thread switches such as Sol + high without routing a native conversation through ACP. The patch also updates the tool's mutation classification and model-facing description. It is version-scoped, idempotent, and fails closed when the installed bundle changes.
-
-## 2026.7.1 Slack current-conversation ACP binding
-
-`patch-2026.7.1-slack-current-conversation-binding.mjs` enables the generic OpenClaw current-conversation binding service for the external Slack plugin. Slack already provides an exact thread conversation id and thread-aware reply routing, but `@openclaw/slack` 2026.7.1 omits `supportsCurrentConversationBinding`; `/acp spawn cursor --bind here` and equivalent agent-driven ACP profile switches therefore fail before the binding service runs. The patch also gives typed Slack ACP bindings one narrow account-default form: `match.peer.id="*"` materializes the owning agent's configured ACP runtime for each concrete Slack thread or conversation. Exact configured bindings retain higher precedence, while an explicit `channels.modelByChannel.slack` entry retains the native privacy route. Finally, an explicit mention containing no letters or numbers becomes a deterministic nudge to resume the thread's outstanding request instead of an empty zero-reply dispatch. This makes execution-profile routing and thread wake behavior truthful without collapsing every thread into one harness session or bypassing local-only channel policy. The patch is idempotent and fails closed when the plugin version or bundle shape changes.
-
-## 2026.7.1 thinking provenance on model hooks
-
-`patch-2026.7.1-model-call-thinking.mjs` makes the run's resolved thinking
-level reach plugin hooks, so a provenance consumer (the run-strip adapter)
-can lay a thinking tile it can prove instead of logging `thinking_unknown`
-on every reply. Two halves:
-
-- embedded runtime: `model_call_started`/`model_call_ended` events carry
-  `thinkLevel` (event base + the streamFn wrapper that feeds it);
-- CLI harnesses (claude-cli, codex app-server): the shared
-  `buildAgentHookContext` whitelist plus both harness hook-context builders
-  pass `thinkLevel` through, so `llm_input`/`llm_output` ctx carries it.
-  The value was already in scope at both sites — cli-runner sends it to the
-  CLI as `thinking:`, run-attempt derives the codex `effort` from it — it
-  just never reached the hook layer.
-
-When the run has no resolved level the field stays absent and consumers keep
-their fail-closed behavior. Chunk names can exist twice in dist (real bundle
-plus a re-export shim), so targets are selected by content, not name. Same
-rules: idempotent, fails closed, restart the gateway after applying.
-
-## 2026.7.1-2 recovered exec warnings
-
-`patch-2026.7.1-2-exec-warning.mjs` ports the upstream warning policy that
-treats a successful user-facing reply as recovery proof for shell/exec
-failures. It does not suppress failed message sends, writes, deletes, or a
-terminal exec failure with no user-facing reply.
-
-Run it after installing or updating OpenClaw 2026.7.1-2 and before restarting
-the gateway. The script is idempotent and fails closed if the expected bundle
-shape is absent.
-
-## 2026.7.1-2 message_tool_only fallback
-
-`patch-2026.7.1-2-message-tool-only-fallback.mjs` stops the gateway from
-silently discarding a turn's final text in `message_tool_only` delivery mode
-when the agent never delivered via the message tool. Upstream forces that mode
-for restart-recovered sessions (and some session-stable resolutions), has a
-no-visible-reply fallback wired only for the Feishu channel, and explicitly
-disables it for `message_tool_only` — so on Slack the reply is dropped with a
-single WARN (2026-07-24: Liv's #marriage reply existed in her transcript,
-never posted; see `memory/lessons/delivered-means-tool-confirmed.md`).
-
-The patched drop branch delivers the final reply IFF: mode is
-`message_tool_only`, send policy allows, no message-tool delivery was
-observed this turn (`observedReplyDelivery`, set by the agent runner on a
-committed message-tool send — so healthy tool-using turns never double-post),
-the turn is a real user turn (not heartbeat/cron-event/exec-event/room_event),
-and the text is non-empty. Same run/apply rules as above: idempotent, fails
-closed, restart the gateway after applying. Upstream report:
-`upstream-report-message-tool-only-drop.md`.
-
-## 2026.7.1-2 observed delivery in all modes
-
-`patch-2026.7.1-2-observed-delivery-all-modes.mjs` makes the agent runner
-report a committed message-tool send to the dispatch layer
-(`onObservedReplyDelivery`) in every delivery mode, not only
-`message_tool_only`. Without it, a healthy automatic-mode turn that replies
-via the message tool and ends with empty final text (the mandated behavior
-in this instance) registers as "no visible dispatch" — the gateway logs the
-zero-payload WARN and the heartbeat raises a false dropped-reply alert
-(2026-07-25: three false alerts for Max #heirlooming turns whose replies had
-all landed). The delivery-evidence flag it forwards is already computed
-mode-independently; the patch removes only the mode gate on the
-notification. Same rules: idempotent, fails closed, restart after applying.
-
-## 2026.7.1-2 ACP bound source delivery
-
-`patch-2026.7.1-2-acp-bound-source-delivery.mjs` restores visible replies for configured ACP channel bindings when the source conversation resolves to `message_tool_only`. External ACP harnesses do not receive OpenClaw's core `message` tool, so stock 2026.7.1-2 records the completed assistant text in the ACP transcript, suppresses its projected output, and dispatches zero Slack reply payloads. The user sees typing and then nothing.
-
-The patch changes only real user requests whose ACP session is already bound to the source conversation. Static `bindings` entries are recognized from their canonical `agent:<id>:acp:binding:<channel>:<account>:...` session key; the runtime conversation-binding table can legitimately be empty for those routes. Dynamic conversation bindings remain supported through the table lookup. Those turns use automatic ACP projection; other ACP sessions keep their existing source-delivery policy. ACP prompt assembly also prepends OpenClaw's structured `ThreadHistoryBody`, or the thread starter when history is unavailable, before the current message. This gives external Cursor and other ACP harnesses the same Slack conversation context already supplied to the embedded runtime. The script is idempotent, upgrades its earlier deployed shapes, fails closed when the installed bundle shape changes, and requires a gateway restart after application.
-
-## 2026.7.1-2 message-tool Slack thread context
-
-`patch-2026.7.1-2-message-tool-thread-context.mjs` closes both directions of the gap between a bound Slack thread session and the generic message tool. OpenClaw records the thread timestamp in the canonical `agent:<id>:slack:channel:<channel>:thread:<timestamp>` session key, but `createMessageTool` does not recover it when separately supplied thread fields are absent. Conversely, the message client encodes `topLevel: true` as an empty thread string; gateway validation then normalizes that string away and reconstructs the current thread from the session key. The patch recovers the canonical Slack thread as the final implicit fallback and carries the explicit top-level boolean through the gateway protocol so route derivation and delivery cannot reintroduce the current thread. The script is idempotent, fails closed when the installed bundle shape changes, and requires a gateway restart after application.
 
 `../slack-spin-out.mjs` delegates one idempotent title/body publication to the durable sender, then owns scaffold cleanup, status and durable session creation with high reasoning set before the initial run. It no longer contains a second root/reply send sequence.
 
@@ -172,4 +86,4 @@ mentions become `user`/`channel` elements.
 
 Same rules: idempotent, fails closed, restart the gateway after applying.
 
-`patch-2026.9.1-final-envelope.mjs` routes CLI and harness finals through the shared act/scheduled contract and attaches Codex’s native output schema. It also intercepts authenticated raw Slack messages before mention gating: configured-owner `close this` commands enter FinalRuntime without a model turn. The installed Slack manifest requests message.channels/message.groups as well as app_mention; the provider registers both message and app_mention handlers. Live subscription/inline-output acceptance remains an activation check, not a claim established by source rehearsal. The run-signature config requires ownerUserId for closure and optionally maps threadOwnership.defaultAccounts by exact channel for unowned threads. Existing persisted senders outrank defaults and mentions. The final-decision journal owns reservations/generations; the old fence file is read-only until B reconciles history. Queue recovery may reconcile final-intent receipts but cannot redispatch without the live journal check. Patch rehearsal uses copied bundles only; activation requires the plugin and all four host-boundary anchors.
+`patch-2026.9.1-final-envelope.mjs` routes CLI and harness finals through the shared act/scheduled contract and attaches Codex’s native output schema. It also intercepts authenticated raw Slack messages before mention gating: configured-owner `close this` commands enter FinalRuntime without a model turn; when no plugin owner is loaded the message falls through to stock handling. The installed Slack manifest requests message.channels/message.groups as well as app_mention; the provider registers both message and app_mention handlers. Live subscription/inline-output acceptance remains an activation check, not a claim established by source rehearsal. The run-signature config requires ownerUserId for closure. Existing persisted senders outrank defaults and mentions. The final-decision journal owns reservations. Queue recovery may reconcile final-intent receipts but cannot redispatch without the live journal check. Patch rehearsal uses copied bundles only; activation requires the plugin and all four host-boundary anchors.

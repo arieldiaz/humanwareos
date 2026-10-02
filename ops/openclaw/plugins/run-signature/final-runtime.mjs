@@ -1,15 +1,17 @@
 import {mkdir, readFile, writeFile, rename} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
 import {FINAL_SCHEMA, FINAL_INSTRUCTION, decodeFinal, validateEvidence, sameConversationWake, finalText, textOnlyFinal} from './final-envelope.mjs';
-import {readLegacyFence, conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
+import {conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
 
 export const FINAL_RUNTIME = Symbol.for('humanware.final-envelope.v1');
 
 // Durable per-turn decision journal; the append-only session ledger is its
 // public projection. A reservation survives retries without recomputing status.
+// Conversation status is soft: the latest admitted run owns the root tile, and
+// a host close is one more status whose next admitted run simply replaces it.
 export class FinalRuntime {
-  constructor({root, project, record, fault, wakes, fences, snapshot, writeReport, completeClose, send, excluded = () => false}) {
-    Object.assign(this, {root, project, record, fault, wakes, fences, snapshot, writeReport, completeClose, send, excluded});
+  constructor({root, project, record, fault, wakes, snapshot, writeReport, completeClose, send, excluded = () => false}) {
+    Object.assign(this, {root, project, record, fault, wakes, snapshot, writeReport, completeClose, send, excluded});
     this.pending = Promise.resolve();
     this.active = new Map();
     this.closing = new Map();
@@ -38,44 +40,7 @@ export class FinalRuntime {
   conversation(state, route) {
     const key = conversationFenceKey(route);
     if (!key) throw new Error('Canonical closure route is unavailable');
-    if (!state.conversations[key] && Object.values(state.turns).some(turn => turn.conversation === key)) throw new Error('Orphan turn requires historical reconciliation');
-    const prior = state.conversations[key] ?? {};
-    if (prior.generation !== undefined) {
-      if (!Number.isInteger(prior.generation) || prior.generation < 0 || !['open', 'closing', 'closed'].includes(prior.state)) throw new Error('Invalid lifecycle generation');
-      return prior;
-    }
-    const legacy = readLegacyFence(route, {path: join(this.root, 'conversation-fences.json')});
-    if (legacy && !['open', 'closing', 'closed'].includes(legacy.state)) throw new Error('Unknown historical fence state');
-    const conflict = legacy && prior.status && (prior.status === 'closed') !== (legacy.state === 'closed');
-    const pendingLegacyClose = Object.values(state.turns).some(turn => turn.conversation === key && turn.envelope?.status === 'closed' && !['sent', 'failed', 'intentional_non_delivery'].includes(turn.phase));
-    const ambiguous = pendingLegacyClose || conflict || legacy?.state === 'closing' || (!legacy && prior.status === 'closed') ||
-      (legacy?.state === 'closed' && !Number.isFinite(legacy.closedThrough));
-    return state.conversations[key] = {...prior, ...(legacy ?? {}), generation: 0,
-      state: legacy?.state ?? (prior.status === 'closed' ? 'closed' : 'open'),
-      reconciliationRequired: ambiguous, legacyBoundary: legacy ? {...legacy} : undefined};
-  }
-  eligible(turn, conversation) {
-    return conversation.state === 'open' && !conversation.reconciliationRequired &&
-      (turn.generation ?? 0) === conversation.generation &&
-      (!Number.isFinite(conversation.closedThrough) || turn.startedAt > conversation.closedThrough);
-  }
-  async human(route, input) {
-    await this.state(state => {
-      const conversation = this.conversation(state, route);
-      if (!input.messageId || conversation.lastHumanMessage === input.messageId ||
-          Object.values(state.closes ?? {}).some(close => close.conversation === conversationFenceKey(route) && close.sourceMessageId === input.messageId)) return;
-      if (conversation.reconciliationRequired) throw new Error('Historical closure requires reconciliation');
-      if (conversation.state === 'closing') throw new Error('Closure is still recovering; retry this human input after completion');
-      if (Number(input.messageId) <= Number(conversation.lastHumanMessage ?? 0)) return;
-      if (conversation.state === 'closed') {
-        conversation.generation++;
-        conversation.state = 'open';
-        conversation.reopenedByMessageId = input.messageId;
-        conversation.reopenedAt = Date.now();
-      }
-      conversation.lastHumanMessage = input.messageId;
-      conversation.owner = `inbound:${input.messageId}`;
-    });
+    return state.conversations[key] ??= {};
   }
   async sender(route) {
     return this.state(state => {
@@ -91,17 +56,18 @@ export class FinalRuntime {
       const conversationKey = conversationFenceKey(route);
       const prior = Object.values(state.closes).find(close => close.conversation === conversationKey && close.sourceMessageId === messageId);
       if (prior) return prior.key;
-      if (conversation.reconciliationRequired) throw new Error('Historical closure requires reconciliation');
-      if (conversation.state !== 'open') return conversation.closeOperation;
-      if (Number(messageId) < Number(conversation.lastHumanMessage ?? 0)) return;
-      const key = `${conversationKey}:close:${conversation.generation}`;
+      // An unfinished close resumes; a repeated command on an already closed
+      // conversation is a no-op until a later admitted run changes the status.
+      const current = state.closes[conversation.closeOperation];
+      if (current && current.phase !== 'complete') return current.key;
+      if (current && conversation.status === 'closed') return;
+      const key = `${conversationKey}:close:${messageId}`;
       const startedAt = Date.now();
-      state.closes[key] = {key, conversation: conversationKey, route, generation: conversation.generation,
+      state.closes[key] = {key, conversation: conversationKey, route,
         sourceMessageId: messageId, principal, accountId, startedAt, phase: 'reserved',
-        evidence: Object.values(state.turns).filter(turn => turn.conversation === conversationKey && (turn.generation ?? 0) === conversation.generation).map(turn => ({runId: turn.runId, phase: turn.phase, message: turn.envelope?.message, status: turn.envelope?.status})),
+        evidence: Object.values(state.turns).filter(turn => turn.conversation === conversationKey).map(turn => ({runId: turn.runId, phase: turn.phase, message: turn.envelope?.message, status: turn.envelope?.status})),
         sessionKey: `agent:${accountId}:slack:channel:${route.channel.toLowerCase()}:thread:${route.threadId}`};
-      Object.assign(conversation, {state: 'closing', owner: key, closeOperation: key,
-        lastHumanMessage: messageId, closedThrough: startedAt});
+      Object.assign(conversation, {owner: key, closeOperation: key});
       return key;
     });
   }
@@ -145,10 +111,11 @@ export class FinalRuntime {
     await this.state(async state => {
       close = state.closes[key];
       if (close.phase !== 'recorded') return;
-      const conversation = state.conversations[close.conversation];
-      if (conversation.closeOperation !== key || conversation.generation !== close.generation) throw new Error('Closure generation mismatch');
-      await this.project('closed', close);
-      Object.assign(conversation, {state: 'closed', status: 'closed', closedAt: Date.now()});
+      const conversation = this.conversation(state, close.route);
+      if (conversation.owner === key) {
+        await this.project('closed', close);
+        Object.assign(conversation, {status: 'closed', closedAt: Date.now()});
+      }
       close.phase = 'complete';
     });
   }
@@ -163,11 +130,10 @@ export class FinalRuntime {
       const prior = state.turns[key];
       if (prior) return prior;
       const boundary = this.conversation(state, route);
-      if (boundary.state !== 'open' || boundary.reconciliationRequired) throw new Error('Conversation is fenced');
-      const turn = {key, route, conversation, generation: boundary.generation, runId: params.runId, sessionKey: params.sessionKey, accountId,
-        previous: state.conversations[conversation]?.status, phase: 'running', startedAt: Date.now()};
+      const turn = {key, route, conversation, runId: params.runId, sessionKey: params.sessionKey, accountId,
+        previous: boundary.status, phase: 'running', startedAt: Date.now()};
       state.turns[key] = turn;
-      state.conversations[conversation] = {...state.conversations[conversation], owner: key, sender: accountId};
+      Object.assign(boundary, {owner: key, sender: accountId});
       return turn;
     });
     if (admission.phase !== 'running') throw new Error('Turn already settled; replay its durable delivery, not model execution');
@@ -175,7 +141,7 @@ export class FinalRuntime {
     let current = {...params, prompt: `${params.prompt ?? ''}\n\n${FINAL_INSTRUCTION}`};
     try {
       await this.state(async state => {
-        if (this.eligible(admission, state.conversations[conversation]) && state.conversations[conversation].owner === key) {
+        if (state.conversations[conversation].owner === key) {
           await this.record({...admission, status: 'working'});
           await this.project('working', admission);
         }
@@ -218,7 +184,7 @@ export class FinalRuntime {
       turn.failure = String(error.message ?? error);
       await this.fault(turn, turn.failure);
       if (turn.phase === 'delivered') return;
-      if (state.conversations[turn.conversation]?.owner === key && this.eligible(turn, state.conversations[turn.conversation])) {
+      if (state.conversations[turn.conversation]?.owner === key) {
         await this.record({...turn, status: turn.previous ?? null, recovery: true});
         await this.project(turn.previous, turn);
       }
@@ -236,21 +202,18 @@ export class FinalRuntime {
       return turn;
     });
     if (!turn) return;
-    // Serialize the final pre-send check with close reservation. A close cannot
-    // cross an already-started dispatch; once reserved, no older dispatch starts.
+    // Serialize the send with the journal so a retry replays the same intent.
+    // A transport that suppressed every payload has nothing left to deliver,
+    // so the decision settles instead of retrying forever.
     await this.state(async state => {
       const current = state.turns[key];
-      if (!['act', 'scheduled'].includes(current.envelope?.status)) throw new Error('Legacy model closure requires reconciliation; no model-selected close can dispatch');
       if (!['reserved', 'queued'].includes(current.phase)) return;
-      if (!this.eligible(current, this.conversation(state, current.route))) {
-        current.phase = 'intentional_non_delivery';
-        return;
-      }
       const receipt = await this.send(current);
       const messageId = receipt?.messageId ?? receipt?.result?.messageId;
-      if (!messageId) throw new Error('Durable transport returned no confirmed message receipt');
+      if (!messageId && !receipt?.suppressed) throw new Error('Durable transport returned no confirmed message receipt');
       current.phase = 'delivered';
-      current.messageId = String(messageId);
+      if (messageId) current.messageId = String(messageId);
+      else current.suppressed = receipt.suppressed;
     });
     await this.finish(key);
   }
@@ -259,7 +222,7 @@ export class FinalRuntime {
       const turn = state.turns[key];
       if (turn?.phase !== 'delivered') return;
       decodeFinal(JSON.stringify(turn.envelope));
-      if (state.conversations[turn.conversation]?.owner === key && this.eligible(turn, state.conversations[turn.conversation])) {
+      if (state.conversations[turn.conversation]?.owner === key) {
         await this.record({...turn, status: turn.envelope.status});
         await this.project(turn.envelope.status, turn);
         state.conversations[turn.conversation].status = turn.envelope.status;

@@ -21,8 +21,6 @@ Codex uses app-server `turn/start.outputSchema`. Cursor uses its supported strea
 
 A scheduled decision requires an enabled durable `agentTurn` wake with a future next-run time, bound to this exact canonical session and configured for delivery. Read scheduler storage at validation time; a tool success claim is insufficient. Existing verified wakes may support rescheduling or status repair. The authenticated instance owner's exact close command is intercepted before model admission; quotes, prior context, other senders, bots, and model text cannot authorize closure.
 
-If the envelope message is exactly `NO_REPLY`, send nothing and finish the execution without changing the conversation disposition.
-
 ## Commit and recovery
 
 Key one decision by canonical conversation plus admitted run ID. Persist admission and its prior committed state before execution. Reserve the validated envelope durably before publishing. Deliver only its unchanged message through the existing durable transport, then record the receipt, append the accepted terminal transition, project its root tile, and add the independent run signature. Duplicate callbacks cannot select another decision. Every validated final is delivered; only the latest admitted run, from any agent, sets the root tile.
@@ -31,7 +29,7 @@ Invalid schema or evidence gets one repair in the same harness/session, with no 
 
 Only the projector can add/remove bot-owned lifecycle reactions. Human reactions remain untouched social input and cannot suppress canonical state. Agent reaction tools reject the lifecycle vocabulary. Provenance reactions belong on the delivered reply, not the root. Remove retired provenance tiles only through a bounded migration, not steady-state projection.
 
-A reserved host close fences automated continuations, freezes one measured report, publishes it inline and to the generated session view, then projects closed only after both receipts and the completion event exist. A new human message reopens through normal admission; stale work from before closure remains fenced. Machine workflows, including email receipts, may report domain state but cannot choose conversation lifecycle. Slack acknowledgement and native status-reaction writers must be disabled in the activation configuration.
+`closed` is soft. A reserved host close freezes one measured report, publishes it inline and to the generated session view, then projects ✅ after the receipt and the completion event exist. Nothing is fenced: later sends, subagent completions and scheduled wakes proceed normally, and the next admitted run in the thread replaces ✅ with 🔄 and then its own terminal status through ordinary admission. A repeated close command on a still-closed thread is a no-op. Machine workflows, including email receipts, may report domain state but cannot choose conversation lifecycle. Slack acknowledgement and native status-reaction writers must be disabled in the activation configuration.
 
 ## Verification and release
 
