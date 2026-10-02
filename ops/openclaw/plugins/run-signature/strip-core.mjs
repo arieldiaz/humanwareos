@@ -73,7 +73,6 @@ export function resolveThinkingTile({ thinkLevel, reasoningLevel, reasoningEffor
 export const OUTBOUND_STATUS_TO_TILE = Object.freeze({
   act: "raised_hand",
   working: "arrows_counterclockwise",
-  scheduled: "calendar",
   closed: "white_check_mark",
 });
 export const ADMITTED_STATUS = "working";

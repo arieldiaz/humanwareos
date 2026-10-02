@@ -60,7 +60,7 @@ The control plane verifies the profile's data and tool scopes before dispatch. S
 
 ## Delivery
 
-Every enabled conversational execution path returns the validated final envelope defined in [status-framework.md](status-framework.md) to the control plane. Codex supplies a native output schema; Cursor supplies a whole JSON final result under its stream-JSON transport. The adapter owns surface publication and appends provenance after confirmed delivery. An external harness does not independently call a Slack or Buzz send tool unless the profile explicitly declares that transport and prevents duplicate delivery.
+The adapter owns surface publication and appends provenance after confirmed delivery. An external harness does not independently call a Slack or Buzz send tool unless the profile explicitly declares that transport and prevents duplicate delivery.
 
 ### Conversation lifecycle
 
