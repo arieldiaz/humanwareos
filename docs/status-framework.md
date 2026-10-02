@@ -21,8 +21,6 @@ Codex uses app-server `turn/start.outputSchema`. Cursor uses its supported strea
 
 A scheduled decision requires an enabled durable `agentTurn` wake with a future next-run time, bound to this exact canonical session and configured for delivery. Read scheduler storage at validation time; a tool success claim is insufficient. Existing verified wakes may support rescheduling or status repair. The authenticated instance owner's exact close command is intercepted before model admission; quotes, prior context, other senders, bots, and model text cannot authorize closure.
 
-If the envelope message is exactly `NO_REPLY`, send nothing and finish the execution without changing the conversation disposition.
-
 ## Commit and recovery
 
 Key one decision by canonical conversation plus admitted run ID. Persist admission and its prior committed state before execution. Reserve the validated envelope durably before publishing. Deliver only its unchanged message through the existing durable transport, then record the receipt, append the accepted terminal transition, project its root tile, and add the independent run signature. Duplicate callbacks cannot select another decision. Every validated final is delivered; only the latest admitted run, from any agent, sets the root tile.

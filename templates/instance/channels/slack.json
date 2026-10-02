@@ -14,7 +14,5 @@
     }
   },
   "routing": {
-    "mode": "mentions-and-direct",
-    "threadOwner": "openclaw"
   }
 }
