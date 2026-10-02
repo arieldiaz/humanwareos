@@ -32,7 +32,7 @@ Memory stores facts, decisions, and project state, never behavioral rules. Apply
 
 - `docs/agent-context-hierarchy.md` — authority, skills, identity, and generated context.
 - `docs/status-framework.md` — lifecycle states and root status tile.
-- `docs/reply-shape.md` — the one response envelope for every identity and harness.
+- `docs/reply-shape.md` — the one reply shape for every identity and harness.
 - `docs/slack-style.md` — Slack rendering and channel behavior.
 - `docs/channel-runtime.md` — channels, execution profiles, dispatch, and delivery.
 - `docs/permission-model.md` — capabilities, authority, and approvals.
