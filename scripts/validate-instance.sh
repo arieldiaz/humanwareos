@@ -22,7 +22,7 @@ fi
   exit 2
 }
 
-required_files='humanware.lock.json humanware.instance.json runtime/profiles.json'
+required_files='humanware.instance.json runtime/profiles.json'
 for relative in $required_files; do
   [ -f "$INSTANCE_DIR/$relative" ] || {
     printf 'validate-instance: missing %s\n' "$relative" >&2
@@ -108,15 +108,10 @@ if git -C "$INSTANCE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   }
 fi
 
-LOCKED_REVISION=$($JQ -r '.revision' "$INSTANCE_DIR/humanware.lock.json")
 if CURRENT_REVISION=$(git -C "$FRAMEWORK_DIR" rev-parse HEAD 2>/dev/null); then
   :
 else
   CURRENT_REVISION=unknown
-fi
-if [ "$LOCKED_REVISION" != "$CURRENT_REVISION" ] && [ "${HUMANWARE_ALLOW_UNLOCKED:-0}" != 1 ]; then
-  printf 'validate-instance: framework HEAD %s does not match lock %s\n' "$CURRENT_REVISION" "$LOCKED_REVISION" >&2
-  exit 1
 fi
 
 if [ "$CURRENT_REVISION" != unknown ] && [ "${HUMANWARE_ALLOW_DIRTY_SOURCE:-0}" != 1 ]; then

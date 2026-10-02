@@ -1,6 +1,6 @@
 # Runtime and deployment
 
-The Humanware OS runtime is an immutable build assembled from a pinned framework revision and a private instance revision. It is generated, verified, activated atomically, and never edited in place.
+The Humanware OS runtime is an immutable build assembled from a framework revision and a private instance revision. It is generated, verified, activated atomically, and never edited in place.
 
 Budget: 1,000 words. Over it, consolidate.
 
@@ -9,7 +9,7 @@ Budget: 1,000 words. Over it, consolidate.
 Required inputs:
 
 - Humanware OS framework revision and release metadata.
-- Private instance revision and framework lock.
+- Private instance revision. The framework revision is the clean framework checkout at build time; the instance does not pin it.
 - Instance manifest, identity overlays, runtime profiles, channel adapters, surface routes, and secret key references.
 - Data-root location and schema versions, but no personal data contents.
 
@@ -36,7 +36,7 @@ Production post-deploy canaries are non-disruptive. They may probe channels and 
 
 ## Source checkouts and worktrees
 
-The deployed framework and instance checkouts remain clean and pinned to their canonical branches. Agents never receive either as a writable task directory.
+The deployed framework and instance checkouts remain clean and on their canonical branches. Agents never receive either as a writable task directory.
 
 Every mutating task receives an isolated worktree created from the latest canonical remote branch. The session ledger records repository, branch, worktree, owner, status, and merge disposition. Closing a task must prove merged, open for review, or consciously archived; unique work cannot remain in an anonymous checkout.
 

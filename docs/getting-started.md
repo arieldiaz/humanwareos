@@ -18,7 +18,7 @@ Run the installer from a Humanware OS checkout:
 
 It creates or resolves these independent roots:
 
-- a public Humanware OS checkout pinned by `humanware.lock.json`;
+- a public Humanware OS checkout whose revision each build records;
 - a private instance repository containing configuration only;
 - an external data plane containing stream, memory, strategy, sessions, workspaces, and artifacts;
 - a generated runtime root containing immutable builds and the active `current` symlink.
@@ -80,7 +80,7 @@ Test a real reboot. Acceptance requires SSH, the runtime controller, each enable
 
 ## 9. Operate without drift
 
-Framework change: isolated Humanware worktree → pull request → CI → squash-merge → update the instance lock.
+Framework change: isolated Humanware worktree → pull request → CI → squash-merge → deploy.
 
 Instance change: isolated instance worktree → pull request → CI → squash-merge → build and activate a new runtime.
 

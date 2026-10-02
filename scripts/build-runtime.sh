@@ -97,7 +97,6 @@ if [ -d "$INSTANCE_DIR/docs" ]; then
   cp -R "$INSTANCE_DIR/docs/." "$BUILD_DIR/instructions/docs/"
 fi
 cp "$INSTANCE_DIR/humanware.instance.json" "$BUILD_DIR/config/instance.json"
-cp "$INSTANCE_DIR/humanware.lock.json" "$BUILD_DIR/config/framework-lock.json"
 cp -R "$INSTANCE_DIR/runtime" "$BUILD_DIR/config/runtime"
 cp -R "$INSTANCE_DIR/channels" "$BUILD_DIR/config/channels"
 cp -R "$INSTANCE_DIR/surfaces" "$BUILD_DIR/config/surfaces"
