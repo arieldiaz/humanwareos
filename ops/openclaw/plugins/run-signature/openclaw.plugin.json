@@ -5,6 +5,9 @@
   "activation": {
     "onStartup": true
   },
+  "contracts": {
+    "tools": ["start_work_thread", "close_thread"]
+  },
   "configSchema": {
     "type": "object",
     "properties": {
