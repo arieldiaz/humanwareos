@@ -14,12 +14,12 @@ import {
   planStatusTile,
 } from "./strip-core.mjs";
 import {
-  formatCloseReport, writeCloseReport, isCloseCommand, reportParts,
+  formatCloseReport, writeCloseReport, reportParts,
   loadThreadUsage,
   measureSlackThread,
   recordSessionClose,
 } from "./session-close.mjs";
-import {ThreadLifecycle, CLOSE_OWNER} from "./lifecycle.mjs";
+import {ThreadLifecycle} from "./lifecycle.mjs";
 import { startSlackWorkThread } from "../../slack-spin-out.mjs";
 
 export {
@@ -465,6 +465,31 @@ export async function sendThreadMessage(config, turn, sdk) {
   });
 }
 
+// Closure is the owner's decision: the agent infers the request from the
+// message, and the host accepts it only when the run's trusted inbound sender is
+// the configured owner. The close itself takes effect after the run ends.
+export function closeThreadTool(context, {config, ownerUserId, lifecycle}) {
+  if (context.messageChannel !== "slack" || !context.sessionKey) return;
+  const accountId = context.agentAccountId ?? String(context.agentId ?? "").toLowerCase();
+  const reply = (text, isError) => ({content: [{type: "text", text}], ...(isError ? {isError} : {})});
+  return {
+    name: "close_thread",
+    description: "Close this Slack thread when the current run ends. Call it only when the owner's message asks for the thread to be closed, after finishing any other work the message requested. The host refuses requests that did not come from the owner.",
+    parameters: {type: "object", additionalProperties: false, properties: {}},
+    async execute() {
+      if (!/^U[A-Z0-9]+$/.test(ownerUserId ?? "")) return reply("Closure requires configured ownerUserId", true);
+      if (context.requesterSenderId !== ownerUserId) return reply("Refused: only the owner can close this thread.", true);
+      if (!config?.channels?.slack?.accounts?.[accountId]) return reply("Closure requires a configured Slack sender", true);
+      try {
+        await lifecycle.requestClose(context.sessionKey, {messageId: (Date.now() / 1000).toFixed(6), principal: ownerUserId, accountId});
+      } catch (error) {
+        return reply(String(error?.message ?? error), true);
+      }
+      return reply("Accepted. The host posts the close report and ✅ after this run ends; do not announce the closure yourself.");
+    },
+  };
+}
+
 export default {
   id: "run-signature",
   name: "Run Signature",
@@ -529,7 +554,6 @@ export default {
         await recordOutboundStatus({dataRoot: resolveDataRoot(api.config, api.pluginConfig, close.accountId), channel: close.route.channel, threadId: close.route.threadId, status: 'closed', agent: close.accountId, sessionKey: close.sessionKey, runId: close.key});
       },
     });
-    globalThis[CLOSE_OWNER] = lifecycle;
     api.on('gateway_start', () => lifecycle.recover());
     const lifecycleHook = transition => async (event, ctx) => {
       try { await lifecycle[transition]({sessionKey: event.sessionKey ?? ctx.sessionKey, runId: event.runId ?? ctx.runId}); }
@@ -608,37 +632,7 @@ export default {
       };
     }, { name: "start_work_thread" });
 
-    lifecycle.slackClose = async ({message, accountId}) => {
-      if (isExcludedChannel(message.channel) || message.bot_id || message.subtype || message.is_forwarded || message._ambiguousThreadReply) return false;
-      const botUserIds = [];
-      if (String(message.text ?? '').trim().startsWith('<@')) {
-        const accounts = await import(resolveSlackRuntimeModule("accounts"));
-        for (const candidate of Object.keys(api.config?.channels?.slack?.accounts ?? {})) {
-          const token = accounts.resolveSlackAccount({cfg: api.config, accountId: candidate})?.botToken;
-          const botUserId = token ? await resolveBotUserId(token, botIdCache) : undefined;
-          if (botUserId) botUserIds.push(botUserId);
-        }
-      }
-      if (!isCloseCommand(message.text, botUserIds)) return false;
-      const principal = api.pluginConfig?.ownerUserId;
-      if (!principal || !/^U[A-Z0-9]+$/.test(principal)) throw new Error('Owner-only closure requires configured ownerUserId');
-      if (message.user !== principal) return false;
-      const thread = message.thread_ts;
-      const sender = thread ? await lifecycle.sender({channel: message.channel, threadId: thread}) : undefined;
-      const configuredSender = String(sender ?? accountId ?? '');
-      if (!api.config?.channels?.slack?.accounts?.[configuredSender]) throw new Error('Closure requires a configured Slack sender');
-      if (accountId !== configuredSender) return true;
-      if (!thread || thread === message.ts) {
-        await lifecycle.send({key: `close-root:${message.channel}:${message.ts}`,
-          route: {channel: message.channel, threadId: message.ts}, accountId: configuredSender,
-          sessionKey: `agent:${configuredSender}:slack:channel:${message.channel.toLowerCase()}:thread:${message.ts}`,
-          text: 'Reply “close this” inside the thread you want to close.'});
-        return true;
-      }
-      await lifecycle.closeCommand({channel: message.channel, threadId: thread}, {
-        messageId: message.ts, principal, accountId: configuredSender});
-      return true;
-    };
+    api.registerTool?.(context => closeThreadTool(context, {config: api.config, ownerUserId: api.pluginConfig?.ownerUserId, lifecycle}), {name: "close_thread"});
 
     // Seed the last-resort fallback from the previous process's snapshot, so
     // the first reply after a restart still carries tiles. Live events win.

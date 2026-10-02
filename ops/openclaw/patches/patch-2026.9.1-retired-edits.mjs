@@ -4,27 +4,24 @@ import {pathToFileURL} from 'node:url';
 import {resolveSlackRuntimeModule} from '../plugins/run-signature/index.js';
 import {resolveCodexPluginDist} from './codex-plugin-root.mjs';
 
-// The configured owner's `close this` is intercepted before mention gating and
-// model admission. Without a loaded plugin the message falls through to stock
-// handling; a plugin mismatch must never become a Slack ingress outage.
+// Retired installed edits. The patch runner edits installed 2026.9.1 bundles in
+// place, so restore the stock text exactly and fail closed on an unrecognized
+// variant. Delete this file once OpenClaw is reinstalled or upgraded.
 const OWNER = 'globalThis[Symbol.for("humanware.final-envelope.v1")]';
+const CLOSE_ANCHOR = '\tconst { senderId, allowFromLower } = authorization;';
+const CLOSE_EDITS = [
+  `\n\t// humanware:owner-close-before-admission\n\tconst closeOwner = ${OWNER};\n\tif (closeOwner?.slackClose && await closeOwner.slackClose({message, accountId: account.accountId})) return null;`,
+  `\n\t// humanware:owner-close-before-admission\n\tconst closeOwner = ${OWNER};\n\tif (!closeOwner?.slackClose) throw new Error("Host closure owner is unavailable");\n\tif (await closeOwner.slackClose({message, accountId: account.accountId})) return null;`,
+];
 
-export function patchSlackCloseBoundary(source) {
-  const anchor = '\tconst { senderId, allowFromLower } = authorization;';
-  const failClosed = '\tif (!closeOwner?.slackClose) throw new Error("Host closure owner is unavailable");\n\tif (await closeOwner.slackClose(';
-  const after = `${anchor}
-	// humanware:owner-close-before-admission
-	const closeOwner = ${OWNER};
-	if (closeOwner?.slackClose && await closeOwner.slackClose({message, accountId: account.accountId})) return null;`;
-  if (source.includes(after)) return source;
-  if (source.includes(failClosed)) return source.replace(failClosed, '\tif (closeOwner?.slackClose && await closeOwner.slackClose(');
-  if (source.split(anchor).length !== 2) throw new Error('Slack authenticated raw-message boundary changed');
-  return source.replace(anchor, after);
+// Owner closure is now a model-inferred tool request; the pre-admission intercept is retired.
+export function retireSlackCloseBoundary(source) {
+  let next = source;
+  for (const edit of CLOSE_EDITS) next = next.split(CLOSE_ANCHOR + edit).join(CLOSE_ANCHOR);
+  if (next.includes('humanware:owner-close-before-admission')) throw new Error('Unrecognized owner-close edit; review installed runtime');
+  return next;
 }
 
-// Retired JSON-final edits. Installed 2026.9.1 bundles still carry them, and
-// the patch runner edits the installed package in place, so restore the stock
-// text exactly. Delete this block once OpenClaw is reinstalled or upgraded.
 const RETIRED = {
   cursor: {
     stock: 'function runCliAgent(paramsInput) {',
@@ -63,8 +60,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   const core = process.env.OPENCLAW_CORE_DIST || path.join(process.env.OPENCLAW_PACKAGE_ROOT || '/opt/homebrew/lib/node_modules/openclaw', 'dist');
   const slack = process.env.OPENCLAW_SLACK_PIPELINE || resolveSlackRuntimeModule('pipeline');
   const source = fs.readFileSync(slack, 'utf8');
-  const next = patchSlackCloseBoundary(source);
+  const next = retireSlackCloseBoundary(source);
   const result = retireFinalBoundaries(core, resolveCodexPluginDist());
   if (source !== next) fs.writeFileSync(slack, next);
-  console.log(JSON.stringify({...result, slack: source === next ? 'checked' : 'patched'}));
+  console.log(JSON.stringify({...result, slack: source === next ? 'checked' : 'retired'}));
 }
