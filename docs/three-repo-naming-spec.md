@@ -1,6 +1,6 @@
 # Three-part naming and skill reset — cutover plan
 
-Status: framework changes are in this PR; instance changes and the restart wait for human approval.
+Status: framework changes are in this PR. The instance changes are in a companion instance PR, because one PR cannot span two repositories. Cutover waits for human approval and a restart window. Doppler consolidation is out of scope for this change.
 
 ## Decision
 
@@ -28,34 +28,29 @@ Paths:
 | `/Users/admin/ariel-os-data` | `/Users/admin/humanware-data` |
 | `~/Library/Application Support/HumanwareOS/ariel-os` | `~/Library/Application Support/HumanwareOS/my-humanware` |
 
-launchd labels: today they use three prefixes (`com.arielos.*`, `com.humanwareos.*`, `com.ariel.caddy`). All become `com.humanware.<service>`. `ai.openclaw.gateway` keeps its vendor label. Eleven stale `com.humanwareos.cutover.*` jobs are still loaded and will be removed.
+launchd labels: today they use three prefixes (`com.arielos.*`, `com.humanwareos.*`, `com.ariel.caddy`). All become `com.humanware.<service>`. `ai.openclaw.gateway` keeps its vendor label. Eleven stale `com.humanwareos.cutover.*` jobs are still loaded and will be removed. Buzz is removed entirely: its plists, routes, and docs.
 
-Secrets (Doppler): today there is a shared core project plus one project per agent. The instance code names `arielos-liv` and `arielos-max`; the full project list needs a Doppler token to confirm. This becomes one project, `my-humanware`, with one root config `prd` for shared keys and branch configs `prd_liv` and `prd_max` that inherit it and add only agent-scoped keys. Service tokens stay scoped per config, so the agent boundary survives with one project to manage. Key names don't change.
+Secrets: Doppler projects and key names are unchanged in this cutover; consolidation is a separate follow-up.
 
 ## Inventory at `origin/main`
 
-- Framework: no instance paths remain after this PR. The example backup paths now use `humanware-data`. Reference-installation prose in `architecture.md` and `domain-surface.md` is updated in the instance step, when the names become real.
-- Instance: 91 files contain an old path, repo name, or label. The largest are the Caddyfile, `humanware.instance.json`, `services/openclaw.json`, 22 plists, observability scripts, and Doppler project literals in ingest, heartbeat, and token tracking. Each literal path becomes a read of `HUMANWARE_DATA_ROOT` or the instance config, so a future rename is a config change.
+- Framework: no instance paths remain after this PR. The example backup paths now use `humanware-data`. The public docs now use the three names.
+- Instance: 91 files contain an old path, repo name, or label. The largest are the Caddyfile, `humanware.instance.json`, `services/openclaw.json`, 22 plists, observability scripts. Each literal path becomes a read of `HUMANWARE_DATA_ROOT` or the instance config, so a future rename is a config change.
 
 ## Cutover sequence
 
 Preparation (no restart, can merge any time):
 
-1. **Framework PR (this one):** delete the skills and commands, remove the `commands` copy from the runtime build, and update the docs. Tests pass, and the runtime build is unaffected.
-2. **Instance PR:** parameterize every literal path and Doppler project, rename the plists and labels, and add `ops/cutover/my-humanware.sh`. The script is idempotent, has a `--dry-run` that prints every move, and has a `--rollback`.
-3. **Doppler:** create `my-humanware` with `prd`, `prd_liv`, and `prd_max`, copy the keys, and verify key-name parity with a names-only diff. Leave the old projects untouched.
+1. **Framework PR (this one):** delete the skills, commands, and Buzz docs, remove the `commands` copy from the runtime build, and rename the parts throughout the public docs. Tests pass, and the runtime build is unaffected.
+2. **Instance PR:** parameterize every literal path, delete Buzz, rename the plists and labels, and add `ops/cutover/my-humanware.sh`. The script is idempotent, has a `--dry-run` that prints every move, and has a `--rollback`.
 
 Cutover (one approved window, about 30 minutes):
 
-4. Freeze: stop all `com.arielos.*`, `com.humanwareos.*`, and `com.ariel.*` jobs, then the gateway.
-5. Move: rename the GitHub repo, move the local checkout, worktree root, data root, and runtime root. Leave symlinks at every old path.
-6. Activate: point service tokens at the new Doppler configs, rebuild the runtime from the new paths, load the `com.humanware.*` plists, and start the gateway.
-7. Verify: both agents answer in Slack and load context from `humanware-data`. Caddy serves `os.arieldiaz.com`. Each `com.humanware.*` job is running or exited 0. The heartbeat and token jobs write to the new root. Search the live processes for the old paths and expect nothing.
+3. Freeze: stop all `com.arielos.*`, `com.humanwareos.*`, and `com.ariel.*` jobs, then the gateway. This includes Buzz jobs.
+4. Move: rename the GitHub repo, move the local checkout, worktree root, data root, and runtime root. Leave symlinks at every old path.
+5. Activate: rebuild the runtime from the new paths, load the `com.humanware.*` plists, and start the gateway.
+6. Verify: both agents answer in Slack and load context from `humanware-data`. Caddy serves `os.arieldiaz.com`. Each `com.humanware.*` job is running or exited 0. The heartbeat and token jobs write to the new root. Search the live processes for the old paths and expect nothing.
 
-Rollback: stop the new jobs, run `--rollback` to reverse the moves, reload the old plists, and reactivate the previous runtime build. The old Doppler projects remain until cleanup.
+Rollback: stop the new jobs, run `--rollback` to reverse the moves, reload the old plists, and reactivate the previous runtime build.
 
-Cleanup (after one clean week): remove the symlinks and old Doppler projects, then search the host for old names.
-
-## Open question
-
-Should the paused Buzz ACP plists be deleted rather than renamed? Buzz is paused, so deleting them is the simpler choice.
+Cleanup (after one clean week): remove the symlinks, then search the host for old names.

@@ -85,7 +85,7 @@ Service control planes and independent public products remain separate hostnames
 
 ## Reference instance
 
-Ariel OS uses `os.arieldiaz.com` as its private Humanware OS frontend. It consolidates stats, usage, tokens, sessions, security, design review, and artifacts beneath one authenticated origin. Legacy `stats.arieldiaz.com` and `design.arieldiaz.com` redirect into it during migration. Product and service-control hostnames remain separate where their trust boundary requires it.
+The reference installation uses `os.arieldiaz.com` as its private Humanware OS frontend. It consolidates stats, usage, tokens, sessions, security, design review, and artifacts beneath one authenticated origin. Legacy `stats.arieldiaz.com` and `design.arieldiaz.com` redirect into it during migration. Product and service-control hostnames remain separate where their trust boundary requires it.
 
 The current Mini/Caddy deployment is one adapter. The same instance route manifest must be renderable for a cloud-hosted private origin later without changing frontend components or data contracts.
 
