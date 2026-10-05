@@ -33,6 +33,8 @@ openclaw gateway start
 
 `patch-2026.9.8-slack-response-reliability.mjs` makes a terminal event from the session's current writer authoritative when restart bookkeeping still names an older recovery run, preventing a successful Slack turn from remaining falsely `running`. Session-start conflicts remain retryable until the ordinary age floor rather than being dead-lettered after eight quick attempts, and persisted or inspected ingress payloads redact credential-shaped fields. Run `scripts/repair-openclaw-terminal-sessions.mjs` after stopping the gateway to preview existing rows with durable terminal evidence, then rerun it with `--apply --session-key <EXACT_KEY>`. Apply mode refuses an unscoped mutation and closes a row only when that exact session's current lifecycle writer has a latest durable event of `session.ended`.
 
+`patch-2026.9.8-current-thread-root-edit.mjs` lets a delegated Slack agent edit the root message of its current thread when the caller omitted the canonical target. It infers only the trusted current channel when the requested message ID exactly matches the trusted thread root and the provider and account match; the stock conversation gate and Slack message ownership check still run afterward.
+
 `../slack-spin-out.mjs` posts the brief as one ordinary top-level message through stock send, then owns scaffold cleanup, status and durable session creation with high reasoning set before the initial run; the session replies in that message's thread.
 
 ## Prompt boilerplate
