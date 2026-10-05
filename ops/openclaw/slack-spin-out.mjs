@@ -1,5 +1,3 @@
-import { normalizeWorkThreadTitle } from "./slack-channel-thread.mjs";
-
 function messageId(result) {
   return result?.messageId ?? result?.message?.id ?? result?.result?.messageId;
 }
@@ -16,7 +14,6 @@ export async function startSlackWorkThread({
   accountId,
   agentId,
   channel,
-  title,
   detail,
   group,
   parentSessionKey,
@@ -29,33 +26,32 @@ export async function startSlackWorkThread({
   if (!accountId || !agentId || !channel || !detail || !operationId) {
     throw new Error("accountId, agentId, channel, detail, and operationId are required");
   }
-  const rootText = normalizeWorkThreadTitle(title);
+  const brief = String(detail).trim();
+  // One ordinary top-level post; the work session replies in its thread.
   const publication = await send({
     accountId,
     agentId,
     channel: "slack",
     to: `channel:${channel}`,
-    title: rootText,
-    message: String(detail).trim(),
+    message: brief,
     topLevel: true,
     idempotencyKey: `work-thread:${operationId}:publication`,
   });
-  const rootMessageId = publication?.threadId ?? publication?.result?.threadId;
-  const replyMessageId = messageId(publication);
-  if (!rootMessageId || !replyMessageId) throw new Error("Slack publication returned no root/body identity");
-  await prepareScaffold({ channel, messageIds: [String(rootMessageId), String(replyMessageId)] });
+  const rootMessageId = messageId(publication);
+  if (!rootMessageId) throw new Error("Slack publication returned no message identity");
+  await prepareScaffold({ channel, messageIds: [String(rootMessageId)] });
   await setStatus({ channel, rootMessageId: String(rootMessageId), status: "working" });
   try {
     const task = [
       "Begin this work now.",
       `Use Slack channel ${channel}, thread root ${rootMessageId} for material progress, questions, and the final result.`,
-      "The root and detailed brief are already posted; do not repeat or recreate them.",
+      "The brief is already posted as the thread root; do not repeat or recreate it.",
       "",
-      String(detail).trim(),
+      brief,
     ].join("\n");
     const session = await createSession({
       agentId,
-      label: rootText,
+      label: brief.split("\n")[0],
       ...(group?.trim() ? { category: group.trim() } : {}),
       thinkingLevel: "high",
       task,
@@ -69,7 +65,6 @@ export async function startSlackWorkThread({
     }
     return {
       rootMessageId: String(rootMessageId),
-      replyMessageId: String(replyMessageId),
       childSessionKey: String(childSessionKey),
       runId: String(childRunId),
       thinkingLevel: "high",

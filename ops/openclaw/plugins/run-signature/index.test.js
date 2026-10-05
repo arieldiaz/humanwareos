@@ -73,7 +73,7 @@ test("registers one atomic Slack work-thread tool with the normal high-reasoning
     agentAccountId: "max",
   });
   assert.equal(tool.name, "start_work_thread");
-  assert.deepEqual(tool.parameters.required, ["title", "detail"]);
+  assert.deepEqual(tool.parameters.required, ["detail"]);
   assert.match(tool.description, /durable high-reasoning session/);
 });
 

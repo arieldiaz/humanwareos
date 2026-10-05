@@ -19,7 +19,7 @@ test("renders framework, instance, identity, and data-plane references", () => {
   });
   assert.match(rendered["AGENTS.md"], /Framework rules/);
   assert.match(rendered["AGENTS.md"], /Owner: Ariel/);
-  assert.match(rendered["AGENTS.md"], /Canonical response envelope[\s\S]*Use ## TLDR/);
+  assert.match(rendered["AGENTS.md"], /## Reply shape[\s\S]*Use ## TLDR/);
   assert.match(rendered["SOUL.md"], /Own Ariel Works/);
   assert.match(rendered["SOUL.md"], /\/data\/current\/memory/);
   assert.doesNotMatch(rendered["SOUL.md"], /Before every Slack reply, read/);

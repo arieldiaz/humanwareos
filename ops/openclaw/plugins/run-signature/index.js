@@ -577,14 +577,13 @@ export default {
       if (!channel || !agentId || !accountId) return;
       return {
         name: "start_work_thread",
-        description: "Start substantial Slack work in its normal shape with one call: one short single-line root, the full brief as the first reply, a working status, and a durable high-reasoning session that begins immediately. Use this instead of separate message and sessions_spawn calls.",
+        description: "Start substantial Slack work in its normal shape with one call: the brief as one top-level channel post, a working status, and a durable high-reasoning session that replies in its thread and begins immediately. Use this instead of separate message and sessions_spawn calls.",
         parameters: {
           type: "object",
           additionalProperties: false,
-          required: ["title", "detail"],
+          required: ["detail"],
           properties: {
-            title: { type: "string", minLength: 1, description: "Short one-line root title." },
-            detail: { type: "string", minLength: 1, description: "Complete work brief for reply one and the work session." },
+            detail: { type: "string", minLength: 1, description: "Complete work brief: the top-level post and the work session task." },
             group: { type: "string", description: "Optional dashboard group." },
           },
         },
@@ -608,7 +607,6 @@ export default {
               accountId,
               agentId,
               channel,
-              title: args.title,
               detail: args.detail,
               group: args.group,
               parentSessionKey: context.sessionKey,
