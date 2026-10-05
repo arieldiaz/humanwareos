@@ -97,7 +97,7 @@ test("records one idempotent completion event and one generated view", async () 
     channel: "C1",
     thread: "100.000000",
     agent: "liv",
-    closeMessageId: "200.000000",
+    operationId: "C1:100.000000:close:200.000000",
     summary: "Done.",
     stats: measureSlackThread(messages),
     usage: undefined,

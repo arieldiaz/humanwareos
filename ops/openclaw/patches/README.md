@@ -14,8 +14,6 @@ Instance-owned declarative configuration lives one level up:
 
 ## 2026.9.1 reliability patches
 
-`patch-2026.9.1-final-receipt.mjs` lets host-owned `humanware-final:` thread replies (the close report and root close hint) keep their Slack receipt inside the existing bounded completion record (one day / 2,000 entries), so a repeated send returns the original receipt instead of reposting, and restart recovery may reconcile but never redispatch them without the live caller. It also honors an explicit `topLevel` gateway send so `start_work_thread` posts one ordinary channel message even when called from a thread. It fails closed if the retired synthetic-root edits (`humanware-slack-channel-thread.mjs`) are still installed: reinstall `openclaw@2026.9.1`, then run the patch runner. Test it only on a copied distribution.
-
 `patch-2026.9.1-cli-commentary-projection.mjs` keeps CLI pre-tool narration out of the final channel reply even when the surface has no live-commentary listener. OpenClaw already recognizes text before a tool call as commentary, but stock 2026.9.1 enables that classification only when a listener exists; on Slack it therefore concatenates the commentary and terminal answer, including malformed boundaries such as `context.## TLDR`. The patch makes classification independent of observation: a listener receives commentary when present, otherwise it is discarded, while tool-free answers and the terminal assistant message are unchanged.
 
 `patch-2026.9.1-prompt-annotation-race.mjs` allows the native Codex prompt mirror to preserve compatible `__openclaw` metadata added after the user admission was recorded. It still rejects content changes, non-metadata changes, terminal evidence, and conflicting provenance. This closes the race that made prompt mirroring fail and then left settled-turn finalization without its captured context.
@@ -84,5 +82,5 @@ mentions become `user`/`channel` elements.
 
 Same rules: idempotent, fails closed, restart the gateway after applying.
 
-`patch-2026.9.1-retired-edits.mjs` restores stock text where retired Humanware edits are still installed: the Slack owner-close intercept before model admission (owner closure is now the run-signature `close_thread` tool, gated on the run's trusted sender matching `ownerUserId`), and the CLI runner, harness selection, and Codex turn/start JSON-final edits. It fails closed on an unrecognized variant. Delete it after the next OpenClaw reinstall or upgrade.
+`patch-2026.9.1-retired-edits.mjs` restores stock text where retired Humanware edits are still installed: the Slack owner-close intercept before model admission (owner closure is now the run-signature `close_thread` tool, gated on the run's trusted sender matching `ownerUserId`), and the CLI runner, harness selection, and Codex turn/start JSON-final edits. It fails closed on an unrecognized variant, and when the retired synthetic-root or final-receipt core delivery edits are still installed, since only `npm i -g openclaw@2026.9.1` removes those. Delete it after the next OpenClaw reinstall or upgrade.
 

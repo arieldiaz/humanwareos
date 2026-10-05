@@ -36,7 +36,7 @@ test("posts the brief as one top-level message and starts high before work begin
 
   assert.deepEqual(calls.map(([kind]) => kind), ["send", "scaffold", "status", "session"]);
   assert.equal("title" in calls[0][1], false);
-  assert.equal(calls[0][1].topLevel, true);
+  assert.equal(calls[0][1].sessionKey, undefined);
   assert.equal(calls[0][1].threadId, undefined);
   assert.equal(calls[0][1].message, input.detail.trim());
   assert.deepEqual(calls[1][1], { channel: "C123", messageIds: ["1787000000.100000"] });

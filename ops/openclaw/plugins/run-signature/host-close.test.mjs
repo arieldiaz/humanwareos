@@ -19,7 +19,7 @@ async function fixture(t) {
     record: async () => {}, fault: async () => {},
     snapshot: async close => {order.push('snapshot'); return {report: formatCloseReport({agent: close.accountId}), evidence: close.evidence};},
     writeReport: async close => {order.push('file'); files.set(close.key, close.snapshot.report);},
-    send: async close => {order.push('send'); if (!receipts.has(close.key)) receipts.set(close.key, {messageId: 'receipt:' + close.key}); return receipts.get(close.key);},
+    send: async close => {order.push('send'); receipts.set(close.key, true);},
     completeClose: async close => {order.push('completion'); completed.add(close.key);},
     project: async status => {order.push(status);}};
   return {options, root, receipts, completed, files, order, runtime: new ThreadLifecycle(options)};
@@ -108,7 +108,9 @@ test('closed is soft: the next admitted run replaces ✅ through ordinary admiss
 });
 test('a send the hook suppressed is reported as settled, not retried', async () => {
   const sdk = {buildOutboundSessionContext: value => value, sendDurableMessageBatch: async () => ({status: 'suppressed', payloadOutcomes: [{reason: 'cancelled_by_message_sending_hook'}]})};
-  assert.deepEqual(await sendThreadMessage({}, {key: 'k', route, text: 'text'}, sdk), {parts: [], suppressed: ['cancelled_by_message_sending_hook']});
+  await sendThreadMessage({}, {key: 'k', route, text: 'text'}, sdk);
+  const failed = {buildOutboundSessionContext: value => value, sendDurableMessageBatch: async () => ({status: 'failed', error: new Error('down')})};
+  await assert.rejects(sendThreadMessage({}, {key: 'k', route, text: 'text'}, failed), /down/);
 });
 test('a run that ends after a close cannot overwrite the closed tile', async t => {
   const f = await fixture(t);
@@ -136,15 +138,17 @@ test('missing metrics are not zero; partial counters and context are labeled', (
   assert.match(report, /Elapsed: unavailable/);
   assert.equal(summarizeTrajectory([{type: 'model.completed', data: {usage: {input: 99}}}], {before: Date.now()}), undefined);
 });
-test('segmented report retries reuse stable per-part receipts and preserve semantic content', async () => {
+test('segmented report retries reuse stable per-part intents and preserve semantic content', async () => {
   const report = 'A long supported outcome.\n'.repeat(400), receipts = new Map(), sent = [];
   const parts = reportParts(report); assert.equal(parts.join(''), report); assert.ok(parts.length > 1);
   let fail = true;
   const sdk = {buildOutboundSessionContext: value => value, sendDurableMessageBatch: async value => {
     assert.equal(value.requireUnknownSendReconciliation, true);
-    if (!receipts.has(value.deliveryIntentId)) {sent.push(value.payloads[0].text); receipts.set(value.deliveryIntentId, {messageId: String(receipts.size)});}
+    // Stock reuse of a completed intent settles as 'suppressed' without resending.
+    if (receipts.has(value.deliveryIntentId)) return {status: 'suppressed', results: []};
+    sent.push(value.payloads[0].text); receipts.set(value.deliveryIntentId, true);
     if (fail && receipts.size === 2) {fail = false; throw new Error('ambiguous receipt');}
-    return {status: 'sent', results: [receipts.get(value.deliveryIntentId)]};
+    return {status: 'sent', results: [{messageId: String(receipts.size)}]};
   }};
   const turn = {key: 'close:0', closeOperation: 'close:0', accountId: 'max', route, text: report};
   await assert.rejects(sendThreadMessage({}, turn, sdk));
@@ -154,7 +158,7 @@ test('segmented report retries reuse stable per-part receipts and preserve seman
 test('completion event is operation-idempotent and matches the already written Markdown', async t => {
   const f = await fixture(t), report = formatCloseReport({agent: 'max'}), operationId = 'close:0';
   const view = await writeCloseReport({dataRoot: f.root, operationId, report});
-  const event = {dataRoot: f.root, operationId, report, agent: 'max', channel: route.channel, thread: route.threadId, closeMessageId: 'receipt', now: new Date('2026-09-30T12:00:00Z')};
+  const event = {dataRoot: f.root, operationId, report, agent: 'max', channel: route.channel, thread: route.threadId, now: new Date('2026-09-30T12:00:00Z')};
   await recordSessionClose(event); await recordSessionClose(event);
   assert.equal(await readFile(view, 'utf8'), report + '\n');
   assert.equal((await readFile(join(f.root, 'evidence/sessions/events/2026-09-30.jsonl'), 'utf8')).trim().split('\n').length, 1);

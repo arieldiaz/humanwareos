@@ -435,12 +435,12 @@ const closeTransport = new AsyncLocalStorage();
 
 // Host-owned thread messages (the close report and the root close hint) go
 // through the supported durable sender; model replies use stock delivery.
+// Each part has a stable intent id; stock reuse of a completed or queued intent
+// settles as 'suppressed' without resending, so no message ID is kept.
 export async function sendThreadMessage(config, turn, sdk) {
   return closeTransport.run(turn, async () => {
   sdk ??= await loadCoreSdk('channel-outbound');
   const parts = turn.closeOperation ? reportParts(turn.text) : [turn.text];
-  const receipts = [];
-  let suppressed;
   for (const [index, text] of parts.entries()) {
   const id = `humanware-final:${turn.key}${turn.closeOperation ? ':part:' + index : ''}`;
   const sent = await sdk.sendDurableMessageBatch({
@@ -453,15 +453,8 @@ export async function sendThreadMessage(config, turn, sdk) {
     completionRetention: {idPrefix: 'humanware-final:', maxAgeMs: 86400000, maxEntries: 2000},
     mirror: {sessionKey: turn.sessionKey, agentId: turn.accountId, text, idempotencyKey: id},
   });
-  // 'suppressed' means the transport settled every payload without a visible
-  // message (hook-cancelled or empty after stripping): nothing is left to retry.
-  if (sent.status === 'suppressed') { suppressed = sent.payloadOutcomes?.map(outcome => outcome.reason) ?? true; continue; }
-  if (sent.status !== 'sent') throw sent.error ?? new Error(`Final send ${sent.status}`);
-  const receipt = sent.results.at(-1);
-  if (!receipt?.messageId) throw new Error('Missing part receipt');
-  receipts.push(receipt);
+  if (!['sent', 'suppressed'].includes(sent.status)) throw sent.error ?? new Error(`Final send ${sent.status}`);
   }
-  return {...receipts.at(-1), parts: receipts, ...(receipts.length ? {} : {suppressed})};
   });
 }
 
@@ -550,7 +543,7 @@ export default {
       completeClose: async close => {
         await recordSessionClose({dataRoot: resolveDataRoot(api.config, api.pluginConfig, close.accountId),
         channel: close.route.channel, thread: close.route.threadId, agent: close.accountId,
-        closeMessageId: close.messageId, ...close.snapshot, operationId: close.key, now: new Date(close.startedAt)});
+        ...close.snapshot, operationId: close.key, now: new Date(close.startedAt)});
         await recordOutboundStatus({dataRoot: resolveDataRoot(api.config, api.pluginConfig, close.accountId), channel: close.route.channel, threadId: close.route.threadId, status: 'closed', agent: close.accountId, sessionKey: close.sessionKey, runId: close.key});
       },
     });

@@ -34,7 +34,6 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -x "$RUNTIME/current/framework/scripts/runtime-restart-guard.sh" ]
 [ -x "$RUNTIME/current/framework/scripts/apply-openclaw-patches.sh" ]
 [ -f "$RUNTIME/current/framework/ops/openclaw/slack-spin-out.mjs" ]
-[ -f "$RUNTIME/current/framework/ops/openclaw/patches/patch-2026.9.1-final-receipt.mjs" ]
 [ -f "$RUNTIME/current/framework/scripts/openclaw-agent-entries.mjs" ]
 [ -f "$RUNTIME/current/framework/ops/openclaw/patches/slack-plugin-root.mjs" ]
 [ -f "$RUNTIME/current/framework/ops/openclaw/patches/slack-rich-text/markdown-to-rich-text.mjs" ]

@@ -27,14 +27,13 @@ export async function startSlackWorkThread({
     throw new Error("accountId, agentId, channel, detail, and operationId are required");
   }
   const brief = String(detail).trim();
-  // One ordinary top-level post; the work session replies in its thread.
+  // No sessionKey or threadId: stock gateway send posts top-level; the work session replies in its thread.
   const publication = await send({
     accountId,
     agentId,
     channel: "slack",
     to: `channel:${channel}`,
     message: brief,
-    topLevel: true,
     idempotencyKey: `work-thread:${operationId}:publication`,
   });
   const rootMessageId = messageId(publication);

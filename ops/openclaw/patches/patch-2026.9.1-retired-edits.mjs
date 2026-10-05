@@ -58,6 +58,9 @@ export function retireFinalBoundaries(core, codex) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const core = process.env.OPENCLAW_CORE_DIST || path.join(process.env.OPENCLAW_PACKAGE_ROOT || '/opt/homebrew/lib/node_modules/openclaw', 'dist');
+  // The synthetic-root and final-receipt core edits were not text-reversible; only a reinstall removes them.
+  if (fs.existsSync(path.join(core, 'humanware-slack-channel-thread.mjs')) || fs.readdirSync(core).some(name => name.startsWith('delivery-queue-storage-') && fs.readFileSync(path.join(core, name), 'utf8').includes('humanware:final-receipt')))
+    throw new Error('Retired core delivery edits are installed; reinstall openclaw@2026.9.1, then rerun the patch runner');
   const slack = process.env.OPENCLAW_SLACK_PIPELINE || resolveSlackRuntimeModule('pipeline');
   const source = fs.readFileSync(slack, 'utf8');
   const next = retireSlackCloseBoundary(source);

@@ -93,10 +93,8 @@ export class ThreadLifecycle {
       if (close.phase === 'sending' && Date.now() - close.sendStartedAt >= 86400000)
         throw new Error('Close receipt retention expired; reconcile the existing intent before retrying');
       await this.state(state => Object.assign(state.closes[key], {phase: 'sending', sendStartedAt: close.sendStartedAt ?? Date.now()}));
-      const receipt = await this.send({...close, text: close.snapshot.report, closeOperation: key});
-      const messageId = receipt?.messageId ?? receipt?.result?.messageId;
-      if (!messageId) throw new Error('Close report has no confirmed durable receipt');
-      await this.state(state => Object.assign(state.closes[key], {phase: 'delivered', messageId, receipts: receipt.parts ?? [receipt]}));
+      await this.send({...close, text: close.snapshot.report, closeOperation: key});
+      await this.state(state => {state.closes[key].phase = 'delivered';});
     }
     close = await this.state(state => state.closes[key]);
     if (close.phase === 'delivered') {

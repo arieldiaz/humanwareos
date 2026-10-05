@@ -573,7 +573,7 @@ test('host thread messages use the supported durable sender with stable queue cu
   const calls = [];
   const turn = {key: 'conversation:run', accountId: 'max', sessionKey: 'session', route: {channel: 'C123', threadId: 'root'}, text: 'Unchanged.'};
   const sdk = {buildOutboundSessionContext: params => params, sendDurableMessageBatch: async params => {calls.push(params); return {status: 'sent', results: [{messageId: 'receipt'}]};}};
-  assert.equal((await sendThreadMessage({}, turn, sdk)).messageId, 'receipt');
+  await sendThreadMessage({}, turn, sdk);
   assert.equal(calls[0].deliveryIntentId, 'humanware-final:conversation:run');
   assert.equal(calls[0].durability, 'required');
   assert.equal(calls[0].requireUnknownSendReconciliation, true);
