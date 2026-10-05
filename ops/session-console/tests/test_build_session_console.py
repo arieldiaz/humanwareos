@@ -1,6 +1,9 @@
 import importlib.util
 import json
+import os
 import pathlib
+import shutil
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -183,6 +186,18 @@ class CanonicalSessionReaderTest(unittest.TestCase):
         self.assertEqual(projected['channelId'], 'C1')
         self.assertEqual(projected['threadId'], '123.45')
         self.assertEqual(projected['status'], 'active')
+
+    def test_zstd_transcript_payloads_decode_in_seq_order(self):
+        records = [{'type': 'message', 'message': {'role': 'user', 'content': 'small'}},
+                   {'type': 'message', 'message': {'role': 'assistant', 'content': 'x' * 2048}}]
+        node = os.environ.get('NODE_BIN') or shutil.which('node')
+        blob = subprocess.run([node, '-e', 'process.stdout.write(require("zlib").zstdCompressSync(require("fs").readFileSync(0)))'],
+                              input=json.dumps(records[1]).encode(), capture_output=True, check=True).stdout
+        self.db.execute('ALTER TABLE transcript_events ADD COLUMN event_zstd BLOB')
+        self.db.execute('INSERT INTO transcript_events VALUES (?, ?, NULL, ?, ?)', ('current', 2, 2, blob))
+        self.db.execute('INSERT INTO transcript_events VALUES (?, ?, ?, ?, NULL)', ('current', 1, json.dumps(records[0]), 1))
+        self.db.commit()
+        self.assertEqual(list(MODULE.iter_transcript_records(self.root, 'liv', self.entry)), records)
 
     def test_transcript_event_shape_order_usage_and_wal_visibility(self):
         self.db.execute('PRAGMA journal_mode=WAL')

@@ -3,6 +3,7 @@ import {mkdir, mkdtemp, rm, writeFile, readFile} from "node:fs/promises";
 import {DatabaseSync} from "node:sqlite";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
+import {zstdCompressSync} from "node:zlib";
 import test from "node:test";
 import {loadSessionEntry} from "./session-store.mjs";
 import {loadThreadUsage} from "./session-close.mjs";
@@ -48,6 +49,19 @@ test("thread usage includes prior windows and deduplicates replayed event IDs", 
   assert.equal(usage.turns, 2);
   assert.equal(usage.input, 30);
   assert.equal(usage.output, 4);
+});
+
+test("thread usage decodes 2026.9.8 zstd transcript payloads", async (t) => {
+  const {agentsRoot, db} = await fixture(t);
+  db.exec("ALTER TABLE transcript_events ADD COLUMN event_zstd BLOB");
+  const event = (id, input) => JSON.stringify({id, type: "message", message: {role: "assistant", model: "sol", usage: {input, output: 2}}});
+  db.prepare("INSERT INTO session_windows VALUES(?, ?, ?)").run("current", key, 1);
+  db.prepare("INSERT INTO transcript_events VALUES(?, ?, ?, NULL)").run("current", 1, event("e1", 10));
+  db.prepare("INSERT INTO transcript_events VALUES(?, ?, NULL, ?)").run("current", 2, zstdCompressSync(Buffer.from(event("e2", 20))));
+  db.close();
+  const usage = await loadThreadUsage({agent: "liv", channel: "C1", thread: "100.000000", agentsRoot});
+  assert.equal(usage.turns, 2);
+  assert.equal(usage.input, 30);
 });
 
 test("canonical schema errors surface instead of returning stale legacy provenance", async (t) => {

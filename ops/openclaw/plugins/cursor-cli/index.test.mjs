@@ -32,15 +32,15 @@ test("registers provider bindings without changing the selected backend or comma
 });
 
 // Run against the locally installed reviewed core without loading plugins or state.
-test("OpenClaw 9.1 accepts both CLI runtimes without requiring a native harness", {skip: !process.env.OPENCLAW_TEST_PACKAGE_ROOT}, async () => {
+test("OpenClaw 9.8 accepts both CLI runtimes without requiring a native harness", {skip: !process.env.OPENCLAW_TEST_PACKAGE_ROOT}, async () => {
   const {readFile, readdir} = await import("node:fs/promises");
   const {join} = await import("node:path");
   const {pathToFileURL} = await import("node:url");
   const root = process.env.OPENCLAW_TEST_PACKAGE_ROOT;
-  assert.equal(JSON.parse(await readFile(join(root, "package.json"), "utf8")).version, "2026.9.1");
+  assert.equal(JSON.parse(await readFile(join(root, "package.json"), "utf8")).version, "2026.9.8");
   const files = await readdir(join(root, "dist"));
   async function exportedFunction(prefix, name) {
-    const candidates = files.filter(file => file.startsWith(prefix) && file.endsWith(".js"));
+    const candidates = files.filter(file => file.startsWith(prefix) && /\.m?js$/.test(file));
     for (const file of candidates) {
       const source = await readFile(join(root, "dist", file), "utf8");
       if (!source.includes(`function ${name}(`)) continue;

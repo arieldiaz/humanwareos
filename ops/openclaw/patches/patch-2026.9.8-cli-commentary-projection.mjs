@@ -3,9 +3,12 @@ import path from "node:path";
 
 const packageRoot = process.env.OPENCLAW_PACKAGE_ROOT || "/opt/homebrew/lib/node_modules/openclaw";
 const distDir = process.env.OPENCLAW_CORE_DIST || path.join(packageRoot, "dist");
+const expectedVersion = "2026.9.8";
+const installedVersion = JSON.parse(fs.readFileSync(path.join(distDir, "..", "package.json"), "utf8")).version;
+if (installedVersion !== expectedVersion) throw new Error(`OpenClaw ${installedVersion} is not ${expectedVersion}; review the CLI commentary patch before applying.`);
 const candidates = fs
   .readdirSync(distDir)
-  .filter((name) => /^cli-live-session-registry-.*\.js$/.test(name))
+  .filter((name) => /^cli-live-session-registry-.*\.mjs$/.test(name))
   .map((name) => path.join(distDir, name));
 
 const classificationBefore = `\tconst classifyClaudeCommentary = Boolean(params.onCommentaryText) && supportsCliJsonlToolEvents(params);`;

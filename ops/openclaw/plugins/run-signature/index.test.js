@@ -357,7 +357,7 @@ test("resolves the newest Slack package and its hashed runtime chunk", () => {
   assert.throws(() => resolveSlackRuntimeModule("actions", { projectsDir: "/proj", list: () => [], stat: () => ({ mtimeMs: 0 }) }));
 });
 
-test("resolves Slack 2026.9.1 named exports through the stable runtime API", () => {
+test("resolves Slack 2026.9.8 named exports through the stable runtime API", () => {
   const dist = "/proj/openclaw-slack-current/node_modules/@openclaw/slack/dist";
   const options = {
     projectsDir: "/proj",
