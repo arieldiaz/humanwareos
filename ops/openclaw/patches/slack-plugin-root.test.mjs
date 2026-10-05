@@ -20,19 +20,25 @@ function fixture(t, version) {
   return {add, env: {OPENCLAW_PACKAGE_ROOT: root, OPENCLAW_NPM_PROJECTS_DIR: projects}};
 }
 
-for (const version of ["2026.7.1-1", "2026.9.1"]) test(`resolves Slack for ${version} with old and new installs present`, (t) => {
-  const {add, env} = fixture(t, version);
-  const old = add("old-generation", "2026.7.1");
-  const current = add("new-generation", "2026.9.1");
-  assert.equal(resolveSlackPluginDist(env), path.join(version === "2026.9.1" ? current : old, "dist"));
+test("resolves Slack 2026.9.8 with old and new installs present", (t) => {
+  const {add, env} = fixture(t, "2026.9.8");
+  add("old-generation", "2026.9.1");
+  const current = add("new-generation", "2026.9.8");
+  assert.equal(resolveSlackPluginDist(env), path.join(current, "dist"));
+});
+
+test("older OpenClaw versions are rejected", (t) => {
+  const {add, env} = fixture(t, "2026.9.1");
+  add("old-generation", "2026.9.1");
+  assert.throws(() => resolveSlackPluginDist(env), /Unsupported OpenClaw version 2026.9.1/);
 });
 
 test("ambiguous and absent plugin versions fail without choosing a directory by age", (t) => {
-  const {add, env} = fixture(t, "2026.9.1");
-  add("old", "2026.7.1");
+  const {add, env} = fixture(t, "2026.9.8");
+  add("old", "2026.9.1");
   assert.throws(() => resolveSlackPluginDist(env), /found 0/);
-  const a = add("a", "2026.9.1");
-  add("b", "2026.9.1");
+  const a = add("a", "2026.9.8");
+  add("b", "2026.9.8");
   assert.throws(() => resolveSlackPluginDist(env), /found 2/);
   assert.equal(resolveSlackPluginDist({...env, OPENCLAW_SLACK_PLUGIN_ROOT: a}), path.join(a, "dist"));
   assert.throws(() => resolveSlackPluginDist({...env, OPENCLAW_SLACK_PLUGIN_ROOT: a, OPENCLAW_SLACK_DIST: "/other/dist"}), /Conflicting/);
@@ -40,7 +46,7 @@ test("ambiguous and absent plugin versions fail without choosing a directory by 
 
 
 test("explicit plugin roots remain version scoped", (t) => {
-  const {add, env} = fixture(t, "2026.9.1");
+  const {add, env} = fixture(t, "2026.9.8");
   const unsupported = add("future", "2026.10.1");
   assert.throws(() => resolveSlackPluginDist({...env, OPENCLAW_SLACK_PLUGIN_ROOT: unsupported}), /Unsupported Slack plugin version/);
 });

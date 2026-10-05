@@ -73,7 +73,7 @@ test("registers one atomic Slack work-thread tool with the normal high-reasoning
     agentAccountId: "max",
   });
   assert.equal(tool.name, "start_work_thread");
-  assert.deepEqual(tool.parameters.required, ["title", "detail"]);
+  assert.deepEqual(tool.parameters.required, ["detail"]);
   assert.match(tool.description, /durable high-reasoning session/);
 });
 
@@ -357,7 +357,7 @@ test("resolves the newest Slack package and its hashed runtime chunk", () => {
   assert.throws(() => resolveSlackRuntimeModule("actions", { projectsDir: "/proj", list: () => [], stat: () => ({ mtimeMs: 0 }) }));
 });
 
-test("resolves Slack 2026.9.1 named exports through the stable runtime API", () => {
+test("resolves Slack 2026.9.8 named exports through the stable runtime API", () => {
   const dist = "/proj/openclaw-slack-current/node_modules/@openclaw/slack/dist";
   const options = {
     projectsDir: "/proj",
@@ -573,7 +573,7 @@ test('host thread messages use the supported durable sender with stable queue cu
   const calls = [];
   const turn = {key: 'conversation:run', accountId: 'max', sessionKey: 'session', route: {channel: 'C123', threadId: 'root'}, text: 'Unchanged.'};
   const sdk = {buildOutboundSessionContext: params => params, sendDurableMessageBatch: async params => {calls.push(params); return {status: 'sent', results: [{messageId: 'receipt'}]};}};
-  assert.equal((await sendThreadMessage({}, turn, sdk)).messageId, 'receipt');
+  await sendThreadMessage({}, turn, sdk);
   assert.equal(calls[0].deliveryIntentId, 'humanware-final:conversation:run');
   assert.equal(calls[0].durability, 'required');
   assert.equal(calls[0].requireUnknownSendReconciliation, true);

@@ -1,11 +1,15 @@
-"""Read-only OpenClaw 2026.9.1 stores and legacy 2026.7.1 files.
+"""Read-only OpenClaw 2026.9.8 stores and legacy 2026.7.1 files.
 
 State root contains agents/. Canonical errors propagate; legacy fallback is
 allowed only when canonical sessions are absent (including the known 7.1 auth schema). No migration or repair is performed.
 """
 from __future__ import annotations
+import base64
 import json
+import os
 import re
+import shutil
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
@@ -73,6 +77,22 @@ def _canonical_sessions_present(path, agent_id):
             if row and tuple(row) == ("agent", 1, agent_id):
                 return False
         return True
+
+
+def _zstd_decompress(blobs):
+    """Decode OpenClaw's zstd transcript payloads; system Python lacks zstd, Node has it."""
+    if not blobs:
+        return []
+    if any(blob is None for blob in blobs):
+        raise SessionStoreError("Canonical transcript event has no payload")
+    script = 'const z=require("zlib");process.stdout.write(JSON.stringify(JSON.parse(require("fs").readFileSync(0,"utf8")).map(b=>z.zstdDecompressSync(Buffer.from(b,"base64")).toString("utf8"))))'
+    node = os.environ.get("NODE_BIN") or shutil.which("node") or "/opt/homebrew/opt/node/bin/node"
+    payload = json.dumps([base64.b64encode(bytes(blob)).decode() for blob in blobs])
+    try:
+        result = subprocess.run([node, "-e", script], input=payload, capture_output=True, text=True, check=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise SessionStoreError("Cannot decode compressed transcript payload") from error
+    return json.loads(result.stdout)
 
 
 def _object(raw, label):
@@ -181,8 +201,12 @@ def iter_transcript_records(state_root, agent_id, entry):
     path = database_path(state_root, agent_id)
     if _canonical_sessions_present(path, agent_id):
         with _database(path) as connection:
-            for row in connection.execute("SELECT event_json FROM transcript_events WHERE session_id = ? ORDER BY seq", (entry["sessionId"],)):
-                yield _object(row["event_json"], "transcript event")
+            compressed = any(row["name"] == "event_zstd" for row in connection.execute("PRAGMA table_info(transcript_events)"))
+            columns = "event_json, event_zstd" if compressed else "event_json, NULL AS event_zstd"
+            rows = connection.execute(f"SELECT {columns} FROM transcript_events WHERE session_id = ? ORDER BY seq", (entry["sessionId"],)).fetchall()
+        decoded = iter(_zstd_decompress([row["event_zstd"] for row in rows if row["event_json"] is None]))
+        for row in rows:
+            yield _object(row["event_json"] if row["event_json"] is not None else next(decoded), "transcript event")
         return
     session_file = entry.get("sessionFile")
     if session_file and str(session_file).startswith("sqlite:"):

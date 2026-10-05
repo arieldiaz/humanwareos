@@ -1,5 +1,6 @@
 import { appendFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { zstdDecompressSync } from "node:zlib";
 import { dirname, join } from "node:path";
 import {defaultAgentsRoot, loadSessionEntry, withCanonicalSessionDatabase} from "./session-store.mjs";
 
@@ -71,11 +72,12 @@ export async function loadThreadUsage({ agent, channel, thread, agentsRoot = def
   const sessionsDir = join(agentsRoot, agent, "sessions");
   const key = `agent:${agent}:slack:channel:${String(channel).toLowerCase()}:thread:${thread}`;
   const canonical = await withCanonicalSessionDatabase({agent, agentsRoot}, (database) => {
-    const rows = database.prepare(`SELECT t.event_json FROM session_windows w
+    const compressed = database.prepare("SELECT 1 FROM pragma_table_info('transcript_events') WHERE name = 'event_zstd'").get();
+    const rows = database.prepare(`SELECT t.event_json, ${compressed ? "t.event_zstd" : "NULL"} AS event_zstd FROM session_windows w
       JOIN transcript_events t ON t.session_id = w.session_id
       WHERE w.session_key = ? ORDER BY w.created_at, w.session_id, t.seq`).iterate(key);
     function* entries() {
-      for (const row of rows) yield JSON.parse(row.event_json);
+      for (const row of rows) yield JSON.parse(row.event_json ?? zstdDecompressSync(row.event_zstd).toString("utf8"));
     }
     return summarizeTrajectory(entries(), {before});
   });
@@ -142,10 +144,10 @@ export function reportParts(report, limit = 3000) {
   return parts;
 }
 
-export async function recordSessionClose({ dataRoot, channel, thread, agent, closeMessageId, summary, stats, usage, ownerLabel, operationId, report, now = new Date() }) {
+export async function recordSessionClose({ dataRoot, channel, thread, agent, summary, stats, usage, ownerLabel, operationId, report, now = new Date() }) {
   const ts = now.toISOString();
   const logicalSessionId = `slack:${channel}:${thread}`;
-  const id = operationId ?? `session-completed:${channel}:${thread}:${closeMessageId}`;
+  const id = operationId;
   const event = {
     schemaVersion: 2,
     id,
@@ -158,11 +160,11 @@ export async function recordSessionClose({ dataRoot, channel, thread, agent, clo
     kind: "session.completed",
     level: "normal",
     summary,
-    details: { channelId: channel, threadId: thread, closeMessageId, threadStats: stats, usage: usage ?? null },
-    sourceRef: { sessionKey: logicalSessionId, messageId: closeMessageId },
+    details: { channelId: channel, threadId: thread, threadStats: stats, usage: usage ?? null },
+    sourceRef: { sessionKey: logicalSessionId, messageId: thread },
   };
   const eventsPath = join(dataRoot, "evidence", "sessions", "events", `${ts.slice(0, 10)}.jsonl`);
-  const viewName = createHash("sha256").update(operationId ?? logicalSessionId).digest("hex").slice(0, 24);
+  const viewName = createHash("sha256").update(operationId).digest("hex").slice(0, 24);
   const viewPath = join(dataRoot, "generated", "sessions", `${viewName}.md`);
   await mkdir(dirname(eventsPath), { recursive: true });
   await mkdir(dirname(viewPath), { recursive: true });

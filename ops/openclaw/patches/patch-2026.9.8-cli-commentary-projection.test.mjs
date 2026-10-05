@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const patchPath = fileURLToPath(new URL("./patch-2026.9.1-cli-commentary-projection.mjs", import.meta.url));
+const patchPath = fileURLToPath(new URL("./patch-2026.9.8-cli-commentary-projection.mjs", import.meta.url));
 const parserFixture = `function supportsCliJsonlToolEvents() { return true; }
 function parse(params, events) {
 \tlet assistantText = "", pendingClaudeText = "";
@@ -29,8 +29,11 @@ function parse(params, events) {
 }`;
 
 test("projects non-terminal CLI text blocks as commentary without changing terminal answers", () => {
-  const dist = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-commentary-"));
-  const file = path.join(dist, "cli-live-session-registry-fixture.js");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-commentary-"));
+  const dist = path.join(root, "dist");
+  fs.mkdirSync(dist);
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ version: "2026.9.8" }));
+  const file = path.join(dist, "cli-live-session-registry-fixture.mjs");
   fs.writeFileSync(file, parserFixture);
   const apply = () => execFileSync(process.execPath, [patchPath], { env: { ...process.env, OPENCLAW_CORE_DIST: dist } });
   apply();
@@ -51,4 +54,14 @@ test("projects non-terminal CLI text blocks as commentary without changing termi
   assert.equal(parse({}, [block(), text("A short answer."), stop]), "A short answer.");
   apply();
   assert.equal(fs.readFileSync(file, "utf8"), patched);
+});
+
+test("refuses a different OpenClaw version", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-commentary-"));
+  const dist = path.join(root, "dist");
+  fs.mkdirSync(dist);
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ version: "2026.9.1" }));
+  fs.writeFileSync(path.join(dist, "cli-live-session-registry-fixture.mjs"), parserFixture);
+  assert.throws(() => execFileSync(process.execPath, [patchPath], { env: { ...process.env, OPENCLAW_CORE_DIST: dist }, stdio: "pipe" }));
+  assert.equal(fs.readFileSync(path.join(dist, "cli-live-session-registry-fixture.mjs"), "utf8"), parserFixture);
 });

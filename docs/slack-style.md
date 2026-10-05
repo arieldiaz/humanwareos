@@ -14,9 +14,9 @@ Verify authored output against delivered Slack blocks: a bold label authored by 
 
 ## Work threads
 
-Every agent-created new channel thread uses the durable sender: a whitespace-normalized title of at most 160 characters at the root, then the complete body and attachments in that thread. Scheduled sends use the job name; conversational sends use the supplied title or existing session label, falling back to “Update” without a title-generation run. Existing-thread replies and DMs are unchanged. Root and body share queue custody, but only body delivery completes the intent.
+A top-level channel post's first line is a general type word, colon, short descriptive summary (e.g. "Fix: raw JSON wrapper in Slack replies").
 
-When substantial work gets its own thread, use the atomic work-thread tool with a title and complete brief. It delegates publication to that same sender, then marks the root working and starts the durable high-reasoning session. Do not rebuild publication with separate sends or session-patch calls.
+When substantial work gets its own thread, use the atomic work-thread tool with the complete brief. It posts the brief as one top-level message, marks it working, and starts the durable high-reasoning session in its thread. Do not rebuild this with separate sends or session-patch calls.
 
 ## Channel overrides
 
