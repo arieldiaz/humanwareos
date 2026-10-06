@@ -4,9 +4,9 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
 import {ThreadLifecycle} from './lifecycle.mjs';
-import {formatCloseReport, reportParts, summarizeTrajectory, writeCloseReport, recordSessionClose} from './close-report.mjs';
+import {formatCloseReport, summarizeTrajectory, writeCloseReport, recordSessionClose} from './close-report.mjs';
 import {conversationFenceKey} from './conversation-fence.mjs';
-import {closeThreadTool, sendThreadMessage} from './index.js';
+import {closeThreadTool} from './index.js';
 const manifest = JSON.parse(await readFile(new URL('./openclaw.plugin.json', import.meta.url)));
 const route = {channel: 'C123', threadId: '1790050400.000001'};
 const input = {messageId: '1790050402.000001', principal: 'UOWNER', accountId: 'max'};
@@ -14,15 +14,14 @@ const params = {sessionKey: 'agent:max:slack:channel:c123:thread:1790050400.0000
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'host-close-'));
   t.after(() => rm(root, {recursive: true, force: true}));
-  const receipts = new Map(), completed = new Set(), files = new Map(), order = [];
+  const completed = new Set(), files = new Map(), order = [];
   const options = {root,
     record: async () => {}, fault: async () => {},
     snapshot: async close => {order.push('snapshot'); return {report: formatCloseReport({agent: close.accountId}), evidence: close.evidence};},
     writeReport: async close => {order.push('file'); files.set(close.key, close.snapshot.report);},
-    send: async close => {order.push('send'); receipts.set(close.key, true);},
     completeClose: async close => {order.push('completion'); completed.add(close.key);},
     project: async status => {order.push(status);}};
-  return {options, root, receipts, completed, files, order, runtime: new ThreadLifecycle(options)};
+  return {options, root, completed, files, order, runtime: new ThreadLifecycle(options)};
 }
 test('plugin schema accepts the owner principal required by host closure', () => {
   assert.deepEqual(manifest.configSchema.properties.ownerUserId, {type: 'string', pattern: '^U[A-Z0-9]+$'});
@@ -39,7 +38,7 @@ test('owner mixed instruction: the run finishes its work, then the host closes a
   assert.equal(result.isError, undefined);
   assert.equal(f.completed.size, 0, 'close never takes effect mid-run');
   await f.runtime.end(params);
-  assert.deepEqual(f.order, ['working', 'act', 'snapshot', 'file', 'send', 'completion', 'closed']);
+  assert.deepEqual(f.order, ['working', 'act', 'snapshot', 'file', 'completion', 'closed']);
   assert.equal((await f.runtime.state(state => state.conversations[conversationFenceKey(route)])).status, 'closed');
 });
 test('non-owner close request is refused and nothing closes', async t => {
@@ -69,7 +68,7 @@ test('accepted closure records the real inbound message id and checks invocation
   const revoked = await closeThreadTool({...toolContext, assertInvocationCurrent: () => { throw new Error('stale invocation'); }}, toolOptions(f.runtime)).execute('call', closeArgs);
   assert.match(revoked.content[0].text, /stale invocation/);
   const accepted = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute('call', closeArgs);
-  assert.match(accepted.content[0].text, /Only your final response after this call is delivered/);
+  assert.match(accepted.content[0].text, /without posting another message/);
   assert.equal((await f.runtime.state(state => state.conversations[conversationFenceKey(route)])).pendingClose.messageId, '300.000000');
 });
 test('a close requested by a run interrupted by restart is dropped', async t => {
@@ -89,34 +88,34 @@ test('no close without a request: an owner run that never calls close_thread end
 for (const accountId of ['liv','max']) test(`${accountId}: duplicate callbacks freeze once and complete after identical file/report`, async t => {
   const f = await fixture(t);
   await Promise.all(Array.from({length: 4}, () => f.runtime.closeCommand(route, {...input, accountId})));
-  assert.equal(f.receipts.size, 1); assert.equal(f.completed.size, 1);
+  assert.equal(f.completed.size, 1);
   assert.equal(f.files.size, 1);
-  assert.deepEqual(f.order, ['snapshot','file','send','completion','closed']);
+  assert.deepEqual(f.order, ['snapshot','file','completion','closed']);
   const state = JSON.parse(await readFile(join(f.root, 'final-decisions.json')));
   assert.equal(state.conversations[conversationFenceKey(route)].status, 'closed');
   assert.equal(Object.values(state.closes)[0].accountId, accountId);
   assert.equal(Object.values(state.closes)[0].principal, input.principal);
 });
-for (const boundary of ['snapshot', 'writeReport', 'send', 'completeClose', 'project']) test(`restart at ${boundary} recovers without a model turn or false closure`, async t => {
+for (const boundary of ['snapshot', 'writeReport', 'completeClose', 'project']) test(`restart at ${boundary} recovers without a model turn or false closure`, async t => {
   const f = await fixture(t);
   const original = f.runtime[boundary];
-  f.runtime[boundary] = async (...args) => {if (boundary === 'send' || boundary === 'completeClose') await original(...args); throw new Error('crash');};
+  f.runtime[boundary] = async (...args) => {if (boundary === 'completeClose') await original(...args); throw new Error('crash');};
   await assert.rejects(f.runtime.closeCommand(route, input), /crash/);
   const state = JSON.parse(await readFile(join(f.root, 'final-decisions.json')));
   assert.notEqual(Object.values(state.closes)[0].phase, 'complete');
   assert.notEqual(state.conversations[conversationFenceKey(route)].status, 'closed');
   await new ThreadLifecycle(f.options).recover();
-  assert.equal(f.receipts.size, 1); assert.equal(f.completed.size, 1);
+  assert.equal(f.completed.size, 1);
   assert.equal(f.order.at(-1), 'closed');
   await new ThreadLifecycle(f.options).recover();
-  assert.equal(f.receipts.size, 1);
+  assert.equal(f.completed.size, 1);
 });
 test('closed is soft: the next admitted run replaces ✅ through ordinary admission and can be closed again', async t => {
   const f = await fixture(t), key = conversationFenceKey(route);
   await f.runtime.closeCommand(route, input);
   assert.equal(f.order.at(-1), 'closed');
   await f.runtime.closeCommand(route, {...input, messageId: '1790050403.000001'});
-  assert.equal(f.receipts.size, 1);
+  assert.equal(f.completed.size, 1);
   await f.runtime.start({...params, runId: 'r2'});
   await f.runtime.start({...params, runId: 'r2'});
   await f.runtime.end({...params, runId: 'r2'});
@@ -124,13 +123,7 @@ test('closed is soft: the next admitted run replaces ✅ through ordinary admiss
   assert.equal((await f.runtime.state(state => state.conversations[key])).status, 'act');
   await f.runtime.closeCommand(route, {...input, messageId: '1790050404.000001'});
   assert.equal(f.order.at(-1), 'closed');
-  assert.equal(f.receipts.size, 2); assert.equal(f.completed.size, 2);
-});
-test('a send the hook suppressed is reported as settled, not retried', async () => {
-  const sdk = {buildOutboundSessionContext: value => value, sendDurableMessageBatch: async () => ({status: 'suppressed', payloadOutcomes: [{reason: 'cancelled_by_message_sending_hook'}]})};
-  await sendThreadMessage({}, {key: 'k', route, text: 'text'}, sdk);
-  const failed = {buildOutboundSessionContext: value => value, sendDurableMessageBatch: async () => ({status: 'failed', error: new Error('down')})};
-  await assert.rejects(sendThreadMessage({}, {key: 'k', route, text: 'text'}, failed), /down/);
+  assert.equal(f.completed.size, 2);
 });
 test('a run that ends after a close cannot overwrite the closed tile', async t => {
   const f = await fixture(t);
@@ -153,23 +146,6 @@ test('missing usage is reported as unavailable, not zero', () => {
   assert.match(report, /Tokens: max usage unavailable/);
   assert.equal(summarizeTrajectory([{type: 'model.completed', data: {usage: {input: 99}}}], {before: Date.now()}), undefined);
 });
-test('segmented report retries reuse stable per-part intents and preserve semantic content', async () => {
-  const report = 'A long supported outcome.\n'.repeat(400), receipts = new Map(), sent = [];
-  const parts = reportParts(report); assert.equal(parts.join(''), report); assert.ok(parts.length > 1);
-  let fail = true;
-  const sdk = {buildOutboundSessionContext: value => value, sendDurableMessageBatch: async value => {
-    assert.equal(value.requireUnknownSendReconciliation, true);
-    // Stock reuse of a completed intent settles as 'suppressed' without resending.
-    if (receipts.has(value.deliveryIntentId)) return {status: 'suppressed', results: []};
-    sent.push(value.payloads[0].text); receipts.set(value.deliveryIntentId, true);
-    if (fail && receipts.size === 2) {fail = false; throw new Error('ambiguous receipt');}
-    return {status: 'sent', results: [{messageId: String(receipts.size)}]};
-  }};
-  const turn = {key: 'close:0', closeOperation: 'close:0', accountId: 'max', route, text: report};
-  await assert.rejects(sendThreadMessage({}, turn, sdk));
-  await sendThreadMessage({}, turn, sdk);
-  assert.equal(sent.join(''), report); assert.equal(receipts.size, parts.length);
-});
 test('completion event is operation-idempotent and matches the already written Markdown', async t => {
   const f = await fixture(t), report = formatCloseReport({agent: 'max'}), operationId = 'close:0';
   const view = await writeCloseReport({dataRoot: f.root, operationId, report});
@@ -179,17 +155,19 @@ test('completion event is operation-idempotent and matches the already written M
   assert.equal((await readFile(join(f.root, 'evidence/sessions/events/2026-09-30.jsonl'), 'utf8')).trim().split('\n').length, 1);
 });
 
-test('expired uncertain close receipt stops for reconciliation', async t => {
+for (const phase of ['sending', 'delivered']) test(`a legacy ${phase} close completes without replaying its Slack message`, async t => {
   const f = await fixture(t);
-  f.runtime.send = async () => {throw new Error('unknown');};
-  await assert.rejects(f.runtime.closeCommand(route, input));
-  await f.runtime.state(state => {Object.values(state.closes)[0].sendStartedAt = Date.now() - 86400001;});
+  await f.runtime.reserveClose(route, input);
+  await f.runtime.state(state => {
+    const close = Object.values(state.closes)[0];
+    Object.assign(close, {phase, snapshot: {report: formatCloseReport({agent: close.accountId})}});
+  });
   await new ThreadLifecycle(f.options).recover();
-  assert.equal(f.receipts.size, 0);
-  assert.equal((await f.runtime.state(state => Object.values(state.closes)[0])).phase, 'sending');
-  assert.notEqual((await f.runtime.state(state => state.conversations[conversationFenceKey(route)])).status, 'closed');
+  assert.equal(f.completed.size, 1);
+  assert.equal((await f.runtime.state(state => state.conversations[conversationFenceKey(route)])).status, 'closed');
 });
-for (const phase of ['reserved', 'snapshot', 'file', 'sending', 'delivered', 'recorded', 'complete']) test(`failed journal persistence at ${phase} replays the same operation safely`, async t => {
+
+for (const phase of ['reserved', 'snapshot', 'file', 'recorded', 'complete']) test(`failed journal persistence at ${phase} replays the same operation safely`, async t => {
   const f = await fixture(t), base = f.runtime.state.bind(f.runtime);
   let interrupted = false;
   f.runtime.state = operation => base(async state => {
@@ -205,7 +183,6 @@ for (const phase of ['reserved', 'snapshot', 'file', 'sending', 'delivered', 're
   // Once reserved, startup recovery needs no inbound/model turn.
   if (phase === 'reserved') await restarted.closeCommand(route, input);
   else await restarted.recover();
-  assert.equal(f.receipts.size, 1); assert.equal(f.completed.size, 1);
+  assert.equal(f.completed.size, 1);
   assert.equal((await restarted.state(state => state.conversations[conversationFenceKey(route)])).status, 'closed');
 });
-

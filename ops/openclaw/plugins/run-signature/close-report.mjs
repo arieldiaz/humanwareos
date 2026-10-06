@@ -184,19 +184,6 @@ export async function writeCloseReport({dataRoot, operationId, report}) {
   return viewPath;
 }
 
-export function reportParts(report, limit = 3000) {
-  const parts = [];
-  let rest = report;
-  while (rest.length > limit) {
-    let end = rest.lastIndexOf('\n', limit);
-    if (end < 1) end = limit;
-    if (/^[\uDC00-\uDFFF]$/.test(rest[end])) end--;
-    parts.push(rest.slice(0, end)); rest = rest.slice(end);
-  }
-  if (rest) parts.push(rest);
-  return parts;
-}
-
 export async function recordSessionClose({ dataRoot, channel, thread, agent, summary, stats, usage, ownerLabel, operationId, report, now = new Date() }) {
   const ts = now.toISOString();
   const logicalSessionId = `slack:${channel}:${thread}`;

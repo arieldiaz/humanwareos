@@ -7,8 +7,8 @@ import {conversationFenceRoute, conversationFenceKey} from './conversation-fence
 // host close. Status is soft: the latest admitted run owns the root tile, and a
 // host close is one more status whose next admitted run simply replaces it.
 export class ThreadLifecycle {
-  constructor({root, project, record, fault, snapshot, writeReport, completeClose, send, excluded = () => false}) {
-    Object.assign(this, {root, project, record, fault, snapshot, writeReport, completeClose, send, excluded});
+  constructor({root, project, record, fault, snapshot, writeReport, completeClose, excluded = () => false}) {
+    Object.assign(this, {root, project, record, fault, snapshot, writeReport, completeClose, excluded});
     this.pending = Promise.resolve();
     this.closing = new Map();
   }
@@ -89,15 +89,9 @@ export class ThreadLifecycle {
       await this.state(state => {state.closes[key].phase = 'file';});
     }
     close = await this.state(state => state.closes[key]);
-    if (['file', 'sending'].includes(close.phase)) {
-      if (close.phase === 'sending' && Date.now() - close.sendStartedAt >= 86400000)
-        throw new Error('Close receipt retention expired; reconcile the existing intent before retrying');
-      await this.state(state => Object.assign(state.closes[key], {phase: 'sending', sendStartedAt: close.sendStartedAt ?? Date.now()}));
-      await this.send({...close, text: close.snapshot.report, closeOperation: key});
-      await this.state(state => {state.closes[key].phase = 'delivered';});
-    }
-    close = await this.state(state => state.closes[key]);
-    if (close.phase === 'delivered') {
+    // Older journals may have stopped in one of the retired Slack-delivery
+    // phases. Complete their durable record without replaying the message.
+    if (['file', 'sending', 'delivered'].includes(close.phase)) {
       await this.completeClose(close);
       await this.state(state => {state.closes[key].phase = 'recorded';});
     }

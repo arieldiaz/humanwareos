@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { readdirSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join } from "node:path";
@@ -14,7 +13,7 @@ import {
   planStatusTile,
 } from "./strip-core.mjs";
 import {
-  formatCloseReport, writeCloseReport, reportParts, loadPullRequests, modelPrices,
+  formatCloseReport, writeCloseReport, loadPullRequests, modelPrices,
   loadThreadUsage,
   measureSlackThread,
   recordSessionClose,
@@ -431,33 +430,6 @@ export function loadCoreSdk(name) {
   return import(join(process.env.OPENCLAW_PACKAGE_ROOT || '/opt/homebrew/lib/node_modules/openclaw', 'dist', 'plugin-sdk', `${name}.js`));
 }
 
-const closeTransport = new AsyncLocalStorage();
-
-// Host-owned thread messages (the close report and the root close hint) go
-// through the supported durable sender; model replies use stock delivery.
-// Each part has a stable intent id; stock reuse of a completed or queued intent
-// settles as 'suppressed' without resending, so no message ID is kept.
-export async function sendThreadMessage(config, turn, sdk) {
-  return closeTransport.run(turn, async () => {
-  sdk ??= await loadCoreSdk('channel-outbound');
-  const parts = turn.closeOperation ? reportParts(turn.text) : [turn.text];
-  for (const [index, text] of parts.entries()) {
-  const id = `humanware-final:${turn.key}${turn.closeOperation ? ':part:' + index : ''}`;
-  const sent = await sdk.sendDurableMessageBatch({
-    cfg: config, channel: 'slack', accountId: turn.accountId,
-    to: `channel:${turn.route.channel}`, threadId: turn.route.threadId,
-    session: sdk.buildOutboundSessionContext({cfg: config, agentId: turn.accountId, sessionKey: turn.sessionKey}),
-    payloads: [{text}],
-    deliveryIntentId: id, reusePendingDeliveryIntent: true,
-    durability: 'required', queuePolicy: 'required', requireUnknownSendReconciliation: true,
-    completionRetention: {idPrefix: 'humanware-final:', maxAgeMs: 86400000, maxEntries: 2000},
-    mirror: {sessionKey: turn.sessionKey, agentId: turn.accountId, text, idempotencyKey: id},
-  });
-  if (!['sent', 'suppressed'].includes(sent.status)) throw sent.error ?? new Error(`Final send ${sent.status}`);
-  }
-  });
-}
-
 // Closure is the owner's decision. The model interprets the current message;
 // the host only proves that decision quotes the current trusted owner message,
 // so an old "close this" in thread history cannot close the thread.
@@ -483,7 +455,7 @@ export function closeThreadTool(context, {config, ownerUserId, lifecycle, curren
       } catch (error) {
         return reply(String(error?.message ?? error), true);
       }
-      return reply("Accepted. Only your final response after this call is delivered: put the complete answer to the owner's message there, never a placeholder like \"(Final reply above.)\". The host then posts the close report and ✅; do not announce the closure yourself.");
+      return reply("Accepted. Put the complete answer to the owner's message in your final response. After the run, the host records the close and projects ✅ without posting another message.");
     },
   };
 }
@@ -536,7 +508,6 @@ export default {
         channel: turn.route.channel, threadId: turn.route.threadId, status: turn.status,
         agent: turn.accountId, sessionKey: turn.sessionKey, runId: turn.runId, recovery: turn.recovery}),
       fault: (turn, reason) => appendFaultJournal({runId: turn.runId, channel: turn.route.channel, rootTs: turn.route.threadId, reason}),
-      send: turn => sendThreadMessage(api.config, turn),
       snapshot: async close => {
         const accounts = await import(resolveSlackRuntimeModule('accounts'));
         const token = accounts.resolveSlackAccount({cfg: api.config, accountId: close.accountId})?.botToken;
@@ -730,7 +701,6 @@ export default {
 
     const workThreadPosts = new Set();
     async function reactToSentMessage(event, ctx) {
-      if (closeTransport.getStore()?.closeOperation) return;
       if (ctx.channelId !== "slack" || !event.success || !event.messageId) return;
       // Work-thread scaffolding (title root and brief) is posted by the tool, not a model turn: no signature.
       if (workThreadPosts.delete(String(event.content ?? "").trim())) return;
