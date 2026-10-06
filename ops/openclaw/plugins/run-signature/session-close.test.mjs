@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   formatCloseReport,
+  loadPullRequests,
   loadThreadUsage,
   measureSlackThread,
   recordSessionClose,
@@ -20,6 +21,9 @@ const messages = [
 test("measures Slack thread activity without estimates", () => {
   assert.deepEqual(measureSlackThread(messages), {
     elapsed: "1 min (0.0 h)",
+    elapsedSeconds: 60,
+    topic: "please fix this",
+    pullRequests: [],
     totalMessages: 2,
     humanMessages: 1,
     agentMessages: 1,
@@ -42,6 +46,7 @@ test("sums one usage record per completed model turn", () => {
     cacheWrite: 4,
     peakContext: 0,
     coverage: {input: 2, output: 2, cacheRead: 1, cacheWrite: 1, peakContext: 0},
+    byModel: {"grok-4.6": {input: 15, output: 5, cacheRead: 20, cacheWrite: 4}},
     models: "grok-4.6 (2 runs)",
   });
 });
@@ -64,6 +69,7 @@ test("reads usage from the current OpenClaw assistant-message transcript", () =>
     cacheWrite: 2,
     peakContext: 52,
     coverage: {input: 1, output: 1, cacheRead: 1, cacheWrite: 1, peakContext: 1},
+    byModel: {"grok-4.6-low-fast": {input: 40, output: 8, cacheRead: 10, cacheWrite: 2}},
     models: "grok-4.6-low-fast",
   });
 });
@@ -82,12 +88,25 @@ test("finds the current topic transcript from the canonical session index", asyn
   assert.equal((await loadThreadUsage({ agent: "liv", channel: "C1", thread: "100.000000", agentsRoot })).models, "grok");
 });
 
-test("the operational close report retains measurements", () => {
-  const stats = measureSlackThread(messages);
-  const text = formatCloseReport({ summary: "Fixed the lifecycle path.", stats, agent: "liv" });
-  assert.match(text, /^## Session Closed\n- Summary:/);
-  assert.match(text, /- Messages: 1 from humans \/ 1 from agents/);
-  assert.match(text, /usage unavailable/);
+test("the close report is short: what, tokens with API cost, code, follow-up", () => {
+  const stats = measureSlackThread([...messages, { ts: "200.000000", bot_id: "B1", text: "opened <https://github.com/o/r/pull/142|PR>" }]);
+  assert.deepEqual(stats.pullRequests, ["https://github.com/o/r/pull/142"]);
+  const usage = summarizeTrajectory([{ type: "model.completed", modelId: "claude-opus-5-5", data: { usage: { input: 1000, output: 1000, cacheRead: 1000000, cacheWrite: 0 } } }]);
+  const text = formatCloseReport({ stats, usage: [{agent: "liv", usage}, {agent: "max"}],
+    pullRequests: [{url: stats.pullRequests[0], number: 142, state: "OPEN", additions: 62, deletions: 140, changedFiles: 2}] });
+  assert.equal(text, [
+    "**Session closed** · 2m · 3 msgs",
+    "- What: please fix this",
+    "- Tokens: 1.0M in (100% cached) · 1k out · ~$0.22 API",
+    "- Code: [PR #142](https://github.com/o/r/pull/142) · open · +62/−140 · 2 files",
+    "- Follow-up: none",
+  ].join("\n"));
+});
+
+test("unpriced models mark cost as a lower bound and missing usage stays explicit", () => {
+  const usage = summarizeTrajectory([{ type: "model.completed", modelId: "mystery", data: { usage: { input: 10, output: 1 } } }]);
+  assert.match(formatCloseReport({ usage, agent: "liv" }), /≥\$0\.00 API/);
+  assert.match(formatCloseReport({ agent: "liv", followUps: ["r1: work unresolved at closure"] }), /Tokens: usage unavailable\n- Follow-up: r1/);
 });
 
 test("records one idempotent completion event and one generated view", async () => {
@@ -107,4 +126,11 @@ test("records one idempotent completion event and one generated view", async () 
   await recordSessionClose(params);
   const events = await readFile(join(dataRoot, "evidence", "sessions", "events", "2026-08-25.jsonl"), "utf8");
   assert.equal(events.trim().split("\n").length, 1);
+});
+
+test("pull request details degrade to a link when gh is unavailable", async () => {
+  const url = "https://github.com/o/r/pull/7";
+  assert.deepEqual(await loadPullRequests([url], async () => { throw new Error("no gh"); }), [{url, number: 7}]);
+  assert.deepEqual(await loadPullRequests([url], async () => ({stdout: '{"number":7,"state":"MERGED","additions":1,"deletions":2,"changedFiles":1}'})),
+    [{url, number: 7, state: "MERGED", additions: 1, deletions: 2, changedFiles: 1}]);
 });

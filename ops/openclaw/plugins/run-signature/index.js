@@ -14,7 +14,7 @@ import {
   planStatusTile,
 } from "./strip-core.mjs";
 import {
-  formatCloseReport, writeCloseReport, reportParts,
+  formatCloseReport, writeCloseReport, reportParts, loadPullRequests, modelPrices,
   loadThreadUsage,
   measureSlackThread,
   recordSessionClose,
@@ -535,9 +535,10 @@ export default {
         const usage = await Promise.all(Object.keys(api.config?.channels?.slack?.accounts ?? {}).map(async agent => ({agent,
           usage: await loadThreadUsage({agent, channel: close.route.channel, thread: close.route.threadId, before: snapshotThrough})})));
         const followUps = close.evidence.filter(turn => turn.phase === 'running').map(turn => `${turn.runId}: work unresolved at closure`);
-        const snapshot = {summary: 'Recap evidence is limited. Recorded replies are evidence, not independent verification of success.', followUps, stats, usage,
+        const pullRequests = await loadPullRequests(stats?.pullRequests);
+        const snapshot = {summary: stats?.topic || 'Session closed', followUps, stats, usage, pullRequests,
           boundary: `thread messages and timestamped usage through reservation ${latest} (source ${close.sourceMessageId}); later work and this report excluded`};
-        return {...snapshot, report: formatCloseReport({...snapshot, agent: close.accountId})};
+        return {...snapshot, report: formatCloseReport({...snapshot, agent: close.accountId, prices: modelPrices(api.config)})};
       },
       writeReport: close => writeCloseReport({dataRoot: resolveDataRoot(api.config, api.pluginConfig, close.accountId), operationId: close.key, report: close.snapshot.report}),
       completeClose: async close => {

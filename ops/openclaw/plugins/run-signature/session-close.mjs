@@ -2,6 +2,8 @@ import { appendFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/p
 import { createHash } from "node:crypto";
 import { zstdDecompressSync } from "node:zlib";
 import { dirname, join } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {defaultAgentsRoot, loadSessionEntry, withCanonicalSessionDatabase} from "./session-store.mjs";
 
 function words(value) {
@@ -15,6 +17,13 @@ export function formatElapsed(seconds) {
   return `${Math.round(minutes)} min (${hours.toFixed(1)} h)`;
 }
 
+// USD per million tokens when the OpenClaw model config has no price (subscription runtimes record $0).
+const FALLBACK_PRICES = {
+  "claude-opus-5-5": {input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5},
+  "claude-opus-5": {input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25},
+};
+const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/g;
+
 export function measureSlackThread(messages = []) {
   const ordered = messages.filter((message) => message?.ts).toSorted((a, b) => Number(a.ts) - Number(b.ts));
   if (!ordered.length) throw new Error("Slack returned no messages for the thread root");
@@ -22,6 +31,9 @@ export function measureSlackThread(messages = []) {
   const agents = ordered.filter((message) => message.bot_id || message.bot_profile);
   return {
     elapsed: formatElapsed(Number(ordered.at(-1).ts) - Number(ordered[0].ts)),
+    elapsedSeconds: Number(ordered.at(-1).ts) - Number(ordered[0].ts),
+    topic: String(ordered[0].text ?? "").split("\n")[0].replace(/<[^|>]*\|([^>]*)>/g, "$1").trim().slice(0, 120),
+    pullRequests: [...new Set(ordered.flatMap((message) => String(message.text ?? "").match(PR_URL) ?? []))],
     totalMessages: ordered.length,
     humanMessages: human.length,
     agentMessages: agents.length,
@@ -34,6 +46,7 @@ export function summarizeTrajectory(source = "", {before = Infinity} = {}) {
   const totals = { turns: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, peakContext: 0 };
   const coverage = {input: 0, output: 0, cacheRead: 0, cacheWrite: 0, peakContext: 0};
   const models = new Map();
+  const byModel = {};
   const entries = typeof source === "string" ? source.split("\n").flatMap((line) => {
     try { return [JSON.parse(line)]; } catch { return []; }
   }) : source;
@@ -60,10 +73,12 @@ export function summarizeTrajectory(source = "", {before = Infinity} = {}) {
     }
     const model = String(entry.modelId ?? entry?.message?.model ?? "model unrecorded");
     models.set(model, (models.get(model) ?? 0) + 1);
+    byModel[model] ??= {input: 0, output: 0, cacheRead: 0, cacheWrite: 0};
+    for (const field of Object.keys(byModel[model])) if (Number.isFinite(usage[field]) && usage[field] >= 0) byModel[model][field] += usage[field];
   }
   if (!totals.turns) return;
   return {
-    ...totals, coverage,
+    ...totals, coverage, byModel,
     models: [...models].map(([model, count]) => count === 1 ? model : `${model} (${count} runs)`).join(", "),
   };
 }
@@ -100,24 +115,60 @@ export async function loadThreadUsage({ agent, channel, thread, agentsRoot = def
   }
 }
 
-export function formatCloseReport({ summary = "Recap evidence is limited", outcomes = [], followUps = [], stats, usage, agent, boundary, ownerLabel = "humans" }) {
-  const metric = value => value == null ? "unavailable" : typeof value === 'number' ? value.toLocaleString('en-US') : value;
-  const lines = ["## Session Closed", `- Summary: ${summary}`, ...outcomes.map(value => `- Recorded outcome: ${value}`),
-    `- Unresolved follow-ups: ${followUps.length ? followUps.join('; ') : 'unavailable — no complete follow-up ledger recorded'}`,
-    `- Evidence boundary: ${boundary ?? 'recorded thread messages; close report excluded'}`,
-    `- Elapsed: ${metric(stats?.elapsed)}`,
-    `- Messages: ${metric(stats?.humanMessages)} from ${ownerLabel} / ${metric(stats?.agentMessages)} from agents`,
-    `- Words: ${metric(stats?.humanWords)} from ${ownerLabel} / ${metric(stats?.agentWords)} from agents`];
-  const usages = Array.isArray(usage) ? usage : [{agent, usage}];
-  for (const record of usages) {
-    const value = record.usage;
-    lines.push(`- Runtime: ${record.agent ?? 'agent'} · ${value?.models ?? 'models unavailable'} · ${value ? value.turns + ' recorded model turns (partial thread coverage)' : 'usage unavailable'}`);
-    for (const [field, label] of Object.entries({input: 'Fresh input', cacheRead: 'Cache read', cacheWrite: 'Cache write', output: 'Tokens out', peakContext: 'Context peak'})) {
-      const count = value?.coverage?.[field];
-      lines.push(`- ${label}: ${count ? metric(value[field]) + ' tokens' + (count < value.turns ? ` (partial: ${count}/${value.turns} recorded turns)` : '') : 'unavailable'}`);
-    }
+export function modelPrices(config) {
+  const prices = {...FALLBACK_PRICES};
+  for (const provider of Object.values(config?.models?.providers ?? {})) {
+    for (const model of provider?.models ?? []) if (model?.id && model.cost && Object.values(model.cost).some(v => v > 0)) prices[model.id] = model.cost;
   }
-  return lines.join('\n');
+  return prices;
+}
+
+export function estimateApiCost(usages = [], prices = FALLBACK_PRICES) {
+  let usd = 0, unpriced = false;
+  for (const usage of usages) for (const [model, tokens] of Object.entries(usage?.byModel ?? {})) {
+    const price = prices[model.replace(/^.*\//, "")];
+    if (!price) { unpriced ||= Object.values(tokens).some(Boolean); continue; }
+    for (const field of ["input", "output", "cacheRead", "cacheWrite"]) usd += (tokens[field] * (price[field] ?? 0)) / 1e6;
+  }
+  return {usd, partial: unpriced};
+}
+
+export async function loadPullRequests(urls = [], run = promisify(execFile)) {
+  return Promise.all(urls.map(async (url) => {
+    const number = Number(url.split("/").at(-1));
+    try {
+      const {stdout} = await run("gh", ["pr", "view", url, "--json", "number,state,additions,deletions,changedFiles"], {timeout: 10000});
+      return {url, ...JSON.parse(stdout)};
+    } catch {
+      return {url, number};
+    }
+  }));
+}
+
+function compact(n) {
+  return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n);
+}
+
+function duration(seconds) {
+  const minutes = seconds / 60;
+  return minutes < 60 ? `${Math.max(1, Math.round(minutes))}m` : minutes < 60 * 48 ? `${(minutes / 60).toFixed(1)}h` : `${Math.round(minutes / 1440)}d`;
+}
+
+export function formatCloseReport({ stats, usage, agent, followUps = [], pullRequests = [], prices }) {
+  const usages = (Array.isArray(usage) ? usage : [{agent, usage}]).map(record => record.usage).filter(Boolean);
+  const header = ["**Session closed**", stats?.elapsedSeconds != null && duration(stats.elapsedSeconds), stats && `${stats.totalMessages} msgs`].filter(Boolean).join(" · ");
+  const lines = [header];
+  if (stats?.topic) lines.push(`- What: ${stats.topic}`);
+  if (usages.length) {
+    const sum = field => usages.reduce((total, value) => total + value[field], 0);
+    const fresh = sum("input") + sum("cacheWrite"), read = sum("cacheRead"), cost = estimateApiCost(usages, prices);
+    const cached = fresh + read ? ` (${Math.round((100 * read) / (fresh + read))}% cached)` : "";
+    lines.push(`- Tokens: ${compact(fresh + read)} in${cached} · ${compact(sum("output"))} out · ${cost.partial ? "≥" : "~"}$${cost.usd.toFixed(2)} API`);
+  } else lines.push("- Tokens: usage unavailable");
+  if (pullRequests.length) lines.push(`- Code: ${pullRequests.map(pr => [`[PR #${pr.number}](${pr.url})`, pr.state?.toLowerCase(),
+    pr.additions != null && `+${pr.additions}/−${pr.deletions}`, pr.changedFiles != null && `${pr.changedFiles} files`].filter(Boolean).join(" · ")).join("; ")}`);
+  lines.push(`- Follow-up: ${followUps.length ? followUps.join("; ") : "none"}`);
+  return lines.join("\n");
 }
 
 export function closeReportPath(dataRoot, operationId) {
