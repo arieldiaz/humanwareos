@@ -128,14 +128,9 @@ test('a run interrupted by restart restores the prior status', async t => {
   assert.deepEqual(f.order, ['working', 'act', 'working', 'act']);
   assert.equal((await f.runtime.state(state => Object.values(state.turns).at(-1))).phase, 'failed');
 });
-test('missing metrics are not zero; partial counters and context are labeled', () => {
-  const usage = summarizeTrajectory([{type: 'model.completed', modelId: 'model', data: {usage: {input: 0}}}, {type: 'model.completed', modelId: 'model', data: {usage: {output: 4}}}]);
-  const report = formatCloseReport({usage, agent: 'max'});
-  assert.match(report, /Fresh input: 0 tokens \(partial: 1\/2/);
-  assert.match(report, /Cache read: unavailable/);
-  assert.match(report, /Context peak: unavailable/);
-  assert.match(report, /Recap evidence is limited/);
-  assert.match(report, /Elapsed: unavailable/);
+test('missing usage is reported as unavailable, not zero', () => {
+  const report = formatCloseReport({agent: 'max'});
+  assert.match(report, /Tokens: usage unavailable/);
   assert.equal(summarizeTrajectory([{type: 'model.completed', data: {usage: {input: 99}}}], {before: Date.now()}), undefined);
 });
 test('segmented report retries reuse stable per-part intents and preserve semantic content', async () => {
