@@ -6,7 +6,7 @@ import {tmpdir} from "node:os";
 import {zstdCompressSync} from "node:zlib";
 import test from "node:test";
 import {loadSessionEntry} from "./session-store.mjs";
-import {loadThreadUsage} from "./session-close.mjs";
+import {loadThreadUsage} from "./close-report.mjs";
 
 const key = "agent:liv:slack:channel:c1:thread:100.000000";
 async function fixture(t) {

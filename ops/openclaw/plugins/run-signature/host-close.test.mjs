@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
 import {ThreadLifecycle} from './lifecycle.mjs';
-import {formatCloseReport, reportParts, summarizeTrajectory, writeCloseReport, recordSessionClose} from './session-close.mjs';
+import {formatCloseReport, reportParts, summarizeTrajectory, writeCloseReport, recordSessionClose} from './close-report.mjs';
 import {conversationFenceKey} from './conversation-fence.mjs';
 import {closeThreadTool, sendThreadMessage} from './index.js';
 const manifest = JSON.parse(await readFile(new URL('./openclaw.plugin.json', import.meta.url)));
@@ -28,12 +28,14 @@ test('plugin schema accepts the owner principal required by host closure', () =>
   assert.deepEqual(manifest.configSchema.properties.ownerUserId, {type: 'string', pattern: '^U[A-Z0-9]+$'});
 });
 const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, agentAccountId: 'max', requesterSenderId: 'UOWNER'};
-const toolOptions = runtime => ({config: {channels: {slack: {accounts: {max: {}}}}}, ownerUserId: 'UOWNER', lifecycle: runtime});
+const current = {messageId: '300.000000', senderId: 'UOWNER', content: 'answer this and close the thread'};
+const toolOptions = (runtime, inbound = current) => ({config: {channels: {slack: {accounts: {max: {}}}}}, ownerUserId: 'UOWNER', lifecycle: runtime, currentInbound: () => inbound});
+const closeArgs = {request: 'close the thread'};
 test('owner mixed instruction: the run finishes its work, then the host closes after the run ends', async t => {
   const f = await fixture(t);
   await f.runtime.start(params);
   // "merge this, deploy, then close out this thread": other work happens in the run, then the agent requests close.
-  const result = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute();
+  const result = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute('call', closeArgs);
   assert.equal(result.isError, undefined);
   assert.equal(f.completed.size, 0, 'close never takes effect mid-run');
   await f.runtime.end(params);
@@ -44,18 +46,36 @@ test('non-owner close request is refused and nothing closes', async t => {
   const f = await fixture(t);
   await f.runtime.start(params);
   for (const context of [{...toolContext, requesterSenderId: 'UOTHER'}, {...toolContext, requesterSenderId: undefined}]) {
-    const result = await closeThreadTool(context, toolOptions(f.runtime)).execute();
+    const result = await closeThreadTool(context, toolOptions(f.runtime)).execute('call', closeArgs);
     assert.equal(result.isError, true); assert.match(result.content[0].text, /only the owner/);
   }
-  assert.equal((await closeThreadTool(toolContext, {...toolOptions(f.runtime), ownerUserId: undefined}).execute()).isError, true);
-  assert.equal((await closeThreadTool({...toolContext, agentAccountId: 'other'}, toolOptions(f.runtime)).execute()).isError, true);
+  assert.equal((await closeThreadTool(toolContext, {...toolOptions(f.runtime), ownerUserId: undefined}).execute('call', closeArgs)).isError, true);
+  assert.equal((await closeThreadTool({...toolContext, agentAccountId: 'other'}, toolOptions(f.runtime)).execute('call', closeArgs)).isError, true);
   await f.runtime.end(params);
   assert.deepEqual(f.order, ['working', 'act']);
+});
+test('closure must quote the current owner message, not thread history', async t => {
+  const f = await fixture(t);
+  await f.runtime.start(params);
+  const stale = {...current, content: 'read the first post'};
+  for (const [inbound, args] of [[stale, {request: 'close this'}], [current, {request: ''}], [current, {}], [{...current, senderId: 'UOTHER'}, closeArgs]])
+    assert.equal((await closeThreadTool(toolContext, toolOptions(f.runtime, inbound)).execute('call', args)).isError, true);
+  await f.runtime.end(params);
+  assert.deepEqual(f.order, ['working', 'act']);
+});
+test('accepted closure records the real inbound message id and checks invocation authority at the write', async t => {
+  const f = await fixture(t);
+  await f.runtime.start(params);
+  const revoked = await closeThreadTool({...toolContext, assertInvocationCurrent: () => { throw new Error('stale invocation'); }}, toolOptions(f.runtime)).execute('call', closeArgs);
+  assert.match(revoked.content[0].text, /stale invocation/);
+  const accepted = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute('call', closeArgs);
+  assert.match(accepted.content[0].text, /Only your final response after this call is delivered/);
+  assert.equal((await f.runtime.state(state => state.conversations[conversationFenceKey(route)])).pendingClose.messageId, '300.000000');
 });
 test('a close requested by a run interrupted by restart is dropped', async t => {
   const f = await fixture(t);
   await f.runtime.start(params);
-  await closeThreadTool(toolContext, toolOptions(f.runtime)).execute();
+  await closeThreadTool(toolContext, toolOptions(f.runtime)).execute('call', closeArgs);
   await new ThreadLifecycle(f.options).recover();
   await f.runtime.start({...params, runId: 'r2'}); await f.runtime.end({...params, runId: 'r2'});
   assert.equal(f.completed.size, 0);
@@ -130,7 +150,7 @@ test('a run interrupted by restart restores the prior status', async t => {
 });
 test('missing usage is reported as unavailable, not zero', () => {
   const report = formatCloseReport({agent: 'max'});
-  assert.match(report, /Tokens: usage unavailable/);
+  assert.match(report, /Tokens: max usage unavailable/);
   assert.equal(summarizeTrajectory([{type: 'model.completed', data: {usage: {input: 99}}}], {before: Date.now()}), undefined);
 });
 test('segmented report retries reuse stable per-part intents and preserve semantic content', async () => {
