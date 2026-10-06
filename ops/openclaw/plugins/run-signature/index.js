@@ -20,7 +20,7 @@ import {
   recordSessionClose,
 } from "./close-report.mjs";
 import {ThreadLifecycle} from "./lifecycle.mjs";
-import { startSlackWorkThread } from "../../slack-spin-out.mjs";
+import { matchSlackChannel, startSlackWorkThread } from "../../slack-spin-out.mjs";
 
 export {
   normalizeReactions,
@@ -488,6 +488,19 @@ export function closeThreadTool(context, {config, ownerUserId, lifecycle, curren
   };
 }
 
+async function listSlackChannels(token) {
+  const channels = [];
+  let cursor = "";
+  do {
+    const query = new URLSearchParams({ types: "public_channel,private_channel", exclude_archived: "true", limit: "1000", ...(cursor ? { cursor } : {}) });
+    const response = await (await fetch(`https://slack.com/api/users.conversations?${query}`, { headers: { authorization: `Bearer ${token}` } })).json();
+    if (!response.ok) throw new Error(`Slack channel lookup failed: ${response.error}`);
+    channels.push(...response.channels.map(({ id, name }) => ({ id, name })));
+    cursor = response.response_metadata?.next_cursor ?? "";
+  } while (cursor);
+  return channels;
+}
+
 export default {
   id: "run-signature",
   name: "Run Signature",
@@ -571,19 +584,21 @@ export default {
 
     api.registerTool?.((context) => {
       if (context.messageChannel !== "slack") return;
-      const channel = String(context.nativeChannelId ?? "").replace(/^channel:/i, "").toUpperCase();
+      const currentChannel = String(context.nativeChannelId ?? "").replace(/^channel:/i, "").toUpperCase();
       const agentId = String(context.agentId ?? "").toLowerCase();
       const accountId = context.agentAccountId ?? agentId;
-      if (!channel || !agentId || !accountId) return;
+      if (!currentChannel || !agentId || !accountId) return;
       return {
         name: "start_work_thread",
-        description: "Start substantial Slack work in its normal shape with one call: the brief as one top-level channel post, a working status, and a durable high-reasoning session that replies in its thread and begins immediately. Use this instead of separate message and sessions_spawn calls.",
+        description: "Start substantial Slack work in its normal shape with one call: the title as one top-level channel post, a working status, and a durable high-reasoning session that receives the brief, replies in that thread, and begins immediately. Use this instead of separate message and sessions_spawn calls.",
         parameters: {
           type: "object",
           additionalProperties: false,
-          required: ["detail"],
+          required: ["title", "detail"],
           properties: {
-            detail: { type: "string", minLength: 1, description: "Complete work brief: the top-level post and the work session task." },
+            title: { type: "string", minLength: 1, description: "The whole top-level post: one line, type word, colon, short summary (e.g. \"Fix: raw JSON wrapper in Slack replies\")." },
+            detail: { type: "string", minLength: 1, description: "Complete work brief for the session; not posted at the root." },
+            channel: { type: "string", description: "Optional target channel: a loose name (\"humanware\", \"#inbox\") or ID. Defaults to the current channel." },
             group: { type: "string", description: "Optional dashboard group." },
           },
         },
@@ -603,10 +618,14 @@ export default {
                 api.logger?.warn?.(`run-signature could not clear scaffold reactions: ${String(error)}`);
               }
             };
+            const channel = args.channel?.trim()
+              ? matchSlackChannel(args.channel, await listSlackChannels(token))
+              : currentChannel;
             const result = await startSlackWorkThread({
               accountId,
               agentId,
               channel,
+              title: args.title,
               detail: args.detail,
               group: args.group,
               parentSessionKey: context.sessionKey,
