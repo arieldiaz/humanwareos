@@ -152,6 +152,20 @@ export function shouldClaimClosedBotInbound({closingOrClosed, senderId, botUserI
   return Boolean(closingOrClosed && senderId && botUserIds?.has(senderId));
 }
 
+export function mentionedSlackAccounts(content, accountByBotUserId) {
+  const accounts = new Set();
+  for (const match of String(content ?? "").matchAll(/<@([UW][A-Z0-9]+)>/g)) {
+    const account = accountByBotUserId.get(match[1]);
+    if (account) accounts.add(account);
+  }
+  return [...accounts];
+}
+
+export function chooseSlackLead({ current, mentioned, fallback }) {
+  if (mentioned.length === 1) return mentioned[0];
+  return current ?? fallback;
+}
+
 export function createKeyedSerialQueue() {
   const pending = new Map();
   return async (key, task) => {
@@ -526,6 +540,7 @@ export default {
     const acpBoundThreads = new Map();
     const currentInbound = new Map();
     const botIdCache = new Map();
+    const threadLeads = new Map();
     const faultedRoots = new Set();
     const serializeRunStrip = createKeyedSerialQueue();
 
@@ -612,20 +627,40 @@ export default {
     api.on('inbound_claim', async (event, ctx) => {
       if (String(event.channel ?? ctx.channelId ?? '').toLowerCase() !== 'slack') return;
       const channel = String(event.conversationId ?? ctx.conversationId ?? '').replace(/^channel:/i, '').toUpperCase();
-      const threadId = String(event.threadId ?? event.replyToId ?? ctx.threadId ?? '');
+      const threadId = String(event.threadId ?? event.replyToId ?? ctx.threadId ?? event.messageId ?? '');
       const senderId = event.senderId ?? ctx.senderId;
       if (!channel || !threadId || !senderId) return;
       const accounts = await import(resolveSlackRuntimeModule('accounts'));
       const botUserIds = new Set();
+      const accountByBotUserId = new Map();
       for (const accountId of Object.keys(api.config?.channels?.slack?.accounts ?? {})) {
         const token = accounts.resolveSlackAccount({cfg: api.config, accountId})?.botToken;
         const botUserId = await resolveBotUserId(token, botIdCache);
-        if (botUserId) botUserIds.add(botUserId);
+        if (botUserId) {
+          botUserIds.add(botUserId);
+          accountByBotUserId.set(botUserId, accountId);
+        }
       }
       const route = {channel, threadId};
       if (shouldClaimClosedBotInbound({
         closingOrClosed: await lifecycle.isClosingOrClosed(route), senderId, botUserIds,
       })) return {handled: true};
+      const fallback = String(api.pluginConfig?.defaultSlackAccount ?? '').toLowerCase();
+      if (!fallback) return;
+      // Slack bot messages are context, never new work. Cross-agent consultation
+      // uses an internal session request, so an agent cannot wake another agent
+      // into a public reply loop.
+      if (botUserIds.has(senderId)) return {handled: true};
+      const routeKey = `${channel}:${threadId}`;
+      const lead = chooseSlackLead({
+        current: threadLeads.get(routeKey),
+        mentioned: mentionedSlackAccounts(event.content ?? event.text, accountByBotUserId),
+        fallback,
+      });
+      if (!lead) return {handled: true};
+      threadLeads.set(routeKey, lead);
+      const accountId = String(ctx.accountId ?? event.accountId ?? ctx.sessionKey?.match(/^agent:([^:]+)/i)?.[1] ?? '').toLowerCase();
+      if (accountId !== lead) return {handled: true};
     });
     const lifecycleHook = transition => async (event, ctx) => {
       try { await lifecycle[transition]({sessionKey: event.sessionKey ?? ctx.sessionKey, runId: event.runId ?? ctx.runId}); }

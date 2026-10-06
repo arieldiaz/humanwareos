@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Build a Humanware OS Session Console from append-only runtime traces.
-
-OpenClaw trajectories are Tier-0 evidence. This adapter normalizes them into a
-sanitized append-only event ledger, then builds a bounded read model for Caddy.
-It intentionally omits system prompts, compiled context, raw user/assistant
-messages, and unbounded tool output. Other harness adapters can emit the same
-ledger schema without changing the UI.
-"""
+"""Build metadata views and full private records from runtime activity."""
 
 from __future__ import annotations
 
@@ -26,7 +19,7 @@ import activity
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
-from openclaw_sessions import iter_agent_ids, iter_sessions, iter_transcript_records
+from openclaw_sessions import iter_agent_ids, iter_sessions, iter_trajectory_events, iter_transcript_records
 
 
 SCHEMA_VERSION = 2
@@ -287,6 +280,81 @@ def existing_events(events_root: str):
     return seen, events
 
 
+SENSITIVE_KEYS = {
+    "accesstoken", "apikey", "authorization", "bottoken", "cookie", "credential", "credentials",
+    "password", "refreshtoken", "secret", "token",
+}
+
+
+def sanitize_trace(value, key=""):
+    """Keep provider-visible activity while removing common credential fields."""
+    normalized = "".join(character for character in key.lower() if character.isalnum())
+    if normalized in SENSITIVE_KEYS:
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        return {item_key: sanitize_trace(item_value, item_key) for item_key, item_value in value.items()}
+    if isinstance(value, list):
+        return [sanitize_trace(item) for item in value]
+    return value
+
+
+def existing_full_trace(raw_root: str):
+    seen = set()
+    records = []
+    for path in sorted(glob(os.path.join(raw_root, "*.jsonl"))):
+        for _, record in each_jsonl(path):
+            record_id = record.get("id")
+            if record_id and record_id not in seen:
+                seen.add(record_id)
+                records.append(record)
+    return seen, records
+
+
+def append_full_trace(raw_root: str, records: list[dict]):
+    by_day = defaultdict(list)
+    for record in records:
+        by_day[str(record["timestamp"])[:10]].append(record)
+    os.makedirs(raw_root, mode=0o700, exist_ok=True)
+    for day, items in by_day.items():
+        path = os.path.join(raw_root, f"{day}.jsonl")
+        with open(path, "a", encoding="utf-8") as handle:
+            for item in items:
+                handle.write(json.dumps(item, separators=(",", ":")) + "\n")
+        os.chmod(path, 0o600)
+
+
+def session_record_path(logical_id: str) -> str:
+    return os.path.join("records", hashlib.sha256(logical_id.encode()).hexdigest()[:24] + ".json")
+
+
+def write_session_records(derived_root: str, sessions: list[dict], trace: list[dict]):
+    grouped = defaultdict(list)
+    for record in trace:
+        grouped[record.get("logicalSessionId")].append(record)
+    records_root = os.path.join(derived_root, "records")
+    os.makedirs(records_root, mode=0o700, exist_ok=True)
+    for session in sessions:
+        details = sorted(grouped.get(session["id"], []), key=lambda item: (item.get("timestamp") or "", item.get("id") or ""))
+        completed = next((event for event in reversed(session["events"]) if event.get("kind") == "session.completed"), None)
+        summary = {
+            "status": session["status"],
+            "outcome": (completed or {}).get("summary") or session.get("lastEvent"),
+            "decisions": [],
+            "followUps": [],
+            "agents": session["agents"],
+            "models": session["models"],
+            "startedAt": session.get("startedAt"),
+            "closedAt": session.get("updatedAt") if session["status"] == "completed" else None,
+        }
+        payload = {"summary": summary, "details": details}
+        target = os.path.join(derived_root, session["record"])
+        temp = target + ".tmp"
+        with open(temp, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, separators=(",", ":"))
+        os.chmod(temp, 0o600)
+        os.replace(temp, target)
+
+
 append_events = activity.append_events
 
 
@@ -356,6 +424,7 @@ def classify(descriptor: dict, workflow: dict | None, now: datetime) -> str:
 
 def build(data_root: str, openclaw_root: str, dry_run=False):
     events_root = os.path.join(data_root, "evidence", "sessions", "events")
+    raw_root = os.path.join(data_root, "evidence", "sessions", "raw", "openclaw")
     derived_root = os.path.join(data_root, "generated", "sessions")
     state_path = os.path.join(derived_root, "state.json")
     state = read_json(state_path, {"schemaVersion": 1, "sources": {}, "runtimeByPath": {}})
@@ -364,7 +433,46 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
     state.setdefault("runtimeByPath", {})
     trajectory_files, runtime_map, descriptors = registry_index(openclaw_root, state)
     seen, ledger = existing_events(events_root)
+    full_seen, full_trace = existing_full_trace(raw_root)
     additions = []
+    full_additions = []
+    source_event_ids = set()
+    source_latest_at = None
+
+    state_root = pathlib.Path(openclaw_root).parent
+    database_count = 0
+    for agent in iter_agent_ids(state_root):
+        database_count += 1
+        for row in iter_trajectory_events(state_root, agent):
+            runtime_id = str(row["sessionId"])
+            logical_id = runtime_map.get(runtime_id, f"openclaw:{agent}:{runtime_id}")
+            event = dict(row["event"])
+            event.setdefault("sessionId", runtime_id)
+            event.setdefault("runId", row.get("runId"))
+            event.setdefault("seq", row["seq"])
+            timestamp = event.get("ts") or event.get("timestamp") or iso_from_ms(row["createdAt"])
+            event_id = f"openclaw:{agent}:{runtime_id}:{row['seq']}"
+            source_event_ids.add(event_id)
+            if timestamp and (not source_latest_at or timestamp > source_latest_at):
+                source_latest_at = timestamp
+            if event_id not in full_seen:
+                full_seen.add(event_id)
+                full_additions.append({
+                    "schemaVersion": 1,
+                    "id": event_id,
+                    "timestamp": timestamp,
+                    "type": event.get("type") or "unknown",
+                    "agent": agent,
+                    "runtimeSessionId": runtime_id,
+                    "logicalSessionId": logical_id,
+                    "runId": row.get("runId"),
+                    "event": sanitize_trace(event),
+                })
+            raw = json.dumps(event, separators=(",", ":"))
+            normalized = normalize(event, raw, row["sourcePath"], logical_id)
+            if normalized and normalized["id"] not in seen:
+                seen.add(normalized["id"])
+                additions.append(normalized)
 
     for path in trajectory_files:
         fallback = pathlib.Path(path).name.removesuffix(".trajectory.jsonl")
@@ -392,6 +500,11 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
                 committed_offset += len(line)
         state["sources"][path] = {"inode": stat.st_ino, "offset": committed_offset, "mtimeNs": stat.st_mtime_ns}
 
+    if source_event_ids - full_seen:
+        raise RuntimeError("OpenClaw activity capture did not reach the canonical trajectory source")
+    if full_additions and not dry_run:
+        append_full_trace(raw_root, full_additions)
+    full_trace.extend(full_additions)
     if additions and not dry_run:
         append_events(events_root, additions)
     ledger.extend(additions)
@@ -458,6 +571,7 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
             "lastEvent": projected_session_event(events[-1])["summary"] if events else None,
             "events": [projected_session_event(e) for e in events[-MAX_EVENTS_PER_SESSION:]],
             "traceTruncated": len(events) > MAX_EVENTS_PER_SESSION,
+            "record": session_record_path(logical_id),
         })
 
     sessions.sort(key=lambda item: item.get("updatedAt") or item.get("startedAt") or "", reverse=True)
@@ -472,7 +586,14 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
             "errors": sum(item["status"] == "error" for item in sessions),
             "total": len(sessions),
         },
-        "sources": [{"id": "openclaw", "label": "OpenClaw trajectories", "files": len(trajectory_files)}],
+        "sources": [{
+            "id": "openclaw",
+            "label": "OpenClaw trajectory database",
+            "databases": database_count,
+            "events": len(source_event_ids),
+            "latestAt": source_latest_at,
+            "legacyFiles": len(trajectory_files),
+        }],
         "tracePolicy": {
             "normal": "Actions, decisions, outcomes, and errors",
             "verbose": "Sanitized tool calls/results and provider-visible checkpoints",
@@ -483,6 +604,7 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
     if not dry_run:
         activity.rebuild(data_root)
         os.makedirs(derived_root, mode=0o700, exist_ok=True)
+        write_session_records(derived_root, sessions, full_trace)
         target = os.path.join(derived_root, "current.json")
         temp = target + ".tmp"
         with open(temp, "w", encoding="utf-8") as handle:

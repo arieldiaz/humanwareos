@@ -1,12 +1,14 @@
 # Session Console and Activity
 
-The [traceable activity contract](docs/traceable-activity-index-spec.md) owns the envelope. The existing builder adapts OpenClaw trajectory sidecars, appends metadata to the canonical session ledger, and builds the session feed and Activity index. No new daemon, permission evaluator, memory writer, or platform store is introduced. Runtime assembly already includes this directory and the domain surfaces.
+The [traceable activity contract](docs/traceable-activity-index-spec.md) owns the envelope. The builder copies OpenClaw's sanitized SQLite trajectory into Humanware evidence, appends a separate metadata projection to the canonical session ledger, and builds the session feed and Activity index. No new daemon, permission evaluator, memory writer, or platform store is introduced. Runtime assembly already includes this directory and the domain surfaces.
 
 ## Producer and projection paths
 
 - `evidence/sessions/events/YYYY-MM-DD.jsonl`: append-only events, independent of display level.
+- `evidence/sessions/raw/openclaw/YYYY-MM-DD.jsonl`: append-only sanitized provider-visible activity, including messages and tool calls/results but never hidden chain-of-thought.
 - `evidence/memory/events/`: normalized memory-service events alongside historical evidence. Untyped historical memory contributes to the coverage gap, never inferred lineage.
 - `generated/sessions/current.json`: recent session events including memory events, with truncation indicated.
+- `generated/sessions/records/*.json`: one private file per session, with summary first and the complete captured activity second.
 - `generated/indexes/activity/index.sqlite`: one disposable SQLite store, day-partitioned through `(day,id)` keys and indexed across dates by actor, session/run, and target.
 - `generated/indexes/activity/current.json` and `days/*.json`: metadata manifest and content-addressed static exports of that store. Old partition exports remain readable for in-flight clients; removing the entire generated Activity directory and rebuilding is safe while the surface is offline.
 
@@ -14,7 +16,7 @@ Other trusted host adapters call `activity.emit(data_root, **fields)` or constru
 
 The OpenClaw adapter translates tool calls/results, context compilation, model invocation/completion, and explicit host context/memory events. It never derives grants from prompts, success from response prose, or cost from cumulative session estimates. Existing records without observed run/profile/policy/context membership remain unknown. Exact or estimated costs require a typed provider-report/rate reference; missing monetary data remains unavailable even when tokens are known. Each usage report represents one invocation; reuse the event ID on replay and the stable `usageId` across append-only corrections. Totals use the latest report per identity/invocation, attributed to its first observed day and retaining all source reports. When the adapter lacks an invocation identifier, its event ID is the usage key and later reconciliation remains unavailable. Never emit a second cumulative rollup for the same usage.
 
-Version 1/2 evidence remains unchanged. New activity uses version 3. The builder reconstructs historical event metadata and no longer copies raw titles, commands, excerpts, or reasoning into the feed. A raw source ID identifies the adapter, identity, trace and source sequence (or digest); an authorized local evidence reader can resolve it. There is deliberately no browser endpoint for raw payloads.
+Version 1/2 evidence remains unchanged. New indexed activity uses version 3. The builder reconstructs historical event metadata and never copies raw titles, commands, excerpts, or reasoning into the cross-session Activity feed. Full sanitized activity remains available only in the local session record. There is deliberately no browser endpoint for Tier 0 raw payloads.
 
 ## Rebuild
 
