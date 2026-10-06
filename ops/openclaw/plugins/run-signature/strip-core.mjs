@@ -96,7 +96,8 @@ export function tileKind(name) {
 // is no order contract and nothing to re-lay.
 //
 // Only bot-owned canonical lifecycle reactions are projected. Human reactions
-// are social input and neither suppress nor override the committed decision.
+// never alter projection; the host separately interprets the owner's root ✅
+// as an explicit close request.
 export function planStatusTile(rawReactions, { lifecycle, sendingBotId, botUserIds }) {
   const bots = botUserIds instanceof Set ? botUserIds : new Set([...(botUserIds ?? []), sendingBotId].filter(Boolean));
   const entries = normalizeReactions(rawReactions)

@@ -143,6 +143,11 @@ export async function addReactionsInOrder(names, add) {
   for (const name of names) await add(name);
 }
 
+export function ownerHoldsCloseReaction(reactions, ownerUserId) {
+  return normalizeReactions(reactions).some((reaction) =>
+    reaction?.name === "white_check_mark" && Array.isArray(reaction.users) && reaction.users.includes(ownerUserId));
+}
+
 export function createKeyedSerialQueue() {
   const pending = new Map();
   return async (key, task) => {
@@ -567,7 +572,39 @@ export default {
         await recordOutboundStatus({dataRoot: resolveDataRoot(api.config, api.pluginConfig, close.accountId), channel: close.route.channel, threadId: close.route.threadId, status: 'closed', agent: close.accountId, sessionKey: close.sessionKey, runId: close.key});
       },
     });
-    api.on('gateway_start', () => lifecycle.recover());
+    let reactionCloseTimer;
+    let reactionCloseSweep = Promise.resolve();
+    const sweepReactionCloses = () => {
+      reactionCloseSweep = reactionCloseSweep.catch(() => {}).then(async () => {
+        const ownerUserId = api.pluginConfig?.ownerUserId;
+        if (!/^U[A-Z0-9]+$/.test(ownerUserId ?? "")) return;
+        const actions = await import(resolveSlackRuntimeModule('actions'));
+        const accounts = await import(resolveSlackRuntimeModule('accounts'));
+        const oneDayAgo = Date.now() - 86400000;
+        for (const candidate of await lifecycle.reactionCloseCandidates({since: oneDayAgo})) {
+          const token = accounts.resolveSlackAccount({cfg: api.config, accountId: candidate.accountId})?.botToken;
+          if (!token) continue;
+          const reactions = await retrySlackRateLimit(() => actions.listSlackReactions(
+            candidate.route.channel, candidate.route.threadId,
+            {cfg: api.config, accountId: candidate.accountId, token},
+          ));
+          const held = ownerHoldsCloseReaction(reactions, ownerUserId);
+          if (!await lifecycle.observeReactionClose(candidate.route, held)) continue;
+          const observedAt = (Date.now() / 1000).toFixed(6);
+          await lifecycle.closeCommand(candidate.route, {
+            messageId: observedAt, principal: ownerUserId, accountId: candidate.accountId,
+          });
+        }
+      }).catch(error => appendFaultJournal({reason: `Reaction close sweep: ${String(error)}`}));
+      return reactionCloseSweep;
+    };
+    api.on('gateway_start', async () => {
+      await lifecycle.recover();
+      await sweepReactionCloses();
+      reactionCloseTimer = setInterval(sweepReactionCloses, 15000);
+      reactionCloseTimer.unref?.();
+    });
+    api.on('gateway_stop', () => clearInterval(reactionCloseTimer));
     const lifecycleHook = transition => async (event, ctx) => {
       try { await lifecycle[transition]({sessionKey: event.sessionKey ?? ctx.sessionKey, runId: event.runId ?? ctx.runId}); }
       catch (error) { await appendFaultJournal({runId: event.runId ?? ctx.runId, reason: `Lifecycle ${transition}: ${String(error)}`}); }
