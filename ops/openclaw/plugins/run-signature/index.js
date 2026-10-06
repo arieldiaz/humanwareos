@@ -610,6 +610,10 @@ export default {
       catch (error) { await appendFaultJournal({runId: event.runId ?? ctx.runId, reason: `Lifecycle ${transition}: ${String(error)}`}); }
     };
     api.on('llm_input', lifecycleHook('start'));
+    // Native and CLI harnesses do not all emit llm_input. model_call_started
+    // is the common admission boundary; ThreadLifecycle.start is idempotent
+    // when a harness emits both events for the same run.
+    api.on('model_call_started', lifecycleHook('start'));
     api.on('agent_end', lifecycleHook('end'));
     api.on('before_tool_call', (event) => {
       const params = event.params ?? {};

@@ -52,6 +52,7 @@ test("registers transport hooks without semantic collaboration hooks", () => {
   assert.equal(hooks.includes("before_tool_call"), true);
   assert.equal(hooks.includes("reply_payload_sending"), false);
   assert.ok(hooks.includes("llm_input"));
+  assert.ok(hooks.includes("model_call_started"));
   assert.ok(hooks.includes("agent_end"));
   assert.ok(hooks.includes("message_sent"));
 });
