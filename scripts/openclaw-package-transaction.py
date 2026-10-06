@@ -84,7 +84,7 @@ def install(transaction, target):
     retained = transaction / "retained/openclaw"
     if exists(retained):
         raise RuntimeError("a previous package is already retained")
-    retained.parent.mkdir(parents=True, mode=0o700)
+    retained.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = target.parent / f".openclaw-{uuid.uuid4().hex}"
     shutil.copytree(source, temporary, symlinks=True)
     os.replace(target, retained)
@@ -101,7 +101,7 @@ def restore(transaction, target):
     if not exists(retained):
         raise RuntimeError("no retained OpenClaw package is available")
     failed = transaction / f"failed/openclaw-{uuid.uuid4().hex}"
-    failed.parent.mkdir(parents=True, mode=0o700)
+    failed.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if exists(target):
         os.replace(target, failed)
     os.replace(retained, target)

@@ -25,17 +25,26 @@ export function applySlackChannel(sourceConfig, channelConfig, manifest) {
   const provider = String(manifest?.secrets?.openclawProvider ?? "").trim();
   if (!provider || !source?.secrets?.providers?.[provider]) fail("enabled Slack requires secrets.openclawProvider in the manifest and source config");
   const configured = object(channel.accounts, "Slack accounts");
-  const accounts = object(source.channels.slack.accounts, "source Slack accounts");
+  const sourceAccounts = object(source.channels.slack.accounts, "source Slack accounts");
+  const sharedPolicy = {};
+  for (const key of ["allowFrom", "dmPolicy", "groupPolicy"]) {
+    if (source.channels.slack[key] !== undefined) sharedPolicy[key] = source.channels.slack[key];
+    delete source.channels.slack[key];
+  }
+  const accounts = {};
   const bindings = [];
   for (const [id, account] of Object.entries(configured)) {
-    const target = object(accounts[id], `source Slack account ${id}`);
+    const target = structuredClone(object(sourceAccounts[id], `source Slack account ${id}`));
+    for (const [key, value] of Object.entries(sharedPolicy)) target[key] ??= structuredClone(value);
     const bot = object(account.botToken, `Slack account ${id} bot token`);
     const app = object(account.appToken, `Slack account ${id} app token`);
     if (!bot.id || !app.id) fail(`Slack account ${id} token references require ids`);
     target.botToken = {source: "exec", provider, id: bot.id};
     target.appToken = {source: "exec", provider, id: app.id};
+    accounts[id] = target;
     bindings.push({type: "route", agentId: id, match: {channel: "slack", accountId: id}});
   }
+  source.channels.slack.accounts = accounts;
   source.bindings = bindings;
   return source;
 }

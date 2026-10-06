@@ -8,7 +8,12 @@ const source = {
     defaults: {},
     entries: {liv: {workspace: "/data/liv"}, max: {workspace: "/data/max"}},
   },
-  channels: {slack: {accounts: {liv: {}, max: {}}}},
+  channels: {slack: {
+    allowFrom: ["owner"],
+    dmPolicy: "allowlist",
+    groupPolicy: "open",
+    accounts: {liv: {}, max: {groupPolicy: "allowlist"}, default: {}},
+  }},
 };
 const profiles = {
   profiles: {native: {runtime: "native", model: "openai/model", reasoning: "low"}},
@@ -36,6 +41,11 @@ test("renders Slack references and routing from the instance declarations", () =
     runtimeRoot: "/runtime/build",
   }));
   assert.deepEqual(rendered.channels.slack.accounts.liv.botToken, {source: "exec", provider: "private_secrets", id: "liv/BOT"});
+  assert.deepEqual(Object.keys(rendered.channels.slack.accounts), ["liv", "max"]);
+  assert.deepEqual(rendered.channels.slack.accounts.liv.allowFrom, ["owner"]);
+  assert.equal(rendered.channels.slack.accounts.liv.dmPolicy, "allowlist");
+  assert.equal(rendered.channels.slack.accounts.max.groupPolicy, "allowlist");
+  assert.equal(rendered.channels.slack.allowFrom, undefined);
   assert.deepEqual(rendered.bindings, [
     {type: "route", agentId: "liv", match: {channel: "slack", accountId: "liv"}},
     {type: "route", agentId: "max", match: {channel: "slack", accountId: "max"}},

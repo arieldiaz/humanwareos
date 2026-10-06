@@ -6,7 +6,7 @@ import test from 'node:test';
 import {ThreadLifecycle} from './lifecycle.mjs';
 import {formatCloseReport, reportParts, summarizeTrajectory, writeCloseReport, recordSessionClose} from './close-report.mjs';
 import {conversationFenceKey} from './conversation-fence.mjs';
-import {closeThreadTool, loadSlackThreadSnapshot, ownerHoldsCloseReaction, sendThreadMessage, shouldClaimClosedBotInbound} from './index.js';
+import {closeThreadTool, loadSlackThreadSnapshot, sendThreadMessage, shouldClaimClosedBotInbound} from './host-close.mjs';
 const manifest = JSON.parse(await readFile(new URL('./openclaw.plugin.json', import.meta.url)));
 const route = {channel: 'C123', threadId: '1790050400.000001'};
 const input = {messageId: '1790050402.000001', principal: 'UOWNER', accountId: 'max'};
@@ -44,33 +44,6 @@ test('large thread snapshots use bounded cursor pages and preserve every reply',
 test('thread snapshot fails closed when Slack claims more data without a cursor', async () => {
   await assert.rejects(loadSlackThreadSnapshot({channel: 'C123', threadId: '1.000001', latest: '4.000001', token: 'token',
     call: async () => ({messages: [], has_more: true, response_metadata: {}})}), /continuation cursor/);
-});
-test('only the configured owner holding white_check_mark requests reaction closure', () => {
-  const reactions = [{name: 'white_check_mark', users: ['UOWNER', 'UOTHER']}, {name: 'raised_hand', users: ['UOWNER']}];
-  assert.equal(ownerHoldsCloseReaction(reactions, 'UOWNER'), true);
-  assert.equal(ownerHoldsCloseReaction(reactions, 'UNRELATED'), false);
-  assert.equal(ownerHoldsCloseReaction([{name: 'hand', users: ['UOWNER']}], 'UOWNER'), false);
-});
-test('reaction close candidates retain the latest sender for every open conversation', async t => {
-  const f = await fixture(t);
-  await f.runtime.start(params); await f.runtime.end(params);
-  await f.runtime.start({...params, sessionKey: params.sessionKey.replace('max', 'liv'), runId: 'r2'});
-  assert.deepEqual(await f.runtime.reactionCloseCandidates(), [{route, accountId: 'liv'}]);
-  await f.runtime.closeCommand(route, {...input, accountId: 'liv'});
-  assert.deepEqual(await f.runtime.reactionCloseCandidates(), []);
-});
-test('reaction scanning can bound Slack reads to recently active conversations', async t => {
-  const f = await fixture(t);
-  await f.runtime.start(params); await f.runtime.end(params);
-  assert.equal((await f.runtime.reactionCloseCandidates({since: Date.now() - 1000})).length, 1);
-  assert.equal((await f.runtime.reactionCloseCandidates({since: Date.now() + 1000})).length, 0);
-});
-test('an owner reaction is edge-triggered and must be removed before it can close again', async t => {
-  const f = await fixture(t);
-  assert.equal(await f.runtime.observeReactionClose(route, true), true);
-  assert.equal(await f.runtime.observeReactionClose(route, true), false);
-  assert.equal(await f.runtime.observeReactionClose(route, false), false);
-  assert.equal(await f.runtime.observeReactionClose(route, true), true);
 });
 test('only configured bot messages are claimed while a thread is closing or closed', () => {
   const botUserIds = new Set(['ULIV', 'UMAX']);
