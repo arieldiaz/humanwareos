@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Product architecture</title>
+  <style>
+    :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
+    body { margin: 0 auto; max-width: 72rem; padding: 3rem 1.5rem; }
+    .flow { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); margin-top: 2rem; }
+    .node { border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: .75rem; padding: 1rem; }
+    .node h2 { font-size: 1rem; margin: 0 0 .5rem; }
+    .node p { margin: 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Product architecture</h1>
+    <p>Replace these nodes with the current system boundaries and data flow. Keep this HTML file as the single diagram source; do not commit PNG or SVG exports.</p>
+    <section class="flow" aria-label="Architecture flow">
+      <article class="node"><h2>Clients</h2><p>People and product interfaces.</p></article>
+      <article class="node"><h2>Application</h2><p>Core product behavior and services.</p></article>
+      <article class="node"><h2>Data and integrations</h2><p>Persistent state and external systems.</p></article>
+    </section>
+  </main>
+</body>
+</html>

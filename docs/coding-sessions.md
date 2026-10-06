@@ -30,6 +30,8 @@ Before opening or merging a pull request, fetch the canonical branch again and i
 
 ## Prove the close
 
+For a product-facing change, update the repository's owning product theme in the same pull request: reconcile its current behavior and decisions, then add the pull request's GitHub link once the final number is known. A narrowly technical change with no product effect needs no theme entry. See [Project repositories](project-repos.md).
+
 End every coding session in one of two states:
 
 - the branch is committed and pushed, with its pull request or merge state reported, and the disposable worktree is removed once no longer needed; or

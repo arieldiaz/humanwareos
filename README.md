@@ -17,7 +17,7 @@ This separation makes updates reviewable, restores mechanical, and debugging loc
 
 OpenClaw is one framework-managed runtime dependency, not the owner of the whole host. Its cutover replaces the pinned OpenClaw package, rendered configuration, workspaces, and native gateway service only. Other launchd services continue through stable paths in the generated runtime and are selected and configured by the private instance. An OpenClaw upgrade does not reinstall or restart Caddy, local web applications, observability, ingestion, calendar, email, or backup services.
 
-Read [System boundaries](docs/system-boundaries.md), [Architecture](docs/architecture.md), and [Runtime](docs/runtime.md) for the full contracts.
+Read [System boundaries](docs/system-boundaries.md), [Architecture](docs/architecture.md), [Project repositories](docs/project-repos.md), and [Runtime](docs/runtime.md) for the full contracts.
 
 ## Agents, harnesses, and interfaces
 
@@ -62,7 +62,7 @@ humanwareos/
 ├── ops/               reusable host and data-plane mechanisms
 ├── schemas/           typed instance contracts
 ├── scripts/           validation, data initialization, runtime build
-└── templates/         private-instance and data-plane seeds
+└── templates/         project-repository, private-instance, and data-plane seeds
 ```
 
 Personal strategy, memory, working documents, sessions, and artifacts do not appear in this tree. Their schemas and seed templates do.
