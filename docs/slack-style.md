@@ -16,7 +16,7 @@ Verify authored output against delivered Slack blocks: a bold label authored by 
 
 A work thread's top-level post is only its title: a general type word, colon, short descriptive summary (e.g. "Fix: raw JSON wrapper in Slack replies").
 
-When substantial work gets its own thread, use the atomic work-thread tool with that title and the complete brief. It posts the title, marks it working, and hands the brief to the durable high-reasoning session in its thread. To start the thread elsewhere, name the channel loosely; the tool resolves it against channels the agent can see and fails only on no match or a tie. Do not rebuild this with separate sends or session-patch calls.
+When substantial work gets its own thread, use the atomic work-thread tool with that title and the complete brief. It posts the title, posts the brief as the first reply, marks the root working, and starts the durable high-reasoning session in that thread. Neither post carries run-signature icons. To start the thread elsewhere, name the channel loosely; the tool resolves it against channels the agent can see and fails only on no match or a tie. Do not rebuild this with separate sends or session-patch calls.
 
 ## Channel overrides
 

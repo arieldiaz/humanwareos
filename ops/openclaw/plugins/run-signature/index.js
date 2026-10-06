@@ -630,7 +630,10 @@ export default {
               group: args.group,
               parentSessionKey: context.sessionKey,
               operationId: toolCallId,
-              send: (params) => api.runtime.gateway.request("send", params),
+              send: (params) => {
+                workThreadPosts.add(String(params.message).trim());
+                return api.runtime.gateway.request("send", params);
+              },
               prepareScaffold: clearScaffold,
               setStatus: ({ rootMessageId, status }) => maintainStatusTile(status, context, {
                 channel,
@@ -725,9 +728,12 @@ export default {
       catch (error) { await appendFaultJournal({reason: `Run signature: ${String(error)}`}); }
     });
 
+    const workThreadPosts = new Set();
     async function reactToSentMessage(event, ctx) {
       if (closeTransport.getStore()?.closeOperation) return;
       if (ctx.channelId !== "slack" || !event.success || !event.messageId) return;
+      // Work-thread scaffolding (title root and brief) is posted by the tool, not a model turn: no signature.
+      if (workThreadPosts.delete(String(event.content ?? "").trim())) return;
       const channel = resolveSlackChannelId(event, ctx);
       // Guest channel: no signature, no tile — no ops provenance at all there.
       if (!channel || isExcludedChannel(channel)) return;

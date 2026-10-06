@@ -69,13 +69,22 @@ export async function startSlackWorkThread({
   });
   const rootMessageId = messageId(publication);
   if (!rootMessageId) throw new Error("Slack publication returned no message identity");
+  await send({
+    accountId,
+    agentId,
+    channel: "slack",
+    to: `channel:${channel}`,
+    threadId: String(rootMessageId),
+    message: brief,
+    idempotencyKey: `work-thread:${operationId}:brief`,
+  });
   await prepareScaffold({ channel, messageIds: [String(rootMessageId)] });
   await setStatus({ channel, rootMessageId: String(rootMessageId), status: "working" });
   try {
     const task = [
       "Begin this work now.",
       `Use Slack channel ${channel}, thread root ${rootMessageId} for material progress, questions, and the final result.`,
-      `The thread root is the title "${heading}"; do not repeat or recreate it.`,
+      `The title "${heading}" is the thread root and the brief below is its first reply; do not repeat either.`,
       "",
       brief,
     ].join("\n");
