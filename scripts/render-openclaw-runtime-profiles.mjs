@@ -3,6 +3,7 @@
 import {readFileSync, realpathSync, writeFileSync} from "node:fs";
 import {createRequire} from "node:module";
 import {fileURLToPath} from "node:url";
+import {basename, dirname, join} from "node:path";
 import {readAgentEntries} from "./openclaw-agent-entries.mjs";
 
 function fail(message) {
@@ -163,7 +164,7 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
   return source;
 }
 
-function loadJson5(path) {
+export function loadJson5(path) {
   const text = readFileSync(path, "utf8");
   try {
     return JSON.parse(text);
@@ -179,6 +180,15 @@ function loadJson5(path) {
   }
 }
 
+export function canonicalRuntimeRoot(path) {
+  try {
+    return realpathSync(path);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return join(realpathSync(dirname(path)), basename(path));
+  }
+}
+
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   const [sourcePath, profilesPath, outputPath, runtimeRoot] = process.argv.slice(2);
   if (!sourcePath || !profilesPath || !outputPath) {
@@ -189,7 +199,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToP
     const rendered = applyRuntimeProfiles(loadJson5(sourcePath), JSON.parse(readFileSync(profilesPath, "utf8")));
     let serialized = JSON.stringify(rendered, null, 2);
     if (serialized.includes("__HUMANWARE_RUNTIME_ROOT__") && !runtimeRoot) fail("source config requires RUNTIME_ROOT");
-    if (runtimeRoot) serialized = serialized.replaceAll("__HUMANWARE_RUNTIME_ROOT__", JSON.stringify(realpathSync(runtimeRoot)).slice(1, -1));
+    if (runtimeRoot) serialized = serialized.replaceAll("__HUMANWARE_RUNTIME_ROOT__", JSON.stringify(canonicalRuntimeRoot(runtimeRoot)).slice(1, -1));
     writeFileSync(outputPath, `${serialized}\n`, {mode: 0o600});
   } catch (error) {
     console.error(error.message);

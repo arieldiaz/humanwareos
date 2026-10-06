@@ -9,11 +9,13 @@ Humanware OS is a reusable framework for durable AI agents: behavioral rules, id
 Humanware installations have three sources and one generated output:
 
 1. **Humanware OS** is the public framework. Reusable fixes and capabilities land here through reviewed pull requests.
-2. **The private instance** pins one framework revision and contains only local configuration: agent overlays, channel routing, model and harness profiles, domain routes, host paths, and secret identifiers.
+2. **The private instance** contains only local configuration: agent overlays, channel routing, model and harness profiles, domain routes, local-server selection, host paths and ports, Caddy routes, and secret identifiers. It is the source of truth for what runs on a particular Mac or server, while reusable service implementations remain in Humanware OS. Each generated runtime records the framework revision used to assemble it.
 3. **The data plane** holds the stream, memory, strategy, sessions, working documents, artifacts, derived indexes, and caches outside Git. Most durable evidence is append-only; current projections and working documents are versioned.
 4. **The runtime** is a checksummed immutable build assembled from recorded framework and instance revisions. Services use its `current` symlink. It is output, never source.
 
 This separation makes updates reviewable, restores mechanical, and debugging local: a behavior defect belongs to the framework, a deployment fact belongs to the instance, accumulated material belongs to data, and a runtime discrepancy is fixed by rebuilding.
+
+OpenClaw is one framework-managed runtime dependency, not the owner of the whole host. Its cutover replaces the pinned OpenClaw package, rendered configuration, workspaces, and native gateway service only. Other launchd services continue through stable paths in the generated runtime and are selected and configured by the private instance. An OpenClaw upgrade does not reinstall or restart Caddy, local web applications, observability, ingestion, calendar, email, or backup services.
 
 Read [System boundaries](docs/system-boundaries.md), [Architecture](docs/architecture.md), and [Runtime](docs/runtime.md) for the full contracts.
 
@@ -42,6 +44,12 @@ To pin a specific framework checkout and choose every storage boundary explicitl
 ```
 
 Continue with [Getting Started](docs/getting-started.md) to configure an agent and verify the first end-to-end channel handoff.
+
+## Private-instance template
+
+[`templates/instance`](templates/instance) is the one authored starter for a private installation. It is published to [`arieldiaz/my-humanware-template`](https://github.com/arieldiaz/my-humanware-template) as generated distribution, not a second source to maintain. A personal repository such as `my-humanware` is created from that template and then owns that installation's identities, channel and domain identifiers, local-server configuration, host paths, and secret references.
+
+Prefer `./install.sh /absolute/path/to/my-humanware --repo OWNER/my-humanware` to create an instance: it resolves the required absolute storage paths and placeholder values before the first commit. The GitHub template remains useful for inspection or manual setup, but it does not guess machine paths. The starter deliberately contains no personal Caddy routes, LaunchAgent inventory, account identifiers, or service implementations. Add those to the private instance as local-server configuration; add reusable service code or deployment mechanics to Humanware OS. Never copy mutable sessions, artifacts, media, logs, caches, or secret values into either repository.
 
 ## Repository map
 

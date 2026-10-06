@@ -8,6 +8,11 @@
     "worktreeRoot": "__WORKTREE_ROOT__"
   },
   "agents": ["liv", "max"],
+  "openclaw": {
+    "version": "2026.9.8",
+    "config": "openclaw/config.patch.json5",
+    "plugins": []
+  },
   "runtimeProfiles": "runtime/profiles.json",
   "channels": ["channels/slack.json"],
   "surfaces": ["surfaces/domain.json"],

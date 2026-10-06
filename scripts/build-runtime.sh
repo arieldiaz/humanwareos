@@ -68,13 +68,14 @@ mkdir -p "$RUNTIME_ROOT/runtime"
 BUILD_DIR=$(mktemp -d "$RUNTIME_ROOT/runtime/.build-$BUILD_ID.XXXXXX")
 trap 'rm -rf "$BUILD_DIR"' EXIT HUP INT TERM
 
-mkdir -p "$BUILD_DIR/instructions" "$BUILD_DIR/config" "$BUILD_DIR/framework/scripts" "$BUILD_DIR/framework/ops/openclaw/plugins" "$BUILD_DIR/framework/ops/openclaw/patches" "$BUILD_DIR/framework/ops/channels" "$BUILD_DIR/surface"
+mkdir -p "$BUILD_DIR/instructions" "$BUILD_DIR/config/openclaw" "$BUILD_DIR/framework/scripts" "$BUILD_DIR/framework/ops/openclaw/plugins" "$BUILD_DIR/framework/ops/openclaw/patches" "$BUILD_DIR/framework/ops/openclaw/runtime" "$BUILD_DIR/framework/ops/channels" "$BUILD_DIR/surface"
 cp "$FRAMEWORK_DIR/AGENTS.md" "$BUILD_DIR/instructions/AGENTS.md"
 cp -R "$FRAMEWORK_DIR/docs" "$BUILD_DIR/instructions/docs"
 cp -R "$FRAMEWORK_DIR/agents" "$BUILD_DIR/instructions/agents"
 cp -R "$FRAMEWORK_DIR/skills" "$BUILD_DIR/instructions/skills"
 cp -R "$FRAMEWORK_DIR/commands" "$BUILD_DIR/instructions/commands"
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-runtime-profiles.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-runtime-profiles.mjs"
+cp "$FRAMEWORK_DIR/scripts/render-openclaw-config.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-config.mjs"
 cp "$FRAMEWORK_DIR/scripts/openclaw-agent-entries.mjs" "$BUILD_DIR/framework/scripts/openclaw-agent-entries.mjs"
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-agent-context.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-agent-context.mjs"
 cp "$FRAMEWORK_DIR/scripts/materialize-openclaw-workspaces.mjs" "$BUILD_DIR/framework/scripts/materialize-openclaw-workspaces.mjs"
@@ -83,8 +84,9 @@ cp "$FRAMEWORK_DIR/scripts/runtime-cutover-lease.sh" "$BUILD_DIR/framework/scrip
 cp "$FRAMEWORK_DIR/scripts/runtime-restart-guard.sh" "$BUILD_DIR/framework/scripts/runtime-restart-guard.sh"
 cp "$FRAMEWORK_DIR/scripts/repair-openclaw-terminal-sessions.mjs" "$BUILD_DIR/framework/scripts/repair-openclaw-terminal-sessions.mjs"
 cp "$FRAMEWORK_DIR/scripts/document-workspace-server.mjs" "$BUILD_DIR/framework/scripts/document-workspace-server.mjs"
-cp -R "$FRAMEWORK_DIR/ops/openclaw/plugins/." "$BUILD_DIR/framework/ops/openclaw/plugins/"
+for plugin in cursor-cli run-signature; do cp -R "$FRAMEWORK_DIR/ops/openclaw/plugins/$plugin" "$BUILD_DIR/framework/ops/openclaw/plugins/$plugin"; done
 cp -R "$FRAMEWORK_DIR/ops/openclaw/patches/." "$BUILD_DIR/framework/ops/openclaw/patches/"
+cp -R "$FRAMEWORK_DIR/ops/openclaw/runtime/." "$BUILD_DIR/framework/ops/openclaw/runtime/"
 cp -R "$FRAMEWORK_DIR/ops/channels/." "$BUILD_DIR/framework/ops/channels/"
 cp "$FRAMEWORK_DIR/ops/openclaw/slack-spin-out.mjs" "$BUILD_DIR/framework/ops/openclaw/slack-spin-out.mjs"
 for component in menubar session-console calendar email-intake; do cp -R "$FRAMEWORK_DIR/ops/$component" "$BUILD_DIR/framework/ops/$component"; done
@@ -98,6 +100,7 @@ fi
 cp "$INSTANCE_DIR/humanware.instance.json" "$BUILD_DIR/config/instance.json"
 cp -R "$INSTANCE_DIR/runtime" "$BUILD_DIR/config/runtime"
 cp -R "$INSTANCE_DIR/channels" "$BUILD_DIR/config/channels"
+cp "$INSTANCE_DIR/openclaw/config.patch.json5" "$BUILD_DIR/config/openclaw/config.patch.json5"
 cp -R "$INSTANCE_DIR/surfaces" "$BUILD_DIR/config/surfaces"
 cp -R "$FRAMEWORK_DIR/surfaces/domain/." "$BUILD_DIR/surface/"
 cp "$INSTANCE_DIR/surfaces/domain.json" "$BUILD_DIR/surface/surface.json"
@@ -105,7 +108,15 @@ if [ -d "$INSTANCE_DIR/surfaces/static" ]; then
   cp -R "$INSTANCE_DIR/surfaces/static/." "$BUILD_DIR/surface/"
 fi
 if [ -d "$INSTANCE_DIR/services" ]; then
-  cp -R "$INSTANCE_DIR/services" "$BUILD_DIR/config/services"
+  mkdir -p "$BUILD_DIR/config/services"
+  for source in "$INSTANCE_DIR"/services/*; do
+    [ -e "$source" ] || continue
+    name=$(basename "$source")
+    case "$name" in
+      openclaw|openclaw.json) continue ;;
+    esac
+    cp -R "$source" "$BUILD_DIR/config/services/$name"
+  done
   python3 "$FRAMEWORK_DIR/scripts/validate-launchagents.py" "$BUILD_DIR/config/services"
   # Only explicitly declared service runtime dependencies are installed. npm ci
   # replaces any copied development tree; lifecycle scripts are never executed.
@@ -116,11 +127,14 @@ if [ -d "$INSTANCE_DIR/services" ]; then
     fi
   done
 fi
-if [ -d "$INSTANCE_DIR/ops" ]; then
-  cp -R "$INSTANCE_DIR/ops" "$BUILD_DIR/config/ops"
-fi
-
 "$NODE_BIN" "$FRAMEWORK_DIR/scripts/render-openclaw-agent-context.mjs" "$BUILD_DIR"
+"$NODE_BIN" "$FRAMEWORK_DIR/scripts/render-openclaw-config.mjs" \
+  "$INSTANCE_DIR/openclaw/config.patch.json5" \
+  "$INSTANCE_DIR/runtime/profiles.json" \
+  "$INSTANCE_DIR/channels/slack.json" \
+  "$INSTANCE_DIR/humanware.instance.json" \
+  "$BUILD_DIR/config/openclaw/openclaw.json" \
+  "$FINAL_DIR"
 
 cat > "$BUILD_DIR/manifest.json" <<EOF
 {

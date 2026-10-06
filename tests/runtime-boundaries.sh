@@ -33,18 +33,20 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -x "$RUNTIME/current/framework/scripts/runtime-cutover-lease.sh" ]
 [ -x "$RUNTIME/current/framework/scripts/runtime-restart-guard.sh" ]
 [ -x "$RUNTIME/current/framework/scripts/apply-openclaw-patches.sh" ]
+[ -x "$RUNTIME/current/framework/ops/openclaw/runtime/secret-exec.sh" ]
+[ -x "$RUNTIME/current/framework/ops/openclaw/runtime/cursor-agent-launch.sh" ]
 [ -f "$RUNTIME/current/framework/ops/openclaw/slack-spin-out.mjs" ]
 [ -f "$RUNTIME/current/framework/scripts/openclaw-agent-entries.mjs" ]
+[ -f "$RUNTIME/current/config/openclaw/openclaw.json" ]
 [ -f "$RUNTIME/current/framework/ops/openclaw/patches/slack-plugin-root.mjs" ]
 [ -f "$RUNTIME/current/framework/ops/openclaw/patches/slack-rich-text/markdown-to-rich-text.mjs" ]
-[ -f "$RUNTIME/current/framework/ops/session-console/build-session-console.py" ]
-[ -f "$RUNTIME/current/framework/ops/session-console/activity.py" ]
 [ -f "$RUNTIME/current/surface/activity/index.html" ]
 [ -f "$RUNTIME/current/surface/sessions/index.html" ]
-[ -f "$RUNTIME/current/framework/ops/lib/openclaw_sessions.py" ]
-[ -f "$RUNTIME/current/framework/ops/menubar/thread_status.py" ]
-[ -f "$RUNTIME/current/framework/ops/calendar/service.js" ]
-[ -f "$RUNTIME/current/framework/ops/email-intake/service.mjs" ]
+[ ! -e "$RUNTIME/current/framework/ops/openclaw/plugins/calendar" ]
+[ -e "$RUNTIME/current/framework/ops/session-console" ]
+[ -e "$RUNTIME/current/framework/ops/email-intake" ]
+[ ! -e "$RUNTIME/current/config/services" ]
+[ ! -e "$RUNTIME/current/config/ops" ]
 [ "$(grep -c 'fileURLToPath(import.meta.url)' "$RUNTIME/current/framework/ops/openclaw/patches/patch-2026.9.8-slack-rich-text.mjs")" -eq 1 ]
 [ -f "$DATA/artifacts/manifests/data-plane.json" ]
 [ -f "$DATA/operations/control/restart-freeze.json" ]
@@ -55,20 +57,20 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 "$JQ" -e '.mutableStateIncluded == false and .dataRoot == $root' --arg root "$DATA" "$RUNTIME/current/manifest.json" >/dev/null
 "$FRAMEWORK/scripts/validate-instance.sh" "$FRAMEWORK" "$INSTANCE" >/dev/null
 
-# Runtime dependency setup must preserve the builder's parseable build-record stdout and
-# must not run lifecycle scripts in the immutable staging directory.
-mkdir -p "$INSTANCE/services/runtime-fixture"
-cat > "$INSTANCE/services/runtime-fixture/package.json" <<'PACKAGE'
-{"name":"runtime-fixture","version":"1.0.0","humanwareRuntime":true,"scripts":{"install":"touch install-script-ran"}}
-PACKAGE
-cat > "$INSTANCE/services/runtime-fixture/package-lock.json" <<'LOCK'
-{"name":"runtime-fixture","version":"1.0.0","lockfileVersion":3,"requires":true,"packages":{"":{"name":"runtime-fixture","version":"1.0.0","hasInstallScript":true}}}
-LOCK
+# Local-server files retain their stable runtime paths. Legacy OpenClaw service
+# wrappers and instance deployment scripts do not enter the runtime.
+mkdir -p "$INSTANCE/services/runtime-fixture" "$INSTANCE/services/openclaw" "$INSTANCE/ops"
+printf '%s\n' 'local server config' > "$INSTANCE/services/runtime-fixture/config"
+printf '%s\n' 'must not enter the runtime' > "$INSTANCE/services/openclaw/gateway-launch.sh"
+printf '%s\n' '{"enabled":true}' > "$INSTANCE/services/openclaw.json"
+printf '%s\n' 'must not enter the runtime' > "$INSTANCE/ops/deploy.sh"
 DEPENDENCY_OUTPUT=$("$FRAMEWORK/scripts/build-runtime.sh" "$FRAMEWORK" "$INSTANCE")
 DEPENDENCY_BUILD=$(printf '%s\n' "$DEPENDENCY_OUTPUT" | sed -n 's/^build-runtime: built //p')
 [ -d "$DEPENDENCY_BUILD" ]
-[ -f "$DEPENDENCY_BUILD/config/services/runtime-fixture/package-lock.json" ]
-[ ! -e "$DEPENDENCY_BUILD/config/services/runtime-fixture/install-script-ran" ]
+[ -f "$DEPENDENCY_BUILD/config/services/runtime-fixture/config" ]
+[ ! -e "$DEPENDENCY_BUILD/config/services/openclaw" ]
+[ ! -e "$DEPENDENCY_BUILD/config/services/openclaw.json" ]
+[ ! -e "$DEPENDENCY_BUILD/config/ops" ]
 
 # Route declarations cannot make either trace feed public.
 cp "$INSTANCE/surfaces/domain.json" "$TEST_ROOT/domain.json"
