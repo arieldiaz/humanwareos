@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { startSlackWorkThread } from "./slack-spin-out.mjs";
+import { matchSlackChannel, startSlackWorkThread } from "./slack-spin-out.mjs";
 
 function fixture(overrides = {}) {
   const calls = [];
@@ -11,7 +11,8 @@ function fixture(overrides = {}) {
       accountId: "max",
       agentId: "max",
       channel: "C123",
-      detail: "  Fix: focused patch\nScope and first action are underway.  ",
+      title: "  Fix: focused patch  ",
+      detail: "Scope and first action are underway.",
       group: "Humanware OS",
       parentSessionKey: "agent:max:slack:channel:C123:thread:1",
       operationId: "call-1",
@@ -30,7 +31,7 @@ function fixture(overrides = {}) {
   };
 }
 
-test("posts the brief as one top-level message and starts high before work begins", async () => {
+test("posts only the title as the top-level message and starts high before work begins", async () => {
   const { calls, input } = fixture();
   const result = await startSlackWorkThread(input);
 
@@ -38,7 +39,8 @@ test("posts the brief as one top-level message and starts high before work begin
   assert.equal("title" in calls[0][1], false);
   assert.equal(calls[0][1].sessionKey, undefined);
   assert.equal(calls[0][1].threadId, undefined);
-  assert.equal(calls[0][1].message, input.detail.trim());
+  assert.equal(calls[0][1].message, "Fix: focused patch");
+  assert.match(calls[3][1].task, /Scope and first action are underway\./);
   assert.deepEqual(calls[1][1], { channel: "C123", messageIds: ["1787000000.100000"] });
   assert.deepEqual(calls[2][1], { channel: "C123", rootMessageId: "1787000000.100000", status: "working" });
   assert.equal(calls[3][1].label, "Fix: focused patch");
@@ -78,3 +80,18 @@ test("does not start work when durable publication identity is unavailable", asy
   assert.equal(calls.length, 1);
 });
 
+
+test("matches channels loosely by name and passes IDs through", () => {
+  const channels = [
+    { id: "C1", name: "humanware-os" },
+    { id: "C2", name: "ariel-works" },
+    { id: "C3", name: "inbox" },
+  ];
+  assert.equal(matchSlackChannel("C0ABCDEF12", channels), "C0ABCDEF12");
+  assert.equal(matchSlackChannel("#inbox", channels), "C3");
+  assert.equal(matchSlackChannel("Humanware OS", channels), "C1");
+  assert.equal(matchSlackChannel("humanware", channels), "C1");
+  assert.equal(matchSlackChannel("works", channels), "C2");
+  assert.throws(() => matchSlackChannel("garden", channels), /No Slack channel/);
+  assert.throws(() => matchSlackChannel("os", [{ id: "C1", name: "humanware-os" }, { id: "C4", name: "ariel-os" }]), /several channels/);
+});
