@@ -143,6 +143,15 @@ export async function addReactionsInOrder(names, add) {
   for (const name of names) await add(name);
 }
 
+export function ownerHoldsCloseReaction(reactions, ownerUserId) {
+  return normalizeReactions(reactions).some((reaction) =>
+    reaction?.name === "white_check_mark" && Array.isArray(reaction.users) && reaction.users.includes(ownerUserId));
+}
+
+export function shouldClaimClosedBotInbound({closingOrClosed, senderId, botUserIds}) {
+  return Boolean(closingOrClosed && senderId && botUserIds?.has(senderId));
+}
+
 export function createKeyedSerialQueue() {
   const pending = new Map();
   return async (key, task) => {
@@ -567,12 +576,66 @@ export default {
         await recordOutboundStatus({dataRoot: resolveDataRoot(api.config, api.pluginConfig, close.accountId), channel: close.route.channel, threadId: close.route.threadId, status: 'closed', agent: close.accountId, sessionKey: close.sessionKey, runId: close.key});
       },
     });
-    api.on('gateway_start', () => lifecycle.recover());
+    let reactionCloseTimer;
+    let reactionCloseSweep = Promise.resolve();
+    const sweepReactionCloses = () => {
+      reactionCloseSweep = reactionCloseSweep.catch(() => {}).then(async () => {
+        const ownerUserId = api.pluginConfig?.ownerUserId;
+        if (!/^U[A-Z0-9]+$/.test(ownerUserId ?? "")) return;
+        const actions = await import(resolveSlackRuntimeModule('actions'));
+        const accounts = await import(resolveSlackRuntimeModule('accounts'));
+        const oneDayAgo = Date.now() - 86400000;
+        for (const candidate of await lifecycle.reactionCloseCandidates({since: oneDayAgo})) {
+          const token = accounts.resolveSlackAccount({cfg: api.config, accountId: candidate.accountId})?.botToken;
+          if (!token) continue;
+          const reactions = await retrySlackRateLimit(() => actions.listSlackReactions(
+            candidate.route.channel, candidate.route.threadId,
+            {cfg: api.config, accountId: candidate.accountId, token},
+          ));
+          const held = ownerHoldsCloseReaction(reactions, ownerUserId);
+          if (!await lifecycle.observeReactionClose(candidate.route, held)) continue;
+          const observedAt = (Date.now() / 1000).toFixed(6);
+          await lifecycle.closeCommand(candidate.route, {
+            messageId: observedAt, principal: ownerUserId, accountId: candidate.accountId,
+          });
+        }
+      }).catch(error => appendFaultJournal({reason: `Reaction close sweep: ${String(error)}`}));
+      return reactionCloseSweep;
+    };
+    api.on('gateway_start', async () => {
+      await lifecycle.recover();
+      await sweepReactionCloses();
+      reactionCloseTimer = setInterval(sweepReactionCloses, 15000);
+      reactionCloseTimer.unref?.();
+    });
+    api.on('gateway_stop', () => clearInterval(reactionCloseTimer));
+    api.on('inbound_claim', async (event, ctx) => {
+      if (String(event.channel ?? ctx.channelId ?? '').toLowerCase() !== 'slack') return;
+      const channel = String(event.conversationId ?? ctx.conversationId ?? '').replace(/^channel:/i, '').toUpperCase();
+      const threadId = String(event.threadId ?? event.replyToId ?? ctx.threadId ?? '');
+      const senderId = event.senderId ?? ctx.senderId;
+      if (!channel || !threadId || !senderId) return;
+      const accounts = await import(resolveSlackRuntimeModule('accounts'));
+      const botUserIds = new Set();
+      for (const accountId of Object.keys(api.config?.channels?.slack?.accounts ?? {})) {
+        const token = accounts.resolveSlackAccount({cfg: api.config, accountId})?.botToken;
+        const botUserId = await resolveBotUserId(token, botIdCache);
+        if (botUserId) botUserIds.add(botUserId);
+      }
+      const route = {channel, threadId};
+      if (shouldClaimClosedBotInbound({
+        closingOrClosed: await lifecycle.isClosingOrClosed(route), senderId, botUserIds,
+      })) return {handled: true};
+    });
     const lifecycleHook = transition => async (event, ctx) => {
       try { await lifecycle[transition]({sessionKey: event.sessionKey ?? ctx.sessionKey, runId: event.runId ?? ctx.runId}); }
       catch (error) { await appendFaultJournal({runId: event.runId ?? ctx.runId, reason: `Lifecycle ${transition}: ${String(error)}`}); }
     };
     api.on('llm_input', lifecycleHook('start'));
+    // Native and CLI harnesses do not all emit llm_input. model_call_started
+    // is the common admission boundary; ThreadLifecycle.start is idempotent
+    // when a harness emits both events for the same run.
+    api.on('model_call_started', lifecycleHook('start'));
     api.on('agent_end', lifecycleHook('end'));
     api.on('before_tool_call', (event) => {
       const params = event.params ?? {};
