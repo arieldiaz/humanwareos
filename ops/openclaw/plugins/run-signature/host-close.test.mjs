@@ -6,7 +6,7 @@ import test from 'node:test';
 import {ThreadLifecycle} from './lifecycle.mjs';
 import {formatCloseReport, reportParts, summarizeTrajectory, writeCloseReport, recordSessionClose} from './close-report.mjs';
 import {conversationFenceKey} from './conversation-fence.mjs';
-import {closeThreadTool, sendThreadMessage} from './index.js';
+import {closeThreadTool, loadSlackThreadSnapshot, sendThreadMessage} from './index.js';
 const manifest = JSON.parse(await readFile(new URL('./openclaw.plugin.json', import.meta.url)));
 const route = {channel: 'C123', threadId: '1790050400.000001'};
 const input = {messageId: '1790050402.000001', principal: 'UOWNER', accountId: 'max'};
@@ -26,6 +26,24 @@ async function fixture(t) {
 }
 test('plugin schema accepts the owner principal required by host closure', () => {
   assert.deepEqual(manifest.configSchema.properties.ownerUserId, {type: 'string', pattern: '^U[A-Z0-9]+$'});
+});
+test('large thread snapshots use bounded cursor pages and preserve every reply', async () => {
+  const calls = [];
+  const pages = [
+    {messages: [{ts: '1.000001'}, {ts: '2.000001'}], has_more: true, response_metadata: {next_cursor: 'next'}},
+    {messages: [{ts: '3.000001'}, {ts: '5.000001'}], has_more: false, response_metadata: {next_cursor: ''}},
+  ];
+  const messages = await loadSlackThreadSnapshot({channel: 'C123', threadId: '1.000001', latest: '4.000001', token: 'token', call: async (method, token, body) => {
+    calls.push({method, token, body}); return pages[calls.length - 1];
+  }});
+  assert.deepEqual(messages.map(message => message.ts), ['1.000001', '2.000001', '3.000001']);
+  assert.equal(calls[0].body.limit, 20);
+  assert.equal(calls[0].body.cursor, undefined);
+  assert.equal(calls[1].body.cursor, 'next');
+});
+test('thread snapshot fails closed when Slack claims more data without a cursor', async () => {
+  await assert.rejects(loadSlackThreadSnapshot({channel: 'C123', threadId: '1.000001', latest: '4.000001', token: 'token',
+    call: async () => ({messages: [], has_more: true, response_metadata: {}})}), /continuation cursor/);
 });
 const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, agentAccountId: 'max', requesterSenderId: 'UOWNER'};
 const current = {messageId: '300.000000', senderId: 'UOWNER', content: 'answer this and close the thread'};
@@ -208,4 +226,3 @@ for (const phase of ['reserved', 'snapshot', 'file', 'sending', 'delivered', 're
   assert.equal(f.receipts.size, 1); assert.equal(f.completed.size, 1);
   assert.equal((await restarted.state(state => state.conversations[conversationFenceKey(route)])).status, 'closed');
 });
-
