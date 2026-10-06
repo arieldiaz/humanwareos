@@ -46,7 +46,7 @@ prepare() {
 activate() {
   [ "$#" -eq 2 ] || usage
   local prepared approval framework instance runtime transaction version data runtime_root current control instance_id
-  local report previous_runtime live_config config_rollback workspace_rollback lease lease_dir active=1
+  local report previous_runtime live_config config_rollback workspace_rollback lease lease_dir candidate_bin active=1
   local cutover_started=0 package_installed=0 config_replaced=0 workspace_applied=0 runtime_switched=0
   prepared=$(CDPATH= cd -- "$(dirname "$1")" && pwd)/$(basename "$1")
   approval=$(CDPATH= cd -- "$(dirname "$2")" && pwd)/$(basename "$2")
@@ -69,11 +69,13 @@ activate() {
   workspace_rollback="$report/workspaces"
   lease="$framework/scripts/runtime-cutover-lease.sh"
   lease_dir="$runtime_root/locks/runtime-deploy"
+  candidate_bin="$transaction/staged/node_modules/openclaw/openclaw.mjs"
+  [ -f "$candidate_bin" ] || { echo "Prepared OpenClaw candidate is missing: $candidate_bin" >&2; exit 1; }
   mkdir -p "$report"
   chmod 700 "$report"
 
   "$framework/scripts/runtime-restart-guard.sh" verify "$control" "$approval" "$instance_id" 0
-  if "$OPENCLAW_BIN" gateway suspend --wait 60 --expect-final --json > "$report/suspend.json" 2> "$report/suspend.err"; then
+  if "$NODE_BIN" "$candidate_bin" gateway suspend --wait 60 --expect-final --json > "$report/suspend.json" 2> "$report/suspend.err"; then
     active=0
   fi
   if ! "$framework/scripts/runtime-restart-guard.sh" verify "$control" "$approval" "$instance_id" "$active"; then
@@ -121,7 +123,7 @@ activate() {
       fi
       "$OPENCLAW_BIN" gateway resume --json >/dev/null 2>&1
       "$OPENCLAW_BIN" gateway start --json >/dev/null 2>&1
-      echo "OpenClaw activation failed; the prior package, config, runtime and gateway were restored. Report: $report" >&2
+      echo "OpenClaw activation failed; rollback was attempted. Inspect the report before retrying: $report" >&2
     fi
     "$lease" release "$lease_dir" "$$" >/dev/null 2>&1
     exit "$status"
@@ -132,7 +134,12 @@ activate() {
   trap 'exit 143' TERM
 
   cutover_started=1
-  "$OPENCLAW_BIN" gateway stop --disable --force --json > "$report/gateway-stop.json"
+  "$NODE_BIN" "$candidate_bin" gateway status --json > "$report/gateway-pre-stop-status.json"
+  if $JQ -e '.service.loaded == false and .port.status == "free"' "$report/gateway-pre-stop-status.json" >/dev/null; then
+    $JQ -n '{action:"stop",ok:true,result:"already-stopped",message:"Gateway service is not loaded and its port is free."}' > "$report/gateway-stop.json"
+  else
+    "$NODE_BIN" "$candidate_bin" gateway stop --disable --force --json > "$report/gateway-stop.json"
+  fi
   /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" install --transaction "$transaction" --target "$PACKAGE_TARGET"
   package_installed=1
   cp -p "$runtime/config/openclaw/openclaw.json" "$live_config"

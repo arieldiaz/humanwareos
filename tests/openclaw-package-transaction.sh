@@ -26,4 +26,12 @@ python3 "$ROOT/scripts/openclaw-package-transaction.py" restore --transaction "$
 [ "$(jq -r .version "$TARGET/package.json")" = 2026.9.1 ]
 [ "$(jq -r .version "$TRANSACTION/restored.json")" = 2026.9.1 ]
 
+python3 "$ROOT/scripts/openclaw-package-transaction.py" install --transaction "$TRANSACTION" --target "$TARGET" >/dev/null
+[ "$(jq -r .version "$TARGET/package.json")" = 2026.9.8 ]
+[ "$(jq -r .version "$TRANSACTION/retained/openclaw/package.json")" = 2026.9.1 ]
+
+python3 "$ROOT/scripts/openclaw-package-transaction.py" restore --transaction "$TRANSACTION" --target "$TARGET" >/dev/null
+[ "$(jq -r .version "$TARGET/package.json")" = 2026.9.1 ]
+[ "$(find "$TRANSACTION/failed" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 2 ]
+
 echo "openclaw package transaction: OK"
