@@ -39,21 +39,6 @@ export class ThreadLifecycle {
       catch (error) { if (error.code !== 'ENOENT') throw error; return operation({turns: {}, conversations: {}}); }
     });
   }
-  async reactionCloseCandidates({since = 0} = {}) {
-    return this.inspect(state => Object.entries(state.conversations ?? {}).flatMap(([conversationKey, conversation]) => {
-      if (conversation.status === 'closed') return [];
-      const turn = Object.values(state.turns ?? {})
-        .filter(candidate => candidate.conversation === conversationKey)
-        .sort((left, right) => (right.startedAt ?? 0) - (left.startedAt ?? 0))[0];
-      return turn?.route && turn?.accountId && turn.startedAt >= since ? [{route: turn.route, accountId: turn.accountId}] : [];
-    }));
-  }
-  async observeReactionClose(route, held) {
-    const prior = await this.inspect(state => Boolean(state.conversations?.[conversationFenceKey(route)]?.ownerCloseReactionHeld));
-    if (prior === held) return false;
-    await this.state(state => {this.conversation(state, route).ownerCloseReactionHeld = held;});
-    return held;
-  }
   async isClosingOrClosed(route) {
     return this.inspect(state => {
       const conversation = state.conversations?.[conversationFenceKey(route)];
