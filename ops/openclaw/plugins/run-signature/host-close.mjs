@@ -22,6 +22,34 @@ export function shouldClaimClosedBotInbound({closingOrClosed, senderId, botUserI
   return Boolean(closingOrClosed && senderId && botUserIds?.has(senderId));
 }
 
+export function mentionedSlackAccounts(content, accountByBotUserId) {
+  const accounts = new Set();
+  for (const match of String(content ?? "").matchAll(/<@([UW][A-Z0-9]+)>/g)) {
+    const account = accountByBotUserId.get(match[1]);
+    if (account) accounts.add(account);
+  }
+  return [...accounts];
+}
+
+export function chooseSlackLead({current, mentioned, fallback}) {
+  if (mentioned.length === 1) return mentioned[0];
+  return current ?? fallback;
+}
+
+export async function loadSlackThreadSnapshot({channel, threadId, latest, token, call, limit = 20}) {
+  const messages = [];
+  let cursor;
+  do {
+    const page = await call("conversations.replies", token, {
+      channel, ts: threadId, latest, inclusive: true, limit, ...(cursor ? {cursor} : {}),
+    });
+    messages.push(...(page.messages ?? []).filter(message => Number(message.ts) <= Number(latest)));
+    cursor = page.response_metadata?.next_cursor;
+    if (page.has_more && !cursor) throw new Error("Incomplete thread evidence without a continuation cursor");
+  } while (cursor);
+  return messages;
+}
+
 export function loadCoreSdk(name) {
   return import(join(process.env.OPENCLAW_PACKAGE_ROOT || "/opt/homebrew/lib/node_modules/openclaw", "dist", "plugin-sdk", `${name}.js`));
 }
@@ -87,6 +115,7 @@ export function registerHostClose(api, {
   botIdCache,
   currentInbound,
 }) {
+  const threadLeads = new Map();
   const lifecycle = new ThreadLifecycle({
     root: join(stateRoot, "run-signature"),
     excluded: isExcludedChannel,
@@ -107,16 +136,11 @@ export function registerHostClose(api, {
     snapshot: async close => {
       const accounts = await import(resolveSlackRuntimeModule("accounts"));
       const token = accounts.resolveSlackAccount({cfg: api.config, accountId: close.accountId})?.botToken;
-      const messages = [];
       const snapshotThrough = Math.max(close.startedAt, Number(close.sourceMessageId) * 1000);
       const latest = (snapshotThrough / 1000).toFixed(6);
-      let cursor;
-      do {
-        const page = await slackApi("conversations.replies", token, {channel: close.route.channel, ts: close.route.threadId, latest, inclusive: true, limit: 200, ...(cursor ? {cursor} : {})});
-        messages.push(...(page.messages ?? []).filter(message => Number(message.ts) * 1000 <= snapshotThrough));
-        cursor = page.response_metadata?.next_cursor;
-        if (page.has_more && !cursor) throw new Error("Incomplete thread evidence without a continuation cursor");
-      } while (cursor);
+      const messages = await loadSlackThreadSnapshot({
+        channel: close.route.channel, threadId: close.route.threadId, latest, token, call: slackApi,
+      });
       const stats = messages.length ? measureSlackThread(messages) : undefined;
       const usage = (await Promise.all(Object.keys(api.config?.channels?.slack?.accounts ?? {}).map(async agent => ({agent,
         usage: await loadThreadUsage({agent, channel: close.route.channel, thread: close.route.threadId, before: snapshotThrough})})))).filter(record => record.usage);
@@ -139,19 +163,38 @@ export function registerHostClose(api, {
   api.on("inbound_claim", async (event, ctx) => {
     if (String(event.channel ?? ctx.channelId ?? "").toLowerCase() !== "slack") return;
     const channel = String(event.conversationId ?? ctx.conversationId ?? "").replace(/^channel:/i, "").toUpperCase();
-    const threadId = String(event.threadId ?? event.replyToId ?? ctx.threadId ?? "");
+    const threadId = String(event.threadId ?? event.replyToId ?? ctx.threadId ?? event.messageId ?? "");
     const senderId = event.senderId ?? ctx.senderId;
     if (!channel || !threadId || !senderId) return;
+    if (isExcludedChannel(channel)) return;
     const accounts = await import(resolveSlackRuntimeModule("accounts"));
     const botUserIds = new Set();
+    const accountByBotUserId = new Map();
     for (const accountId of Object.keys(api.config?.channels?.slack?.accounts ?? {})) {
       const token = accounts.resolveSlackAccount({cfg: api.config, accountId})?.botToken;
       const botUserId = await resolveBotUserId(token, botIdCache);
-      if (botUserId) botUserIds.add(botUserId);
+      if (botUserId) {
+        botUserIds.add(botUserId);
+        accountByBotUserId.set(botUserId, accountId);
+      }
     }
+    const route = {channel, threadId};
     if (shouldClaimClosedBotInbound({
-      closingOrClosed: await lifecycle.isClosingOrClosed({channel, threadId}), senderId, botUserIds,
+      closingOrClosed: await lifecycle.isClosingOrClosed(route), senderId, botUserIds,
     })) return {handled: true};
+    const fallback = String(api.pluginConfig?.defaultSlackAccount ?? "").toLowerCase();
+    if (!fallback) return;
+    if (botUserIds.has(senderId)) return {handled: true};
+    const routeKey = `${channel}:${threadId}`;
+    const lead = chooseSlackLead({
+      current: threadLeads.get(routeKey),
+      mentioned: mentionedSlackAccounts(event.content ?? event.text, accountByBotUserId),
+      fallback,
+    });
+    if (!lead) return {handled: true};
+    threadLeads.set(routeKey, lead);
+    const accountId = String(ctx.accountId ?? event.accountId ?? ctx.sessionKey?.match(/^agent:([^:]+)/i)?.[1] ?? "").toLowerCase();
+    if (accountId !== lead) return {handled: true};
   });
   const lifecycleHook = transition => async (event, ctx) => {
     try { await lifecycle[transition]({sessionKey: event.sessionKey ?? ctx.sessionKey, runId: event.runId ?? ctx.runId}); }

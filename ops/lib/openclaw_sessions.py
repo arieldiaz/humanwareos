@@ -225,3 +225,29 @@ def iter_transcript_records(state_root, agent_id, entry):
                 continue
             if isinstance(record, dict):
                 yield record
+
+
+def iter_trajectory_events(state_root, agent_id):
+    """Yield the canonical provider-visible activity stream in persisted order."""
+    path = database_path(state_root, agent_id)
+    if not _canonical_sessions_present(path, agent_id):
+        return
+    with _database(path) as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "trajectory_runtime_events" not in tables:
+            return
+        rows = connection.execute(
+            "SELECT session_id, seq, run_id, event_json, created_at "
+            "FROM trajectory_runtime_events ORDER BY created_at, session_id, seq"
+        ).fetchall()
+    for row in rows:
+        event = _object(row["event_json"], "trajectory event")
+        yield {
+            "agent": agent_id,
+            "sessionId": row["session_id"],
+            "seq": row["seq"],
+            "runId": row["run_id"],
+            "createdAt": row["created_at"],
+            "event": event,
+            "sourcePath": str(path),
+        }
