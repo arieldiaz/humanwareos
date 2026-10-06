@@ -213,6 +213,20 @@ export async function slackApi(method, token, body) {
   return payload;
 }
 
+export async function loadSlackThreadSnapshot({channel, threadId, latest, token, call = slackApi, limit = 20}) {
+  const messages = [];
+  let cursor;
+  do {
+    const page = await call('conversations.replies', token, {
+      channel, ts: threadId, latest, inclusive: true, limit, ...(cursor ? {cursor} : {}),
+    });
+    messages.push(...(page.messages ?? []).filter(message => Number(message.ts) <= Number(latest)));
+    cursor = page.response_metadata?.next_cursor;
+    if (page.has_more && !cursor) throw new Error('Incomplete thread evidence without a continuation cursor');
+  } while (cursor);
+  return messages;
+}
+
 // The gateway sometimes keys an outbound delivery session by the inbound message
 // ts rather than the thread root, which sends every provenance lookup to a
 // session that never ran a model call. Slack is the authority on the root.
@@ -564,16 +578,9 @@ export default {
       snapshot: async close => {
         const accounts = await import(resolveSlackRuntimeModule('accounts'));
         const token = accounts.resolveSlackAccount({cfg: api.config, accountId: close.accountId})?.botToken;
-        const messages = [];
         const snapshotThrough = Math.max(close.startedAt, Number(close.sourceMessageId) * 1000);
         const latest = (snapshotThrough / 1000).toFixed(6);
-        let cursor;
-        do {
-          const page = await slackApi('conversations.replies', token, {channel: close.route.channel, ts: close.route.threadId, latest, inclusive: true, limit: 200, ...(cursor ? {cursor} : {})});
-          messages.push(...(page.messages ?? []).filter(message => Number(message.ts) * 1000 <= snapshotThrough));
-          cursor = page.response_metadata?.next_cursor;
-          if (page.has_more && !cursor) throw new Error('Incomplete thread evidence without a continuation cursor');
-        } while (cursor);
+        const messages = await loadSlackThreadSnapshot({channel: close.route.channel, threadId: close.route.threadId, latest, token});
         const stats = messages.length ? measureSlackThread(messages) : undefined;
         const usage = (await Promise.all(Object.keys(api.config?.channels?.slack?.accounts ?? {}).map(async agent => ({agent,
           usage: await loadThreadUsage({agent, channel: close.route.channel, thread: close.route.threadId, before: snapshotThrough})})))).filter(record => record.usage);
