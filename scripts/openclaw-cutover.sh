@@ -141,11 +141,15 @@ activate() {
     "$NODE_BIN" "$candidate_bin" gateway stop --disable --force --json > "$report/gateway-stop.json"
   fi
   /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" install --transaction "$transaction" --target "$PACKAGE_TARGET"
-  package_installed=1
+  if $JQ -e '.changed == true' "$transaction/installed.json" >/dev/null; then
+    package_installed=1
+  fi
   cp -p "$runtime/config/openclaw/openclaw.json" "$live_config"
   chmod 600 "$live_config"
   config_replaced=1
-  while IFS= read -r plugin; do "$OPENCLAW_BIN" plugins update "$plugin" > "$report/plugin-$(basename "$plugin").log" 2>&1; done < <($JQ -r '.openclaw.plugins[]' "$instance/humanware.instance.json")
+  if [ "$package_installed" -eq 1 ]; then
+    while IFS= read -r plugin; do "$OPENCLAW_BIN" plugins update "$plugin" > "$report/plugin-$(basename "$plugin").log" 2>&1; done < <($JQ -r '.openclaw.plugins[]' "$instance/humanware.instance.json")
+  fi
   NODE_BIN="$NODE_BIN" "$framework/scripts/apply-openclaw-patches.sh" > "$report/patches.log"
   HUMANWARE_WORKSPACE_BACKUP_DIR="$workspace_rollback" "$NODE_BIN" "$framework/scripts/materialize-openclaw-workspaces.mjs" apply "$runtime" "$live_config"
   workspace_applied=1
