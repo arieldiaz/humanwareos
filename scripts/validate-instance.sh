@@ -22,13 +22,15 @@ fi
   exit 2
 }
 
-required_files='humanware.instance.json runtime/profiles.json'
+required_files='humanware.instance.json runtime/profiles.json channels/slack.json openclaw/config.patch.json5'
 for relative in $required_files; do
   [ -f "$INSTANCE_DIR/$relative" ] || {
     printf 'validate-instance: missing %s\n' "$relative" >&2
     exit 1
   }
-  "$JQ" -e . "$INSTANCE_DIR/$relative" >/dev/null
+  case "$relative" in
+    *.json) "$JQ" -e . "$INSTANCE_DIR/$relative" >/dev/null ;;
+  esac
 done
 
 "$JQ" -e '
@@ -37,7 +39,10 @@ done
   (.paths.dataRoot | startswith("/")) and
   (.paths.runtimeRoot | startswith("/")) and
   (.paths.worktreeRoot | startswith("/")) and
-  (.agents | type == "array" and length > 0)
+  (.agents | type == "array" and length > 0) and
+  (.openclaw.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+([-.][A-Za-z0-9.-]+)?$")) and
+  .openclaw.config == "openclaw/config.patch.json5" and
+  (.openclaw.plugins | type == "array")
 ' "$INSTANCE_DIR/humanware.instance.json" >/dev/null || {
   printf '%s\n' "validate-instance: invalid humanware.instance.json" >&2
   exit 1

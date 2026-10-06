@@ -10,12 +10,12 @@ Required inputs:
 
 - Humanware OS framework revision and release metadata.
 - Private instance revision. The framework revision is the clean framework checkout at build time; the instance does not pin it.
-- Instance manifest, identity overlays, runtime profiles, channel adapters, surface routes, and secret key references.
+- Instance manifest, identity overlays, runtime profiles, channel declarations, one OpenClaw configuration overlay, local-server configuration, surface routes, and secret key references.
 - Data-root location and schema versions, but no personal data contents.
 
 The builder writes a new directory under the instance-selected runtime root, conventionally `~/Library/Application Support/HumanwareOS/runtime/<build-id>`. The build manifest records both source revisions, every rendered file hash, schema versions, builder version, creation time, and compatibility requirements.
 
-The runtime contains no mutable session, memory, log, media, cache, or generated artifact state. Those paths resolve into the data plane or dedicated runtime-state root. Instance `ops/` scripts are copied into `config/ops/`, so cutover, verification, and rollback logic is versioned with the instance but executes only from the immutable runtime.
+The runtime contains no mutable session, memory, log, media, cache, or generated artifact state. Those paths resolve into the data plane or dedicated runtime-state root. Instance `ops/` is never a runtime input. Instance local-server files are assembled under `config/services/` so launchd services such as Caddy retain stable targets when `current` changes; the legacy instance OpenClaw service wrapper is excluded because OpenClaw owns its gateway service. Humanware owns reusable service implementations and release mechanics, while the instance owns which local services run plus host-specific routes, ports, paths, and secret references.
 
 ## Activation
 
@@ -27,6 +27,8 @@ Services point at a stable `current` reference, not a source checkout. Activatio
 4. Atomically change `current` to the verified build.
 5. Restart supervised services once, then run end-to-end health checks.
 6. Retain the previous build and manifest for rollback.
+
+OpenClaw upgrades use its stock gateway service and plugin commands. Humanware stages an exact package, renders and validates the complete candidate configuration, then performs one bounded stop, package/config/runtime switch, and start. It does not run Doctor, reinstall or restart unrelated local services, or snapshot mutable state. The runtime switch preserves those services' stable paths. The displaced package, prior configuration, runtime reference, and generated workspace projections form the transaction rollback journal; optional data backup is a separate explicit operation.
 
 Rollback reselects the previous runtime build. It does not reset source repositories or data.
 
