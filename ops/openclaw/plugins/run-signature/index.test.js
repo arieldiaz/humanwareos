@@ -48,6 +48,7 @@ test("registers transport hooks without semantic collaboration hooks", () => {
     },
   });
   assert.equal(hooks.includes("before_dispatch"), false);
+  assert.equal(hooks.includes("inbound_claim"), true);
   assert.equal(hooks.includes("before_prompt_build"), false);
   assert.equal(hooks.includes("before_tool_call"), true);
   assert.equal(hooks.includes("reply_payload_sending"), false);

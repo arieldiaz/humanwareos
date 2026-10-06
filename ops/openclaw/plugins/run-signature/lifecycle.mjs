@@ -54,6 +54,13 @@ export class ThreadLifecycle {
     await this.state(state => {this.conversation(state, route).ownerCloseReactionHeld = held;});
     return held;
   }
+  async isClosingOrClosed(route) {
+    return this.inspect(state => {
+      const conversation = state.conversations?.[conversationFenceKey(route)];
+      const close = state.closes?.[conversation?.closeOperation];
+      return conversation?.status === 'closed' || Boolean(close && close.phase !== 'complete');
+    });
+  }
   conversation(state, route) {
     const key = conversationFenceKey(route);
     if (!key) throw new Error('Canonical closure route is unavailable');

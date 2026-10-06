@@ -20,6 +20,8 @@ Only the projector can add/remove bot-owned lifecycle reactions. Human reactions
 
 `closed` is soft. A reserved host close freezes one measured report, publishes it inline and to the generated session view, then projects ✅ after delivery settles and the completion event exists. Nothing is fenced: later sends, subagent completions and scheduled wakes proceed normally, and the next admitted run in the thread replaces ✅ with 🔄 and then its own terminal status through ordinary admission. A repeated close request on a still-closed thread is a no-op. Machine workflows, including email receipts, may report domain state but cannot choose conversation lifecycle. Slack acknowledgement and native status-reaction writers must be disabled in the activation configuration.
 
+Host close reports and other configured-agent messages are transport, not new conversational turns. While closure is in progress or the thread remains closed, the inbound adapter consumes those bot-authored messages so another participating agent cannot answer them. A later human message is never consumed by this fence and reopens the thread normally.
+
 ## Verification and release
 
 Verify changed behavior through the affected harness and delivery paths, including recovery where relevant. Fixtures alone do not establish live Slack acceptance. Merge and production activation require separate human approval.

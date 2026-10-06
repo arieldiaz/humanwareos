@@ -6,7 +6,7 @@ import test from 'node:test';
 import {ThreadLifecycle} from './lifecycle.mjs';
 import {formatCloseReport, reportParts, summarizeTrajectory, writeCloseReport, recordSessionClose} from './close-report.mjs';
 import {conversationFenceKey} from './conversation-fence.mjs';
-import {closeThreadTool, ownerHoldsCloseReaction, sendThreadMessage} from './index.js';
+import {closeThreadTool, ownerHoldsCloseReaction, sendThreadMessage, shouldClaimClosedBotInbound} from './index.js';
 const manifest = JSON.parse(await readFile(new URL('./openclaw.plugin.json', import.meta.url)));
 const route = {channel: 'C123', threadId: '1790050400.000001'};
 const input = {messageId: '1790050402.000001', principal: 'UOWNER', accountId: 'max'};
@@ -54,6 +54,12 @@ test('an owner reaction is edge-triggered and must be removed before it can clos
   assert.equal(await f.runtime.observeReactionClose(route, false), false);
   assert.equal(await f.runtime.observeReactionClose(route, true), true);
 });
+test('only configured bot messages are claimed while a thread is closing or closed', () => {
+  const botUserIds = new Set(['ULIV', 'UMAX']);
+  assert.equal(shouldClaimClosedBotInbound({closingOrClosed: true, senderId: 'ULIV', botUserIds}), true);
+  assert.equal(shouldClaimClosedBotInbound({closingOrClosed: true, senderId: 'UOWNER', botUserIds}), false);
+  assert.equal(shouldClaimClosedBotInbound({closingOrClosed: false, senderId: 'ULIV', botUserIds}), false);
+});
 const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, agentAccountId: 'max', requesterSenderId: 'UOWNER'};
 const current = {messageId: '300.000000', senderId: 'UOWNER', content: 'answer this and close the thread'};
 const toolOptions = (runtime, inbound = current) => ({config: {channels: {slack: {accounts: {max: {}}}}}, ownerUserId: 'UOWNER', lifecycle: runtime, currentInbound: () => inbound});
@@ -68,6 +74,14 @@ test('owner mixed instruction: the run finishes its work, then the host closes a
   await f.runtime.end(params);
   assert.deepEqual(f.order, ['working', 'act', 'snapshot', 'file', 'send', 'completion', 'closed']);
   assert.equal((await f.runtime.state(state => state.conversations[conversationFenceKey(route)])).status, 'closed');
+});
+test('the close fence starts at reservation and remains after completion', async t => {
+  const f = await fixture(t);
+  await f.runtime.start(params);
+  await f.runtime.requestClose(params.sessionKey, input);
+  assert.equal(await f.runtime.isClosingOrClosed(route), false, 'a pending model request is not yet host closure');
+  await f.runtime.end(params);
+  assert.equal(await f.runtime.isClosingOrClosed(route), true);
 });
 test('non-owner close request is refused and nothing closes', async t => {
   const f = await fixture(t);

@@ -148,6 +148,10 @@ export function ownerHoldsCloseReaction(reactions, ownerUserId) {
     reaction?.name === "white_check_mark" && Array.isArray(reaction.users) && reaction.users.includes(ownerUserId));
 }
 
+export function shouldClaimClosedBotInbound({closingOrClosed, senderId, botUserIds}) {
+  return Boolean(closingOrClosed && senderId && botUserIds?.has(senderId));
+}
+
 export function createKeyedSerialQueue() {
   const pending = new Map();
   return async (key, task) => {
@@ -605,6 +609,24 @@ export default {
       reactionCloseTimer.unref?.();
     });
     api.on('gateway_stop', () => clearInterval(reactionCloseTimer));
+    api.on('inbound_claim', async (event, ctx) => {
+      if (String(event.channel ?? ctx.channelId ?? '').toLowerCase() !== 'slack') return;
+      const channel = String(event.conversationId ?? ctx.conversationId ?? '').replace(/^channel:/i, '').toUpperCase();
+      const threadId = String(event.threadId ?? event.replyToId ?? ctx.threadId ?? '');
+      const senderId = event.senderId ?? ctx.senderId;
+      if (!channel || !threadId || !senderId) return;
+      const accounts = await import(resolveSlackRuntimeModule('accounts'));
+      const botUserIds = new Set();
+      for (const accountId of Object.keys(api.config?.channels?.slack?.accounts ?? {})) {
+        const token = accounts.resolveSlackAccount({cfg: api.config, accountId})?.botToken;
+        const botUserId = await resolveBotUserId(token, botIdCache);
+        if (botUserId) botUserIds.add(botUserId);
+      }
+      const route = {channel, threadId};
+      if (shouldClaimClosedBotInbound({
+        closingOrClosed: await lifecycle.isClosingOrClosed(route), senderId, botUserIds,
+      })) return {handled: true};
+    });
     const lifecycleHook = transition => async (event, ctx) => {
       try { await lifecycle[transition]({sessionKey: event.sessionKey ?? ctx.sessionKey, runId: event.runId ?? ctx.runId}); }
       catch (error) { await appendFaultJournal({runId: event.runId ?? ctx.runId, reason: `Lifecycle ${transition}: ${String(error)}`}); }
