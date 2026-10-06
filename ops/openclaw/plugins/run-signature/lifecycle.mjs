@@ -61,10 +61,10 @@ export class ThreadLifecycle {
     });
   }
   // The owner's request is recorded during the run and takes effect when it ends.
-  async requestClose(sessionKey, input) {
+  async requestClose(sessionKey, input, assertCurrent = () => {}) {
     const route = this.route(sessionKey);
     if (!route) throw new Error('Closure needs a Slack thread');
-    await this.state(state => {this.conversation(state, route).pendingClose = input;});
+    await this.state(state => {assertCurrent(); this.conversation(state, route).pendingClose = input;});
   }
   async closeCommand(route, input) {
     const key = await this.reserveClose(route, input);

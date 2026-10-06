@@ -18,7 +18,7 @@ import {
   loadThreadUsage,
   measureSlackThread,
   recordSessionClose,
-} from "./session-close.mjs";
+} from "./close-report.mjs";
 import {ThreadLifecycle} from "./lifecycle.mjs";
 import { startSlackWorkThread } from "../../slack-spin-out.mjs";
 
@@ -458,27 +458,32 @@ export async function sendThreadMessage(config, turn, sdk) {
   });
 }
 
-// Closure is the owner's decision: the agent infers the request from the
-// message, and the host accepts it only when the run's trusted inbound sender is
-// the configured owner. The close itself takes effect after the run ends.
-export function closeThreadTool(context, {config, ownerUserId, lifecycle}) {
+// Closure is the owner's decision. The model interprets the current message;
+// the host only proves that decision quotes the current trusted owner message,
+// so an old "close this" in thread history cannot close the thread.
+export function closeThreadTool(context, {config, ownerUserId, lifecycle, currentInbound}) {
   if (context.messageChannel !== "slack" || !context.sessionKey) return;
   const accountId = context.agentAccountId ?? String(context.agentId ?? "").toLowerCase();
   const reply = (text, isError) => ({content: [{type: "text", text}], ...(isError ? {isError} : {})});
   return {
     name: "close_thread",
-    description: "Close this Slack thread when the current run ends. Call it only when the owner's message asks for the thread to be closed, after finishing any other work the message requested. The host refuses requests that did not come from the owner.",
-    parameters: {type: "object", additionalProperties: false, properties: {}},
-    async execute() {
+    description: "Close this Slack thread when the current run ends. Call it only when the owner's current message asks for closure, after finishing the other requested work. Quote the closure request exactly from the current message; text from earlier thread messages is refused. Only your final response after this call is delivered, so it must contain the complete answer.",
+    parameters: {type: "object", additionalProperties: false, required: ["request"],
+      properties: {request: {type: "string", minLength: 1, description: "Exact excerpt from the owner's current message that asks to close the thread."}}},
+    async execute(_toolCallId, args) {
       if (!/^U[A-Z0-9]+$/.test(ownerUserId ?? "")) return reply("Closure requires configured ownerUserId", true);
-      if (context.requesterSenderId !== ownerUserId) return reply("Refused: only the owner can close this thread.", true);
+      const inbound = currentInbound?.(context.sessionKey);
+      if (context.requesterSenderId !== ownerUserId || inbound?.senderId !== ownerUserId) return reply("Refused: only the owner can close this thread.", true);
       if (!config?.channels?.slack?.accounts?.[accountId]) return reply("Closure requires a configured Slack sender", true);
+      const request = String(args?.request ?? "").trim();
+      if (!request || !inbound.messageId || !String(inbound.content ?? "").includes(request))
+        return reply("Refused: the request must be quoted from the owner's current message, not thread history.", true);
       try {
-        await lifecycle.requestClose(context.sessionKey, {messageId: (Date.now() / 1000).toFixed(6), principal: ownerUserId, accountId});
+        await lifecycle.requestClose(context.sessionKey, {messageId: inbound.messageId, principal: ownerUserId, accountId}, () => context.assertInvocationCurrent?.());
       } catch (error) {
         return reply(String(error?.message ?? error), true);
       }
-      return reply("Accepted. The host posts the close report and ✅ after this run ends; do not announce the closure yourself.");
+      return reply("Accepted. Only your final response after this call is delivered: put the complete answer to the owner's message there, never a placeholder like \"(Final reply above.)\". The host then posts the close report and ✅; do not announce the closure yourself.");
     },
   };
 }
@@ -497,6 +502,7 @@ export default {
     const byAgent = new Map();
     const rootCache = new Map();
     const acpBoundThreads = new Map();
+    const currentInbound = new Map();
     const botIdCache = new Map();
     const faultedRoots = new Set();
     const serializeRunStrip = createKeyedSerialQueue();
@@ -532,8 +538,8 @@ export default {
           if (page.has_more && !cursor) throw new Error('Incomplete thread evidence without a continuation cursor');
         } while (cursor);
         const stats = messages.length ? measureSlackThread(messages) : undefined;
-        const usage = await Promise.all(Object.keys(api.config?.channels?.slack?.accounts ?? {}).map(async agent => ({agent,
-          usage: await loadThreadUsage({agent, channel: close.route.channel, thread: close.route.threadId, before: snapshotThrough})})));
+        const usage = (await Promise.all(Object.keys(api.config?.channels?.slack?.accounts ?? {}).map(async agent => ({agent,
+          usage: await loadThreadUsage({agent, channel: close.route.channel, thread: close.route.threadId, before: snapshotThrough})})))).filter(record => record.usage);
         const followUps = close.evidence.filter(turn => turn.phase === 'running').map(turn => `${turn.runId}: work unresolved at closure`);
         const pullRequests = await loadPullRequests(stats?.pullRequests);
         const snapshot = {summary: stats?.topic || 'Session closed', followUps, stats, usage, pullRequests,
@@ -624,7 +630,8 @@ export default {
       };
     }, { name: "start_work_thread" });
 
-    api.registerTool?.(context => closeThreadTool(context, {config: api.config, ownerUserId: api.pluginConfig?.ownerUserId, lifecycle}), {name: "close_thread"});
+    api.registerTool?.({contextVersion: 2, create: context => closeThreadTool(context, {config: api.config, ownerUserId: api.pluginConfig?.ownerUserId, lifecycle,
+      currentInbound: sessionKey => currentInbound.get(sessionKey)})}, {name: "close_thread"});
 
     // Seed the last-resort fallback from the previous process's snapshot, so
     // the first reply after a restart still carries tiles. Live events win.
@@ -677,6 +684,8 @@ export default {
     api.on("llm_input", rememberProvenance);
     api.on("llm_output", rememberProvenance);
     api.on("message_received", (event, ctx) => {
+      const sessionKey = event?.sessionKey ?? ctx?.sessionKey;
+      if (sessionKey) currentInbound.set(sessionKey, {messageId: String(event.messageId ?? event.metadata?.messageId ?? ""), senderId: event.senderId, content: event.content});
       rememberInboundThreadRoot(event, ctx, rootCache);
       rememberAcpBoundThread(event, ctx, acpBoundThreads);
     });

@@ -11,7 +11,7 @@ import {
   measureSlackThread,
   recordSessionClose,
   summarizeTrajectory,
-} from "./session-close.mjs";
+} from "./close-report.mjs";
 
 const messages = [
   { ts: "100.000000", text: "please fix this", user: "U1" },
@@ -92,7 +92,7 @@ test("the close report is short: what, tokens with API cost, code, follow-up", (
   const stats = measureSlackThread([...messages, { ts: "200.000000", bot_id: "B1", text: "opened <https://github.com/o/r/pull/142|PR>" }]);
   assert.deepEqual(stats.pullRequests, ["https://github.com/o/r/pull/142"]);
   const usage = summarizeTrajectory([{ type: "model.completed", modelId: "claude-opus-5-5", data: { usage: { input: 1000, output: 1000, cacheRead: 1000000, cacheWrite: 0 } } }]);
-  const text = formatCloseReport({ stats, usage: [{agent: "liv", usage}, {agent: "max"}],
+  const text = formatCloseReport({ stats, agent: "liv", usage: [{agent: "liv", usage}, {agent: "max"}, {agent: "default"}],
     pullRequests: [{url: stats.pullRequests[0], number: 142, state: "OPEN", additions: 62, deletions: 140, changedFiles: 2}] });
   assert.equal(text, [
     "**Session closed** · 2m · 3 msgs",
@@ -106,11 +106,11 @@ test("the close report is short: what, tokens with API cost, code, follow-up", (
 test("unpriced models mark cost as a lower bound and missing usage stays explicit", () => {
   const usage = summarizeTrajectory([{ type: "model.completed", modelId: "mystery", data: { usage: { input: 10, output: 1 } } }]);
   assert.match(formatCloseReport({ usage, agent: "liv" }), /≥\$0\.00 API/);
-  assert.match(formatCloseReport({ agent: "liv", followUps: ["r1: work unresolved at closure"] }), /Tokens: usage unavailable\n- Follow-up: r1/);
+  assert.match(formatCloseReport({ agent: "liv", followUps: ["r1: work unresolved at closure"] }), /Tokens: liv usage unavailable\n- Follow-up: r1/);
 });
 
 test("records one idempotent completion event and one generated view", async () => {
-  const dataRoot = await mkdtemp(join(tmpdir(), "session-close-"));
+  const dataRoot = await mkdtemp(join(tmpdir(), "close-report-"));
   const params = {
     dataRoot,
     channel: "C1",
