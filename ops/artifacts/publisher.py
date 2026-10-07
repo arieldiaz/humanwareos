@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import html as html_lib
 import os
 import re
 import shutil
@@ -39,12 +38,12 @@ LEGACY_ROOT = Path(CONFIG.get("legacyRoot", "/nonexistent")).resolve()
 PUBLIC_ORIGIN = CONFIG.get("publicOrigin", "").rstrip("/")
 PUBLIC_REPO = Path(CONFIG.get("publicRepo", "/nonexistent")).resolve()
 PUBLIC_ROOT = (PUBLIC_REPO / "public" / "artifacts").resolve()
-PUBLIC_FOOTER = (PUBLIC_REPO / CONFIG.get("publicFooter", "public/fragments/site-footer.html")).resolve()
 SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 TEXT_SUFFIXES = {".html", ".css", ".js", ".json", ".md", ".txt", ".svg", ".xml"}
+PRIVATE_ORIGIN = runtime_json("config/surfaces/domain.json").get("privateOrigin", "").rstrip("/")
 FORBIDDEN = (
     *CONFIG.get("privateMarkers", []),
-    urlparse(runtime_json("config/surfaces/domain.json").get("privateOrigin", "")).netloc or "private-origin.invalid",
+    urlparse(PRIVATE_ORIGIN).netloc or "private-origin.invalid",
     "localhost:",
     "127.0.0.1:",
     "/Users/",
@@ -81,40 +80,13 @@ def set_job(job_id: str, **values: str) -> None:
         JOBS[job_id].update(values)
 
 
-def meta_content(document: str, name: str) -> str:
-    match = re.search(rf'<meta\s+name=["\']{re.escape(name)}["\']\s+content=["\']([^"\']*)["\']', document)
-    return html_lib.unescape(match.group(1)).strip() if match else ""
-
-
-def public_footer(document: str, public_url: str, fragment: str, number: int) -> str:
-    label = f"{number} · {meta_content(document, 'artifact-title')}"
-    values = {
-        "title": label,
-        "url": public_url,
-        "created": meta_content(document, "artifact-created"),
-        "updated": meta_content(document, "artifact-updated"),
-    }
-    footer = fragment.replace('class="sitefoot"', 'class="sitefoot public-artifact-footer"', 1)
-    for field, value in values.items():
-        tag = "time" if field in {"created", "updated"} else "span"
-        footer = re.sub(
-            rf'<{tag}([^>]*data-footer-{field}[^>]*)>.*?</{tag}>',
-            lambda match: f'<{tag}{match.group(1)}>{html_lib.escape(value)}</{tag}>',
-            footer,
-            count=1,
-            flags=re.DOTALL,
-        )
-    footer = re.sub(r'\s*<a\b[^>]*data-footer-history[^>]*>.*?</a>', '', footer, flags=re.DOTALL)
-    return footer
-
-
-def resolve_registered_artifact(registry: dict, project_id: str, number: int) -> tuple[str, str]:
-    """Return the canonical project and the artifact's current revision."""
+def resolve_registered_artifact(registry: dict, project_id: str, number: int) -> tuple[str, str, int]:
+    """Return the canonical project, the artifact's live revision, and its version number."""
     for project in registry.get("projects", []):
         if project_id in [project["id"], *project.get("aliases", [])]:
             for artifact in project["artifacts"]:
                 if artifact["number"] == number:
-                    return project["id"], artifact["versions"][artifact["current_version"] - 1]["revision"]
+                    return project["id"], artifact["versions"][artifact["current_version"] - 1]["revision"], artifact["current_version"]
     raise ValueError("artifact is not promoted for review")
 
 
@@ -146,7 +118,7 @@ def publish_sync(job_id: str, project: str, artifact: int) -> str:
     if not SLUG.fullmatch(project) or not PUBLIC_ORIGIN:
         raise ValueError("invalid project or no public origin configured")
     registry = json.loads((PRIVATE_ROOT / "manifests" / "registry.json").read_text())
-    project, revision = resolve_registered_artifact(registry, project, artifact)
+    project, revision, version = resolve_registered_artifact(registry, project, artifact)
     public_url = f"{PUBLIC_ORIGIN}/artifacts/{project}/{artifact}/"
     source_path = REVISION_ROOT / project / revision
     if REVISION_ROOT not in source_path.absolute().parents or not source_path.exists():
@@ -175,10 +147,10 @@ def publish_sync(job_id: str, project: str, artifact: int) -> str:
         lambda match: "" if SHELL_CHROME.search(match.group(0)) else match.group(0),
         document,
     )
-    footer = public_footer(document, public_url, PUBLIC_FOOTER.read_text(), artifact)
-    document = document.replace("</body>", f"{footer}</body>")
     public_index.write_text(document)
-    (target / "artifact-publish.json").write_text(json.dumps({"publish_id": job_id}) + "\n")
+    # The site build owns the public shell and footer; the marker carries only the history link.
+    marker = {"publish_id": job_id, "shell": "site", "version": version, "history_url": f"{PRIVATE_ORIGIN}/artifacts/{project}/{artifact}/versions/"}
+    (target / "artifact-publish.json").write_text(json.dumps(marker) + "\n")
     relative = target.relative_to(PUBLIC_REPO)
     set_job(job_id, state="committing", label="Committing…")
     run("git", "add", "--", str(relative))

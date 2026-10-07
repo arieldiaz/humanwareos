@@ -8,7 +8,7 @@ import publisher
 
 
 class PublisherTests(unittest.TestCase):
-    def test_publish_sync_mirrors_the_live_version_at_the_artifact_number(self):
+    def test_publish_sync_mirrors_live_content_and_leaves_the_shell_to_the_site(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             private_root = root / "private"
@@ -31,8 +31,6 @@ class PublisherTests(unittest.TestCase):
             public_repo = root / "public-repo"
             public_root = public_repo / "public" / "artifacts"
             public_root.mkdir(parents=True)
-            footer = public_repo / "footer.html"
-            footer.write_text('<footer class="sitefoot"><span data-footer-title></span><span data-footer-url></span></footer>')
 
             with (
                 patch.object(publisher, "PRIVATE_ROOT", private_root),
@@ -40,7 +38,7 @@ class PublisherTests(unittest.TestCase):
                 patch.object(publisher, "PUBLIC_ORIGIN", "https://www.example.com"),
                 patch.object(publisher, "PUBLIC_REPO", public_repo),
                 patch.object(publisher, "PUBLIC_ROOT", public_root),
-                patch.object(publisher, "PUBLIC_FOOTER", footer),
+                patch.object(publisher, "PRIVATE_ORIGIN", "https://os.example.com"),
                 patch.object(publisher, "run", return_value=""),
                 patch.object(publisher, "set_job"),
             ):
@@ -49,10 +47,14 @@ class PublisherTests(unittest.TestCase):
                     publisher.publish_sync("job-2", "humanware-os", 4)
 
             self.assertEqual(public_url, "https://www.example.com/artifacts/humanware-os/3/")
-            document = (public_root / "humanware-os" / "3" / "index.html").read_text()
+            target = public_root / "humanware-os" / "3"
+            document = (target / "index.html").read_text()
             self.assertIn("Current version", document)
-            self.assertIn("3 · Dossier", document)
-            self.assertIn(public_url, document)
+            self.assertNotIn("sitefoot", document)
+            self.assertEqual(json.loads((target / "artifact-publish.json").read_text()), {
+                "publish_id": "job-1", "shell": "site", "version": 2,
+                "history_url": "https://os.example.com/artifacts/humanware-os/3/versions/",
+            })
             self.assertNotIn("artifact-shell.js", document)
             self.assertFalse((public_root / "humanware").exists())
 
