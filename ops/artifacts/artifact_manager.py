@@ -39,6 +39,7 @@ REQUIRED_META = ("artifact-title", "artifact-project", "artifact-created", "arti
 SHELL_SCRIPT = '<script src="/artifacts/artifact-shell.js"></script>'
 SHELL_SCRIPT_REFERENCE = 'src="/artifacts/artifact-shell.js"'
 VERSIONS, DIFF = "versions", "diff"
+LEGACY_LABEL = re.compile(r"\s*(?:·\s*(?:[A-Z]?\d+(?:\.\d+)?|[A-Z]\d*)|\((?:[rv]?\d+)\))\s*$")
 DATE_FORMATS = ("%Y-%m-%d", "%d %b %Y", "%B %d, %Y", "%b %d, %Y", "%b %d %Y")
 
 
@@ -123,11 +124,11 @@ def versioned_item(project_id: str, artifact: dict) -> dict:
             "versions": versions}
 
 
-def page(title: str, body: str, scripts: str = "") -> str:
+def page(title: str, body: str, scripts: str = "", footer: str = "") -> str:
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{html.escape(title)} · Artifacts · {html.escape(BRAND)}</title><link rel="stylesheet" href="/os-shell.css"><link rel="stylesheet" href="/artifacts/artifacts.css"><link rel="stylesheet" href="/artifacts/theme.css"><link rel="stylesheet" href="/versioning/versioning.css"></head>
-<body><main class="shell">{body}</main>{scripts}<script src="/os-shell.js"></script></body></html>'''
+<title>{html.escape(title)} · Artifacts · {html.escape(BRAND)}</title><link rel="stylesheet" href="/os-shell.css"><link rel="stylesheet" href="/os-footer.css"><link rel="stylesheet" href="/artifacts/artifacts.css"><link rel="stylesheet" href="/artifacts/theme.css"><link rel="stylesheet" href="/versioning/versioning.css"></head>
+<body><main class="shell">{body}</main>{f'<footer class="os-shell-footer">{footer}</footer>' if footer else ""}{scripts}<script src="/os-shell.js"></script></body></html>'''
 
 
 def card(url: str, title: str, date_label: str, label: str, links: str = "") -> str:
@@ -139,9 +140,9 @@ def card(url: str, title: str, date_label: str, label: str, links: str = "") -> 
             f'<span>{html.escape(label)}</span></span></a>{footer}</article>')
 
 
-def card_page(title: str, intro: str, cards: list[str]) -> str:
+def card_page(title: str, intro: str, cards: list[str], footer: str = "") -> str:
     return page(title, f'<p class="count">{intro}</p><div class="grid artifact-grid">{"".join(cards)}</div>',
-                '<script src="/artifacts/preview.js"></script>')
+                '<script src="/artifacts/preview.js"></script>', footer)
 
 
 def project_page(project: dict) -> str:
@@ -154,7 +155,7 @@ def project_page(project: dict) -> str:
     return card_page(project["name"], f'{len(project["artifacts"])} artifacts', cards)
 
 
-def versions_page(project_id: str, artifact: dict) -> str:
+def versions_page(project_id: str, artifact: dict, footer: str) -> str:
     """Every version as a rendered card, newest first, linking its diff and the history list."""
     number, count = artifact["number"], len(artifact["versions"])
     cards = [card(version_url(project_id, number, version["number"]), version["title"], version["date_label"],
@@ -165,7 +166,7 @@ def versions_page(project_id: str, artifact: dict) -> str:
     url = artifact_url(project_id, number)
     intro = (f'<a href="{url}">{number} · {html.escape(current(artifact)["title"])}</a> · {count} '
              f'{"version" if count == 1 else "versions"} · <a href="{url}{VERSIONS}/history/">History list</a>')
-    return card_page(f'{number} · {current(artifact)["title"]}', intro, cards)
+    return card_page(current(artifact)["title"], intro, cards, footer)
 
 
 def redirect_page(target: str) -> str:
@@ -256,11 +257,13 @@ def project_artifact(root: Path, project_dir: Path, project_id: str, artifact: d
     model = versioned_item(project_id, artifact)
     live = project_dir / str(number)
     link_entries(live, revisions_root(root) / project_id / current(artifact)["revision"])
-    (project_dir / f"{number}.footer.html").write_text(render_version(model, "footer", model["current_version"]))
+    footer = render_version(model, "footer", model["current_version"])
+    (project_dir / f"{number}.footer.html").write_text(footer)
     history = live / VERSIONS
     (history / "history").mkdir(parents=True)
-    (history / "index.html").write_text(versions_page(project_id, artifact))
-    (history / "history" / "index.html").write_text(page(model["title"], render_version(model, "history")))
+    # Versions, history, and diff pages carry the artifact's own footer, not the host's.
+    (history / "index.html").write_text(versions_page(project_id, artifact, footer))
+    (history / "history" / "index.html").write_text(page(model["title"], render_version(model, "history"), footer=footer))
     for version in versions:
         k = version["number"]
         link_entries(history / str(k), revisions_root(root) / project_id / version["revision"])
@@ -268,7 +271,7 @@ def project_artifact(root: Path, project_dir: Path, project_id: str, artifact: d
         if k > 1:
             diff = version_diff(root, project_id, versions[k - 2]["revision"], version["revision"])
             (history / str(k) / DIFF).mkdir()
-            (history / str(k) / DIFF / "index.html").write_text(page(version["title"], render_version(model, "diff", f"v{k}", diff)))
+            (history / str(k) / DIFF / "index.html").write_text(page(version["title"], render_version(model, "diff", f"v{k}", diff), footer=footer))
     for legacy, k in artifact.get("legacy", {}).items():
         (project_dir / legacy).mkdir()
         target = version_url(project_id, number, k) if k else artifact_url(project_id, number)
@@ -428,7 +431,8 @@ def plan_migration(root: Path, registry: dict, sessions: dict[str, str | None]) 
     """Return a schema-3 registry: one artifact per creating session, versions and artifacts in date order.
 
     `sessions` maps "<project>/<revision-id>" to its creating session; a revision without one is its own
-    artifact. Old labels are dropped; old addresses become hidden redirects."""
+    artifact. Old labels, including title suffixes such as " · 13" or " (r2)", are dropped; old addresses become
+    hidden redirects."""
     migrated = {"schemaVersion": SCHEMA, "projects": []}
     for project in registry["projects"]:
         flat = []
@@ -444,7 +448,8 @@ def plan_migration(root: Path, registry: dict, sessions: dict[str, str | None]) 
         artifacts = []
         for number, (key, members) in enumerate(ordered, start=1):
             members.sort(key=lambda entry: (entry["date"], entry["position"]))
-            versions = [{"number": k, "revision": entry["id"], "title": entry["title"], "date_label": entry["date_label"],
+            versions = [{"number": k, "revision": entry["id"], "title": LEGACY_LABEL.sub("", entry["title"]) or entry["title"],
+                         "date_label": entry["date_label"],
                          **({"date": entry["date"]} if not entry["date"].startswith("9999") else {})}
                         for k, entry in enumerate(members, start=1)]
             legacy = {entry["id"]: k for k, entry in enumerate(members, start=1)}

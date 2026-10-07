@@ -111,11 +111,12 @@ class ArtifactManagerTests(unittest.TestCase):
         self.assertEqual(am.registry_path(self.root).read_bytes(), before)
         self.assertEqual(am.verify_store(self.root, migrated), [])
         rows = [(r["artifact"], r["title"], r["versions"], r["session"]) for r in am.migration_table(migrated)]
-        self.assertEqual(rows, [(1, "Solo", 1, False), (2, "Home · 13", 2, True), (3, "Variants", 1, True)])
+        self.assertEqual(rows, [(1, "Solo", 1, False), (2, "Home", 2, True), (3, "Variants", 1, True)])
         home = migrated["projects"][0]["artifacts"][1]
         self.assertEqual([(v["number"], v["revision"]) for v in home["versions"]], [(1, "iter-07"), (2, "iter-13")])
         self.assertEqual(home["legacy"], {"iter-07": 1, "iter-13": 2})
         self.assertNotIn("Q2", json.dumps(migrated))
+        self.assertEqual([v["title"] for v in home["versions"]], ["Home", "Home"])
         am.materialize(self.root, self.review, migrated)
         self.assertEqual(am.verify_projection(self.root, self.review, migrated), [])
 
