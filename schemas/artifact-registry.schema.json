@@ -39,6 +39,7 @@
         "title": {"type": "string", "minLength": 1},
         "type": {"const": "html"},
         "target": {"type": "string", "minLength": 1},
+        "session": {"type": "string", "minLength": 1, "description": "Key of the working session whose promotions append versions to this artifact."},
         "current_version": {"$ref": "versioned-item.schema.json#/$defs/slug"},
         "versions": {
           "type": "array",

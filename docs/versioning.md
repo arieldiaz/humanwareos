@@ -1,6 +1,6 @@
 # Versioning
 
-Humanware OS has one version model for every published or reviewable content item. This spec owns that model, its URLs, and its footer, history, and diff pages. Runtime builds, calendar revisions, and event corrections have their own owners.
+One version model serves every published or reviewable content item. This spec owns the model, its URLs, and its footer, history, and diff pages; runtime builds, calendar revisions, and event corrections have other owners.
 
 Budget: 700 words. Over it, consolidate.
 
@@ -10,31 +10,31 @@ A versioned item has a stable `id`, a `title`, a stable `url`, an ordered `versi
 
 A version is immutable once registered. It has:
 
-- `id`: a URL slug unique among addresses in its scope and different from the item `id`;
+- `id`: a URL slug unique in its scope and different from the item `id`;
 - `number`: the human label, such as `3` or `r3`;
 - `date_label`: the displayed date, with an optional ISO `date`;
-- `title`: the version's title, which may differ from earlier versions;
-- `note` and `ref`: an optional one-line change note and source reference, such as a commit hash;
-- `supersedes`: the `id` of the preceding version, absent only on the first;
-- `url`: the version's own address, absent when the source keeps no rendered snapshot;
-- `diff_url`: the address of its diff against `supersedes`, absent on the first version or when the source keeps no diff.
+- `title`: the version's own title;
+- `note` and `ref`: an optional change note and source reference, such as a commit hash;
+- `supersedes`: the preceding version's `id`, absent only on the first;
+- `url`: its own address, absent without a rendered snapshot;
+- `diff_url`: its diff against `supersedes`, absent on the first version or without a diff.
 
-`versions` is ordered oldest to newest as one unbranched chain. `current_version` names a registered version, normally the newest. Changing content appends a version and moves `current_version`.
+`versions` runs oldest to newest as one unbranched chain. `current_version` names a registered version, normally the newest; changing content appends a version and moves it.
 
 An item may set `created` and `updated` (each `date_label` plus optional `date`) when its lifetime dates come from content metadata rather than the first and newest versions.
 
 ## URLs
 
 - The stable `url` always renders the current version.
-- Each version is addressable. New items place versions at `<url>versions/<version-id>/` and diffs at `<url>versions/<version-id>/diff/`. Existing addresses remain valid; the version records its real `url` and `diff_url`, and renderers never derive one.
-- `<url>versions/` is the history page. An item whose history already lives elsewhere sets `history_url`.
+- Each version is addressable. New items place versions at `<url>versions/<version-id>/` and diffs below them at `diff/`. Existing addresses remain valid; versions record their real `url` and `diff_url`, which renderers never derive.
+- `<url>versions/` is the versions page and the footer's history link. Hosts may render it as a visual grid that links each diff and the history list at `<url>versions/history/`. An item whose history already lives elsewhere sets `history_url`.
 
 ## Sources
 
-Every source maps into the same model before rendering:
+Every source maps into this model:
 
-- **Artifacts:** the artifact registry is the source. Each stable artifact is a versioned item and its revisions are its versions. The artifact service appends versions, validates the chain, and builds every footer, history page, and diff page in the review projection. A diff is the unified diff of the version's `index.html` against its predecessor's.
-- **Public site pages:** Git history is the source. Each commit that changed a page is a version with its short hash as `id` and `ref`, its subject as `title`, and its date. Commits keep no rendered snapshot, so versions omit `url`. Lifetime dates come from content metadata, and history stays at the existing `<url>diffs/` address.
+- **Artifacts:** the artifact registry is the source. By default one working session makes one artifact: its first promotion creates the stable artifact and records the session key; later promotions append versions. A session may deliberately start another artifact, and one page may hold its own variants. The artifact service validates the chain and builds every footer, versions, history, and diff page in the review projection. Diffs compare each version's `index.html` with its predecessor's.
+- **Public site pages:** Git history is the source. Each commit that changed a page is a version with its short hash as `id` and `ref`, its subject as `title`, and its date. Commits keep no rendered snapshot, so versions omit `url`. Lifetime dates come from content metadata; history stays at `<url>diffs/`.
 
 A source may add metadata but may not invent a second version shape.
 
@@ -55,4 +55,4 @@ The history page states the item title, version count, and created and updated d
 
 Output is semantic HTML with no inline styles or scripts. The stylesheet reads host design tokens. Hosts may add rules only through the classes in the fixtures and the hooks `hw-version-footer`, `hw-version-history`, `hw-version-diff`, `data-hw-item`, `data-hw-version`, and `data-hw-current`.
 
-Hosts never fork this directory. The runtime build already publishes it at the domain surface's `/versioning/`. A host outside the runtime, such as a statically built public site, vendors the directory byte-for-byte through a sync script that records the source commit, and its tests fail when the copy is edited by hand.
+Hosts never fork this directory. The runtime build publishes it at the domain surface's `/versioning/`. A host outside the runtime, such as a static public site, vendors it byte-for-byte through a sync script that records the source commit; its tests fail on hand edits.
