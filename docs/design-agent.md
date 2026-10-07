@@ -41,6 +41,7 @@ The artifact should make the requested decision easier:
 - keep review chrome and headers minimal unless they are under review;
 - show required modes and breakpoints as visible evidence;
 - preserve exploration without implying approval;
+- carry no questions, decisions, or approval requests; ask those in the conversation that delivered the link;
 - identify source assets and model provenance when relevant.
 
 Promote the completed review through the instance's artifact service and return the addressed HTML revision link. The artifact is the review surface and source of truth: never embed or upload its frames, screenshots, or files into chat.
