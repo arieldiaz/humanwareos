@@ -1,0 +1,13 @@
+{
+  "name": "@humanwareos/agent-email",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/index.js",
+    "test": "node --test test/*.test.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.136.0"
+  }
+}

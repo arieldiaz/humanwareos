@@ -46,6 +46,8 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -e "$RUNTIME/current/framework/ops/session-console" ]
 [ -e "$RUNTIME/current/framework/ops/email-intake" ]
 [ -f "$RUNTIME/current/framework/ops/artifacts/artifact_manager.py" ]
+[ -d "$RUNTIME/current/framework/services" ]
+[ ! -e "$RUNTIME/current/framework/services/agent-email/node_modules" ]
 [ -f "$RUNTIME/current/surface/artifacts/artifact-shell.js" ]
 [ ! -e "$RUNTIME/current/config/services" ]
 [ ! -e "$RUNTIME/current/config/ops" ]
