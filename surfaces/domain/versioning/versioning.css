@@ -21,7 +21,7 @@
 .history-page .stats,.hw-version-diff .stats{flex:0 0 auto;display:flex;gap:.4rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.68rem}
 .history-page .stats b,.hw-version-diff .stats b{color:var(--hw-add)}
 .history-page .stats i,.hw-version-diff .stats i{color:var(--hw-del);font-style:normal;font-weight:700}
-.hw-version-diff pre{max-height:none;margin:0;padding:.45rem 0;overflow:auto;border:1px solid var(--hw-line);border-radius:6px;background:var(--hw-bg);font-size:.65rem;line-height:1.42}
+.hw-version-diff pre{max-height:none;margin:0;padding:.45rem 0;overflow:auto;white-space:normal;border:1px solid var(--hw-line);border-radius:6px;background:var(--hw-bg);font-size:.65rem;line-height:1.42}
 .hw-version-diff pre code{display:block;min-width:max-content;padding:0 .7rem;border-radius:0;background:none;white-space:pre}
 .hw-version-diff .addition{background:color-mix(in srgb,#2da44e 16%,transparent)}
 .hw-version-diff .deletion{background:color-mix(in srgb,#cf222e 14%,transparent)}
