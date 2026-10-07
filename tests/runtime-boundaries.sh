@@ -45,6 +45,8 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ ! -e "$RUNTIME/current/framework/ops/openclaw/plugins/calendar" ]
 [ -e "$RUNTIME/current/framework/ops/session-console" ]
 [ -e "$RUNTIME/current/framework/ops/email-intake" ]
+[ -f "$RUNTIME/current/framework/ops/artifacts/artifact_manager.py" ]
+[ -f "$RUNTIME/current/surface/artifacts/artifact-shell.js" ]
 [ ! -e "$RUNTIME/current/config/services" ]
 [ ! -e "$RUNTIME/current/config/ops" ]
 [ "$(grep -c 'fileURLToPath(import.meta.url)' "$RUNTIME/current/framework/ops/openclaw/patches/patch-2026.9.8-slack-rich-text.mjs")" -eq 1 ]

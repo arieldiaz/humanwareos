@@ -2,22 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanwareos.com/schemas/artifact-registry.schema.json",
   "title": "Humanware OS artifact registry",
+  "description": "Written only by ops/artifacts/artifact_manager.py. Contract: docs/versioning.md.",
   "type": "object",
   "required": ["schemaVersion", "projects"],
   "properties": {
-    "schemaVersion": {"const": 1},
+    "schemaVersion": {"const": 3},
     "projects": {
       "type": "array",
       "items": {
         "type": "object",
         "required": ["id", "name", "artifacts"],
         "properties": {
-          "id": {"$ref": "#/$defs/slug"},
+          "id": {"$ref": "versioned-item.schema.json#/$defs/slug"},
           "name": {"type": "string", "minLength": 1},
-          "artifacts": {
-            "type": "array",
-            "items": {"$ref": "#/$defs/artifact"}
-          }
+          "aliases": {"type": "array", "items": {"$ref": "versioned-item.schema.json#/$defs/slug"}},
+          "artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}}
         },
         "additionalProperties": false
       }
@@ -25,19 +24,35 @@
   },
   "additionalProperties": false,
   "$defs": {
-    "slug": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
     "artifact": {
+      "description": "Served at /artifacts/<project>/<number>/; versions at <url>versions/<number>/.",
       "type": "object",
-      "required": ["id", "project", "title", "number", "date_label", "type"],
+      "required": ["number", "current_version", "versions"],
       "properties": {
-        "id": {"$ref": "#/$defs/slug"},
-        "project": {"$ref": "#/$defs/slug"},
-        "title": {"type": "string", "minLength": 1},
-        "number": {"type": ["string", "integer"]},
-        "date_label": {"type": "string", "minLength": 1},
-        "type": {"const": "html"},
-        "target": {"type": "string", "minLength": 1},
-        "supersedes": {"type": "string", "minLength": 1}
+        "number": {"type": "integer", "minimum": 1, "description": "Per-project artifact number, assigned once and never reused."},
+        "session": {"type": "string", "minLength": 1, "description": "The one working session that made this artifact."},
+        "current_version": {"type": "integer", "minimum": 1},
+        "versions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["number", "revision", "title", "date_label"],
+            "properties": {
+              "number": {"type": "integer", "minimum": 1, "description": "Position in date order, 1..N."},
+              "revision": {"$ref": "versioned-item.schema.json#/$defs/slug", "description": "Immutable folder under artifacts/revisions/<project>/."},
+              "title": {"type": "string", "minLength": 1},
+              "date_label": {"type": "string", "minLength": 1},
+              "date": {"type": "string", "format": "date"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "legacy": {
+          "type": "object",
+          "description": "Pre-migration addresses kept only as redirects: address -> version number, or 0 for the live version.",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        }
       },
       "additionalProperties": false
     }

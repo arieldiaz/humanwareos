@@ -1,0 +1,511 @@
+#!/usr/bin/env python3
+"""Promote, project, and migrate versioned review artifacts. Contract: docs/versioning.md."""
+
+from __future__ import annotations
+
+import argparse
+import difflib
+import hashlib
+import html
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from datetime import date, datetime
+from pathlib import Path
+
+# In a runtime this file is <runtime>/framework/ops/artifacts/; the runtime holds the instance config.
+RUNTIME = Path(__file__).resolve().parents[3]
+
+
+def runtime_json(relative: str) -> dict:
+    path = RUNTIME / relative
+    return json.loads(path.read_text()) if path.is_file() else {}
+
+
+INSTANCE = runtime_json("config/instance.json")
+DATA_ROOT = os.environ.get("HUMANWARE_DATA_ROOT") or INSTANCE.get("paths", {}).get("dataRoot")
+ROOT = Path(DATA_ROOT) / "artifacts" if DATA_ROOT else None
+REVIEW_ROOT = Path(DATA_ROOT) / "generated" / "review-projections" if DATA_ROOT else None
+BRAND = INSTANCE.get("name", "Humanware OS")
+VERSIONING = (Path(os.environ["HUMANWARE_FRAMEWORK_ROOT"]) / "surfaces" / "domain" / "versioning"
+              if os.environ.get("HUMANWARE_FRAMEWORK_ROOT") else RUNTIME / "surface" / "versioning") / "versioning.mjs"
+SCHEMA = 3
+SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+REQUIRED_META = ("artifact-title", "artifact-project", "artifact-created", "artifact-updated")
+SHELL_SCRIPT = '<script src="/artifacts/artifact-shell.js"></script>'
+SHELL_SCRIPT_REFERENCE = 'src="/artifacts/artifact-shell.js"'
+VERSIONS, DIFF = "versions", "diff"
+LEGACY_LABEL = re.compile(r"\s*(?:·\s*(?:[A-Z]?\d+(?:\.\d+)?|[A-Z]\d*)|\((?:[rv]?\d+)\))\s*$")
+DATE_FORMATS = ("%Y-%m-%d", "%d %b %Y", "%B %d, %Y", "%b %d, %Y", "%b %d %Y")
+
+
+# Registry: projects own artifacts numbered 1..N; artifacts own versions numbered 1..N.
+
+def registry_path(root: Path) -> Path:
+    return root / "manifests" / "registry.json"
+
+
+def revisions_root(root: Path) -> Path:
+    return root / "revisions"
+
+
+def load_registry(root: Path) -> dict:
+    path = registry_path(root)
+    return json.loads(path.read_text()) if path.exists() else {"schemaVersion": SCHEMA, "projects": []}
+
+
+def write_registry(root: Path, registry: dict) -> None:
+    path = registry_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(".registry.json.tmp")
+    temporary.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n")
+    temporary.replace(path)
+
+
+def find_project(registry: dict, project_id: str) -> dict | None:
+    return next((project for project in registry["projects"]
+                 if project_id in [project["id"], *project.get("aliases", [])]), None)
+
+
+def current(artifact: dict) -> dict:
+    return artifact["versions"][artifact["current_version"] - 1]
+
+
+def artifact_url(project_id: str, number: int) -> str:
+    return f"/artifacts/{project_id}/{number}/"
+
+
+def version_url(project_id: str, number: int, version: int) -> str:
+    return f"{artifact_url(project_id, number)}{VERSIONS}/{version}/"
+
+
+def iso_date(*labels: str) -> str:
+    for label in labels:
+        for fmt in DATE_FORMATS:
+            try:
+                return datetime.strptime(str(label).strip(), fmt).date().isoformat()
+            except ValueError:
+                continue
+    return ""
+
+
+# Rendering: the framework versioning renderer, one card for every grid, one page frame.
+
+def render_version(item: dict, command: str, version_id: str = "", diff: str | None = None) -> str:
+    with tempfile.NamedTemporaryFile("w", suffix=".patch") as patch:
+        args = [command, version_id] if version_id else [command]
+        if diff is not None:
+            patch.write(diff)
+            patch.flush()
+            args.append(patch.name)
+        node = os.environ.get("NODE_BIN") or shutil.which("node") or "/opt/homebrew/bin/node"
+        return subprocess.run([node, str(VERSIONING), *args], input=json.dumps(item),
+                              capture_output=True, text=True, check=True).stdout
+
+
+def versioned_item(project_id: str, artifact: dict) -> dict:
+    """Map a registry artifact to the framework versioned-item model."""
+    number, versions = artifact["number"], []
+    for version in artifact["versions"]:
+        k = version["number"]
+        record = {"id": f"v{k}", "number": k, "title": version["title"], "date_label": version["date_label"],
+                  "url": version_url(project_id, number, k)}
+        if version.get("date"):
+            record["date"] = version["date"]
+        if k > 1:
+            record |= {"supersedes": f"v{k - 1}", "diff_url": f"{record['url']}{DIFF}/"}
+        versions.append(record)
+    return {"id": f"{project_id}-{number}", "title": current(artifact)["title"],
+            "url": artifact_url(project_id, number), "current_version": f"v{artifact['current_version']}",
+            "versions": versions}
+
+
+def page(title: str, body: str, scripts: str = "", footer: str = "") -> str:
+    return f'''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{html.escape(title)} · Artifacts · {html.escape(BRAND)}</title><link rel="stylesheet" href="/os-shell.css"><link rel="stylesheet" href="/os-footer.css"><link rel="stylesheet" href="/artifacts/artifacts.css"><link rel="stylesheet" href="/artifacts/theme.css"><link rel="stylesheet" href="/versioning/versioning.css"></head>
+<body><main class="shell">{body}</main>{f'<footer class="os-shell-footer">{footer}</footer>' if footer else ""}{scripts}<script src="/os-shell.js"></script></body></html>'''
+
+
+def card(url: str, title: str, date_label: str, label: str, links: str = "") -> str:
+    """The one artifact card: a live rendered preview, shared by project and versions pages."""
+    footer = f'<p class="card-links">{links}</p>' if links else ""
+    return (f'<article class="card artifact-card"><a class="artifact-current" href="{html.escape(url)}">'
+            f'<span class="shot"><iframe src="{html.escape(url)}" loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no">'
+            f'</iframe></span><h3>{html.escape(title)}</h3><span class="meta"><span>{html.escape(date_label)}</span>'
+            f'<span>{html.escape(label)}</span></span></a>{footer}</article>')
+
+
+def card_page(title: str, intro: str, cards: list[str], footer: str = "") -> str:
+    return page(title, f'<p class="count">{intro}</p><div class="grid artifact-grid">{"".join(cards)}</div>',
+                '<script src="/artifacts/preview.js"></script>', footer)
+
+
+def project_page(project: dict) -> str:
+    cards = []
+    for artifact in sorted(project["artifacts"], key=lambda item: -item["number"]):
+        number, count, shown = artifact["number"], len(artifact["versions"]), current(artifact)
+        url = artifact_url(project["id"], number)
+        links = f'<a href="{url}{VERSIONS}/">{count} versions</a>' if count > 1 else ""
+        cards.append(card(url, f'{number} · {shown["title"]}', shown["date_label"], f"#{number}", links))
+    return card_page(project["name"], f'{len(project["artifacts"])} artifacts', cards)
+
+
+def versions_page(project_id: str, artifact: dict, footer: str) -> str:
+    """Every version as a rendered card, newest first, linking its diff and the history list."""
+    number, count = artifact["number"], len(artifact["versions"])
+    cards = [card(version_url(project_id, number, version["number"]), version["title"], version["date_label"],
+                  f'Version {version["number"]}',
+                  f'<a href="{version_url(project_id, number, version["number"])}{DIFF}/">Diff from {version["number"] - 1}</a>'
+                  if version["number"] > 1 else "")
+             for version in reversed(artifact["versions"])]
+    url = artifact_url(project_id, number)
+    intro = (f'<a href="{url}">{number} · {html.escape(current(artifact)["title"])}</a> · {count} '
+             f'{"version" if count == 1 else "versions"} · <a href="{url}{VERSIONS}/history/">History list</a>')
+    return card_page(current(artifact)["title"], intro, cards, footer)
+
+
+def redirect_page(target: str) -> str:
+    escaped = html.escape(target)
+    return (f'<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><link rel="canonical" href="{escaped}">'
+            f'<meta http-equiv="refresh" content="0;url={escaped}"><script>location.replace({json.dumps(target)}+location.hash)</script>'
+            f'<a href="{escaped}">{escaped}</a>\n')
+
+
+# Validation.
+
+def validate_document(path: Path, projects: list[str]) -> list[str]:
+    document = path.read_text(errors="replace")
+    errors = []
+    for name in REQUIRED_META:
+        match = re.search(rf'<meta\s+name=["\']{name}["\']\s+content=["\']([^"\']+)', document)
+        if not match:
+            errors.append(f"missing {name} metadata")
+        elif name == "artifact-project" and match.group(1) not in projects:
+            errors.append(f"artifact-project is {match.group(1)!r}, expected one of {projects!r}")
+    if SHELL_SCRIPT_REFERENCE not in document:
+        errors.append("missing artifact-shell.js")
+    return errors
+
+
+def verify_store(root: Path, registry: dict, strict_shell: bool = True) -> list[str]:
+    errors = [] if registry.get("schemaVersion") == SCHEMA else [f"unsupported registry schema: {registry.get('schemaVersion')!r}"]
+    claimed: set[str] = set()
+    sessions: dict[str, str] = {}
+    for project in registry.get("projects", []):
+        project_id = project["id"]
+        names = [project_id, *project.get("aliases", [])]
+        for name in names:
+            if not SLUG.fullmatch(name) or name in claimed:
+                errors.append(f"invalid or duplicate project address: {name}")
+            claimed.add(name)
+        addresses: set[str] = set()
+        for artifact in project["artifacts"]:
+            number = artifact.get("number")
+            label = f"{project_id}/{number}"
+            if not isinstance(number, int) or number < 1 or str(number) in addresses:
+                errors.append(f"invalid or duplicate artifact number: {label}")
+            addresses.add(str(number))
+            if session := artifact.get("session"):
+                if session in sessions:
+                    errors.append(f"session makes more than one artifact: {session} ({sessions[session]}, {label})")
+                sessions[session] = label
+            versions = artifact.get("versions", [])
+            if not versions or [version.get("number") for version in versions] != list(range(1, len(versions) + 1)):
+                errors.append(f"versions are not numbered 1..N: {label}")
+                continue
+            if not isinstance(artifact.get("current_version"), int) or not 1 <= artifact["current_version"] <= len(versions):
+                errors.append(f"current version is not registered: {label}")
+            for version in versions:
+                target = revisions_root(root) / project_id / str(version.get("revision", ""))
+                if not SLUG.fullmatch(str(version.get("revision", ""))) or not (target / "index.html").is_file():
+                    errors.append(f"missing revision: {label}/v{version['number']}")
+                elif strict_shell and not target.is_symlink():
+                    errors.extend(f"{label}/v{version['number']}: {error}" for error in validate_document(target / "index.html", names))
+        for artifact in project["artifacts"]:
+            for legacy in artifact.get("legacy", {}):
+                if not SLUG.fullmatch(legacy) or legacy.isdigit() or legacy in addresses:
+                    errors.append(f"invalid or duplicate legacy address: {project_id}/{legacy}")
+                addresses.add(legacy)
+    return errors
+
+
+# Projection: a generated tree Caddy serves; revisions are never copied or rewritten.
+
+def link_entries(address: Path, revision: Path) -> None:
+    """Expose a revision's entries at a generated address that may also hold versions/ or diff/."""
+    address.mkdir(parents=True)
+    for entry in revision.iterdir():
+        if entry.name in {VERSIONS, DIFF}:
+            raise ValueError(f"revision uses a reserved name: {entry}")
+        (address / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
+
+
+def version_diff(root: Path, project_id: str, previous: str, revision: str) -> str:
+    def lines(revision_id: str) -> list[str]:
+        return (revisions_root(root) / project_id / revision_id / "index.html").read_text(errors="replace").splitlines()
+    return "\n".join(difflib.unified_diff(lines(previous), lines(revision), "previous/index.html",
+                                          "current/index.html", lineterm="")) + "\n"
+
+
+def project_artifact(root: Path, project_dir: Path, project_id: str, artifact: dict) -> None:
+    number, versions = artifact["number"], artifact["versions"]
+    model = versioned_item(project_id, artifact)
+    live = project_dir / str(number)
+    link_entries(live, revisions_root(root) / project_id / current(artifact)["revision"])
+    footer = render_version(model, "footer", model["current_version"])
+    (project_dir / f"{number}.footer.html").write_text(footer)
+    history = live / VERSIONS
+    (history / "history").mkdir(parents=True)
+    # Versions, history, and diff pages carry the artifact's own footer, not the host's.
+    (history / "index.html").write_text(versions_page(project_id, artifact, footer))
+    (history / "history" / "index.html").write_text(page(model["title"], render_version(model, "history"), footer=footer))
+    for version in versions:
+        k = version["number"]
+        link_entries(history / str(k), revisions_root(root) / project_id / version["revision"])
+        (history / f"{k}.footer.html").write_text(render_version(model, "footer", f"v{k}"))
+        if k > 1:
+            diff = version_diff(root, project_id, versions[k - 2]["revision"], version["revision"])
+            (history / str(k) / DIFF).mkdir()
+            (history / str(k) / DIFF / "index.html").write_text(page(version["title"], render_version(model, "diff", f"v{k}", diff), footer=footer))
+    for legacy, k in artifact.get("legacy", {}).items():
+        (project_dir / legacy).mkdir()
+        target = version_url(project_id, number, k) if k else artifact_url(project_id, number)
+        (project_dir / legacy / "index.html").write_text(redirect_page(target))
+
+
+def build_projection(root: Path, registry: dict, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    (destination / "registry.json").write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n")
+    (destination / "site.json").write_text(json.dumps({"name": BRAND}) + "\n")
+    for project in registry["projects"]:
+        project_dir = destination / project["id"]
+        project_dir.mkdir()
+        (project_dir / "index.html").write_text(project_page(project))
+        for artifact in project["artifacts"]:
+            project_artifact(root, project_dir, project["id"], artifact)
+        for alias in project.get("aliases", []):
+            (destination / alias).symlink_to(project["id"], target_is_directory=True)
+
+
+def expected_entries(project: dict) -> set[str]:
+    entries = {"index.html"}
+    for artifact in project["artifacts"]:
+        entries |= {str(artifact["number"]), f"{artifact['number']}.footer.html", *artifact.get("legacy", {})}
+    return entries
+
+
+def verify_projection(root: Path, review_root: Path, registry: dict) -> list[str]:
+    errors = []
+    try:
+        if json.loads((review_root / "registry.json").read_text()) != registry:
+            errors.append("projected registry does not match canonical registry")
+    except (OSError, json.JSONDecodeError):
+        errors.append("missing or invalid projected registry")
+    expected = {project["id"] for project in registry["projects"]}
+    aliases = {alias: project["id"] for project in registry["projects"] for alias in project.get("aliases", [])}
+    actual = {entry.name for entry in review_root.iterdir() if not entry.name.endswith(".json")} if review_root.is_dir() else set()
+    errors.extend(f"unexpected projected project: {name}" for name in sorted(actual - expected - set(aliases)))
+    errors.extend(f"missing projected project: {name}" for name in sorted((expected | set(aliases)) - actual))
+    for alias, project_id in aliases.items():
+        if (review_root / alias).resolve() != (review_root / project_id).resolve():
+            errors.append(f"wrong project alias: {alias}")
+    for project in registry["projects"]:
+        project_dir = review_root / project["id"]
+        if not project_dir.is_dir():
+            continue
+        names = {entry.name for entry in project_dir.iterdir()}
+        errors.extend(f"projection mismatch: {project['id']}/{name}" for name in sorted(names ^ expected_entries(project)))
+        for artifact in project["artifacts"]:
+            label = f"{project['id']}/{artifact['number']}"
+            live = project_dir / str(artifact["number"]) / "index.html"
+            revision = revisions_root(root) / project["id"] / current(artifact)["revision"] / "index.html"
+            if not live.is_symlink() or live.resolve() != revision.resolve():
+                errors.append(f"wrong live version: {label}")
+            for version in artifact["versions"]:
+                if not (project_dir / str(artifact["number"]) / VERSIONS / f"{version['number']}.footer.html").is_file():
+                    errors.append(f"missing version footer: {label}/v{version['number']}")
+    return errors
+
+
+def materialize(root: Path, review_root: Path, registry: dict) -> None:
+    """Build, verify, then atomically swap the projection; the previous one survives any failure."""
+    review_root.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=".artifact-review-", dir=review_root.parent))
+    previous = review_root.with_name(f".{review_root.name}.previous")
+    try:
+        build_projection(root, registry, temporary)
+        errors = verify_projection(root, temporary, registry)
+        if errors:
+            raise ValueError("artifact projection failed:\n- " + "\n- ".join(errors))
+        if previous.exists():
+            shutil.rmtree(previous)
+        if review_root.is_symlink():
+            review_root.unlink()
+        elif review_root.exists():
+            review_root.replace(previous)
+        temporary.replace(review_root)
+        shutil.rmtree(previous, ignore_errors=True)
+    except Exception:
+        if not review_root.exists() and previous.exists():
+            previous.replace(review_root)
+        raise
+    finally:
+        shutil.rmtree(temporary, ignore_errors=True)
+
+
+# Creation: one session makes one artifact; every later promotion in it is that artifact's next version.
+
+def add_version(registry: dict, project_id: str, project_name: str, session: str, title: str, date_label: str) -> tuple[dict, dict, dict]:
+    updated = json.loads(json.dumps(registry))
+    owner = next(((project, artifact) for project in updated["projects"] for artifact in project["artifacts"]
+                  if artifact.get("session") == session), None)
+    if owner and project_id not in [owner[0]["id"], *owner[0].get("aliases", [])]:
+        raise ValueError(f"session already made artifact {owner[0]['id']}/{owner[1]['number']}")
+    if owner:
+        project, artifact = owner
+    else:
+        project = find_project(updated, project_id)
+        if project is None:
+            project = {"id": project_id, "name": project_name, "artifacts": []}
+            updated["projects"].insert(0, project)
+        number = max((item["number"] for item in project["artifacts"]), default=0) + 1
+        artifact = {"number": number, "session": session, "current_version": 0, "versions": []}
+        project["artifacts"].append(artifact)
+    k = len(artifact["versions"]) + 1
+    version = {"number": k, "revision": f"{artifact['number']}-v{k}", "title": title, "date_label": date_label}
+    if iso := iso_date(date_label):
+        version["date"] = iso
+    artifact["versions"].append(version)
+    artifact["current_version"] = k
+    updated["schemaVersion"] = SCHEMA
+    return updated, project, artifact
+
+
+def create(args: argparse.Namespace) -> None:
+    if not SLUG.fullmatch(args.project):
+        raise ValueError("project must be a lowercase URL slug")
+    original = load_registry(args.root)
+    registry, project, artifact = add_version(original, args.project, args.project_name, args.session, args.title, args.date)
+    source = Path(args.source).resolve()
+    errors = (validate_document(source / "index.html", [project["id"], *project.get("aliases", [])])
+              if (source / "index.html").is_file() else ["missing index.html"])
+    if errors:
+        raise ValueError("artifact contract failed:\n- " + "\n- ".join(errors))
+    target = revisions_root(args.root) / project["id"] / current(artifact)["revision"]
+    if target.exists() or target.is_symlink():
+        raise ValueError(f"immutable revision already exists: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, target)
+    wrote = False
+    try:
+        errors = verify_store(args.root, registry, strict_shell=False)
+        if errors:
+            raise ValueError("artifact contract failed:\n- " + "\n- ".join(errors))
+        write_registry(args.root, registry)
+        wrote = True
+        materialize(args.root, args.review_root, registry)
+    except Exception:
+        if wrote:
+            write_registry(args.root, original)
+        shutil.rmtree(target)
+        raise
+    print(artifact_url(project["id"], artifact["number"]))
+
+
+# Migration from the flat registry: group strictly by creating session.
+
+def revision_date(root: Path, project_id: str, item: dict) -> str:
+    document = revisions_root(root) / project_id / item["id"] / "index.html"
+    text = document.read_text(errors="replace") if document.is_file() else ""
+    meta = dict(re.findall(r'<meta\s+name="artifact-([a-z-]+)"\s+content="([^"]*)"', text))
+    found = iso_date(meta.get("created", ""), item.get("date_label", ""), meta.get("updated", ""))
+    return found or (date.fromtimestamp(document.stat().st_mtime).isoformat() if document.is_file() else "9999-12-31")
+
+
+def plan_migration(root: Path, registry: dict, sessions: dict[str, str | None]) -> dict:
+    """Return a schema-3 registry: one artifact per creating session, versions and artifacts in date order.
+
+    `sessions` maps "<project>/<revision-id>" to its creating session; a revision without one is its own
+    artifact. Old labels, including title suffixes such as " · 13" or " (r2)", are dropped; old addresses become
+    hidden redirects."""
+    migrated = {"schemaVersion": SCHEMA, "projects": []}
+    for project in registry["projects"]:
+        flat = []
+        for position, item in enumerate(reversed(project["artifacts"])):
+            for version in item.get("versions") or [item]:
+                flat.append({**version, "position": position, "stable": item["id"] if item.get("versions") else None,
+                             "session": sessions.get(f"{project['id']}/{version['id']}") or item.get("session")})
+        groups: dict[str, list[dict]] = {}
+        for entry in flat:
+            entry["date"] = revision_date(root, project["id"], entry)
+            groups.setdefault(entry["session"] or f"revision:{entry['id']}", []).append(entry)
+        ordered = sorted(groups.items(), key=lambda group: min((entry["date"], entry["position"]) for entry in group[1]))
+        artifacts = []
+        for number, (key, members) in enumerate(ordered, start=1):
+            members.sort(key=lambda entry: (entry["date"], entry["position"]))
+            versions = [{"number": k, "revision": entry["id"], "title": LEGACY_LABEL.sub("", entry["title"]) or entry["title"],
+                         "date_label": entry["date_label"],
+                         **({"date": entry["date"]} if not entry["date"].startswith("9999") else {})}
+                        for k, entry in enumerate(members, start=1)]
+            legacy = {entry["id"]: k for k, entry in enumerate(members, start=1)}
+            legacy |= {entry["stable"]: 0 for entry in members if entry["stable"]}
+            artifact = {"number": number, **({"session": key} if not key.startswith("revision:") else {}),
+                        "current_version": len(versions), "versions": versions, "legacy": legacy}
+            artifacts.append(artifact)
+        migrated["projects"].append({key: project[key] for key in ("id", "name", "aliases") if key in project} | {"artifacts": artifacts})
+    return migrated
+
+
+def migration_table(migrated: dict) -> list[dict]:
+    return [{"project": project["id"], "artifact": artifact["number"], "title": current(artifact)["title"],
+             "versions": len(artifact["versions"]), "session": bool(artifact.get("session")),
+             "legacy": list(artifact["legacy"])}
+            for project in migrated["projects"] for artifact in project["artifacts"]]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument("--review-root", type=Path, default=REVIEW_ROOT)
+    sub = parser.add_subparsers(dest="command", required=True)
+    create_parser = sub.add_parser("create", help="promote a staged page as this session's artifact's next version")
+    for name in ("source", "project", "project-name", "session", "title", "date"):
+        create_parser.add_argument(f"--{name}", required=True)
+    sub.add_parser("rebuild")
+    sub.add_parser("verify").add_argument("--allow-legacy-shell", action="store_true")
+    migrate_parser = sub.add_parser("migrate", help="plan the session migration; --write applies it to --root")
+    migrate_parser.add_argument("--sessions", type=Path, required=True, help='JSON {"<project>/<revision>": "<session>"|null}')
+    migrate_parser.add_argument("--write", action="store_true")
+    args = parser.parse_args()
+    if args.root is None or args.review_root is None:
+        parser.error("no data root: set HUMANWARE_DATA_ROOT or run from an assembled runtime")
+    if args.command == "create":
+        create(args)
+        return
+    registry = load_registry(args.root)
+    if args.command == "migrate":
+        before = hashlib.sha256(registry_path(args.root).read_bytes()).hexdigest()
+        migrated = plan_migration(args.root, registry, json.loads(args.sessions.read_text()))
+        errors = verify_store(args.root, migrated, strict_shell=False)
+        print(json.dumps({"registry_sha256": before, "errors": errors, "artifacts": migration_table(migrated),
+                          "registry": migrated}, indent=2, ensure_ascii=False))
+        if args.write and not errors:
+            write_registry(args.root, migrated)
+            materialize(args.root, args.review_root, migrated)
+        return
+    if args.command == "rebuild":
+        materialize(args.root, args.review_root, registry)
+    errors = verify_store(args.root, registry, strict_shell=not getattr(args, "allow_legacy_shell", False))
+    errors.extend(verify_projection(args.root, args.review_root, registry))
+    if errors:
+        print("\n".join(errors), file=sys.stderr)
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

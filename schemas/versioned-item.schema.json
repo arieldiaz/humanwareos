@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://humanwareos.com/schemas/versioned-item.schema.json",
+  "title": "Humanware OS versioned item",
+  "description": "One stable item with an ordered, immutable version chain. Owned by docs/versioning.md.",
+  "type": "object",
+  "required": ["id", "title", "url", "current_version", "versions"],
+  "properties": {
+    "id": {"$ref": "#/$defs/slug"},
+    "title": {"type": "string", "minLength": 1},
+    "url": {"type": "string", "minLength": 1},
+    "current_version": {"$ref": "#/$defs/slug"},
+    "history_url": {"type": "string", "minLength": 1},
+    "created": {"$ref": "#/$defs/date"},
+    "updated": {"$ref": "#/$defs/date"},
+    "versions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/version"}
+    }
+  },
+  "$defs": {
+    "slug": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "date": {
+      "type": "object",
+      "required": ["date_label"],
+      "properties": {
+        "date_label": {"type": "string", "minLength": 1},
+        "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}"}
+      },
+      "additionalProperties": false
+    },
+    "version": {
+      "type": "object",
+      "required": ["id", "number", "date_label", "title"],
+      "properties": {
+        "id": {"$ref": "#/$defs/slug"},
+        "number": {"type": ["string", "integer"]},
+        "date_label": {"type": "string", "minLength": 1},
+        "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}"},
+        "title": {"type": "string", "minLength": 1},
+        "note": {"type": "string", "minLength": 1},
+        "ref": {"type": "string", "minLength": 1},
+        "supersedes": {"$ref": "#/$defs/slug"},
+        "url": {"type": "string", "minLength": 1},
+        "diff_url": {"type": "string", "minLength": 1},
+        "type": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  }
+}

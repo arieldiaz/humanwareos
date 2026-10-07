@@ -1,0 +1,11 @@
+{
+  "id": "example-dossier",
+  "title": "Example dossier & notes",
+  "url": "/artifacts/example/example-dossier/",
+  "current_version": "example-dossier-r3",
+  "versions": [
+    {"id": "example-dossier-r1", "number": 1, "date_label": "Sep 30, 2026", "date": "2026-09-30", "title": "Example dossier", "url": "/artifacts/example/example-dossier-r1/"},
+    {"id": "example-dossier-r2", "number": 2, "date_label": "Oct 1, 2026", "date": "2026-10-01", "title": "Example dossier", "note": "Responsive layout", "supersedes": "example-dossier-r1", "url": "/artifacts/example/example-dossier-r2/", "diff_url": "/artifacts/example/example-dossier/versions/example-dossier-r2/diff/"},
+    {"id": "example-dossier-r3", "number": "r3", "date_label": "Oct 2, 2026", "title": "Example dossier <final>", "supersedes": "example-dossier-r2", "diff_url": "/artifacts/example/example-dossier/versions/example-dossier-r3/diff/"}
+  ]
+}
