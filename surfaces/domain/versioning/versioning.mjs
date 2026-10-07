@@ -28,12 +28,13 @@ export function renderVersionFooter(item, versionId) {
   const index = find(item, versionId);
   const version = item.versions[index];
   const current = version.id === item.current_version;
+  const shown = current ? item : version;
   const meta = [label('Created at', created(item)), label('Updated', current ? updated(item) : version)];
   if (!current) meta.push(`<span>Version ${index + 1} of ${item.versions.length}</span>`);
   meta.push(`<a data-footer-history href="${esc(historyUrl(item))}">History →</a>`);
   if (!current) meta.push(`<a href="${esc(item.url)}">Current version</a>`);
   return `<div class="foot-provenance hw-version-footer" data-hw-item="${esc(item.id)}" data-hw-version="${esc(version.id)}" data-hw-current="${current}">\n`
-    + `<span class="foot-heading"><span data-footer-title>${esc(version.title)}</span> <span data-footer-url>${esc(version.url || item.url)}</span></span>\n`
+    + `<span class="foot-heading"><span data-footer-title>${esc(shown.title)}</span> <span data-footer-url>${esc(shown.url || item.url)}</span></span>\n`
     + `<span class="foot-meta">${meta.join(' ')}</span>\n</div>\n`;
 }
 

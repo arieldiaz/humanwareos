@@ -42,7 +42,7 @@ A source may add metadata but may not invent a second version shape.
 
 Every rendered version ends with one provenance block, the same on public and private surfaces. It shows:
 
-1. the shown version's title and address;
+1. the item's title and address, or the shown version's when it is not current;
 2. "Created at" and "Updated" dates;
 3. a "History" link;
 4. only when the shown version is not current, "Version N of M" and a link to the current version.
