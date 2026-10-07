@@ -1,0 +1,61 @@
+.os-shell-footer {
+  width: 100% !important;
+  margin: auto 0 0 !important;
+  padding: 48px 0 22px !important;
+  color: var(--os-muted) !important;
+  font-family: var(--os-font) !important;
+  --muted: var(--os-muted, #69717d);
+  --line: var(--os-line, #d9dee5);
+  --accent: var(--os-accent, #2869d8);
+  --font-text: var(--os-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif);
+}
+.os-shell-footer .foot-provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 16px 0;
+  border-top: 1px solid var(--os-line);
+  font-size: 12px;
+}
+.os-shell-footer .foot-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+.os-shell-footer .foot-heading > :first-child { color: var(--os-muted); font-weight: 400; }
+.os-shell-footer .foot-heading > span { color: inherit; }
+.os-shell-footer .foot-meta { display: flex; align-items: baseline; gap: 14px; width: 100%; }
+.os-shell-footer .foot-meta a { margin-left: auto; color: var(--os-accent); text-decoration: none; }
+.os-shell-footer .foot-label {
+  color: var(--os-muted);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  opacity: .78;
+}
+.os-shell-footer .foot-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 18px;
+  text-align: center;
+}
+.os-shell-footer .foot-sig {
+  display: block;
+  width: 104px;
+  height: 46px;
+  opacity: .9;
+  background-color: currentColor;
+  -webkit-mask: url("/artifacts/assets/ariel-signature.svg") center/contain no-repeat;
+  mask: url("/artifacts/assets/ariel-signature.svg") center/contain no-repeat;
+}
+.os-shell-footer .foot-line { margin: 0; color: var(--os-muted); font: 14px/1.5 var(--os-font); }
+body > footer:not(.os-shell-footer), .shell > footer:not(.os-shell-footer) { display: none !important; }
+@media (max-width: 600px) {
+  .os-shell-footer .foot-heading { align-items: flex-start; }
+  .os-shell-footer .foot-heading > span { min-width: 0; overflow-wrap: anywhere; text-align: right; }
+  .os-shell-footer .foot-meta { flex-wrap: wrap; }
+}

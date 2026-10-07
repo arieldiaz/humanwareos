@@ -1,0 +1,8 @@
+:root{--os-bg:#f6f7f8;--os-panel:#fff;--os-panel-2:#eef1f4;--os-line:#d9dee5;--os-ink:#171a1f;--os-muted:#69717d;--os-faint:#9098a4;--os-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif}
+@media(prefers-color-scheme:dark){:root{--os-bg:#0b0d10;--os-panel:#14171c;--os-panel-2:#1b1f26;--os-line:#2a3038;--os-ink:#e8ecf1;--os-muted:#929ba7;--os-faint:#646e7c}}
+.os-shell-header{position:fixed;inset:0 0 auto;z-index:2147483647;height:52px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;border-bottom:1px solid var(--os-line);background:color-mix(in srgb,var(--os-bg) 88%,transparent);color:var(--os-ink);font:13px/1.2 var(--os-font);backdrop-filter:blur(16px)}
+.os-breadcrumbs{display:flex;gap:8px;align-items:center;min-width:0;white-space:nowrap;overflow:auto;font-size:13px}
+.os-breadcrumbs a{color:var(--os-muted)!important;text-decoration:none!important}.os-breadcrumbs a:hover{color:var(--os-ink)!important}.os-breadcrumbs .current{color:var(--os-ink);font-weight:600}.os-breadcrumbs .sep{color:var(--os-faint)}
+.os-header-action{appearance:none;flex:0 0 auto;border:1px solid var(--os-line);border-radius:7px;padding:7px 11px;background:var(--os-panel);color:var(--os-ink);font:600 12px/1.2 var(--os-font);cursor:pointer;white-space:nowrap}.os-header-action:hover{background:var(--os-panel-2)}.os-header-action[disabled]{opacity:.55;cursor:wait}.os-header-public-link{flex:0 0 auto;color:var(--os-muted)!important;font:600 12px/1.2 var(--os-font);text-decoration:none!important;white-space:nowrap}
+@media(max-width:640px){.os-shell-header{padding:0 14px}}
+.artifact-actions{display:flex;flex:0 0 auto;gap:14px;align-items:center}

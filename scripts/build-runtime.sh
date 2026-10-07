@@ -89,7 +89,7 @@ cp -R "$FRAMEWORK_DIR/ops/openclaw/patches/." "$BUILD_DIR/framework/ops/openclaw
 cp -R "$FRAMEWORK_DIR/ops/openclaw/runtime/." "$BUILD_DIR/framework/ops/openclaw/runtime/"
 cp -R "$FRAMEWORK_DIR/ops/channels/." "$BUILD_DIR/framework/ops/channels/"
 cp "$FRAMEWORK_DIR/ops/openclaw/slack-spin-out.mjs" "$BUILD_DIR/framework/ops/openclaw/slack-spin-out.mjs"
-for component in menubar session-console calendar email-intake; do cp -R "$FRAMEWORK_DIR/ops/$component" "$BUILD_DIR/framework/ops/$component"; done
+for component in menubar session-console calendar email-intake artifacts; do cp -R "$FRAMEWORK_DIR/ops/$component" "$BUILD_DIR/framework/ops/$component"; done
 mkdir -p "$BUILD_DIR/framework/ops/lib"
 cp "$FRAMEWORK_DIR/ops/lib/openclaw_sessions.py" "$BUILD_DIR/framework/ops/lib/openclaw_sessions.py"
 cp "$INSTANCE_DIR/AGENTS-instance.md" "$BUILD_DIR/instructions/AGENTS-instance.md"

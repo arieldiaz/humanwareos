@@ -43,6 +43,6 @@ The artifact should make the requested decision easier:
 - preserve exploration without implying approval;
 - identify source assets and model provenance when relevant.
 
-Promote the completed review through the instance's artifact service and return the addressed HTML revision link. The artifact is the review surface and source of truth: never embed or upload its frames, screenshots, or files into chat.
+Promote the completed review through the artifact service and return the addressed HTML revision link. The artifact is the review surface and source of truth: never embed or upload its frames, screenshots, or files into chat.
 
 If a prior board conflicts with the current brief or instance overlay, the board loses.

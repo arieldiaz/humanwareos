@@ -28,6 +28,7 @@ jobs:
         run: |
           PYTHONPATH=ops/menubar python3 -m unittest discover -s ops/menubar
           python3 -m unittest discover -s ops/session-console/tests
+          python3 -m unittest discover -s ops/artifacts
       - name: macOS surface
         run: swift build --package-path surfaces/macos/HumanwareOS
       - name: Shell contracts
