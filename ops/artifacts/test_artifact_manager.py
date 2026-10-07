@@ -120,6 +120,22 @@ class ArtifactManagerTests(unittest.TestCase):
         am.materialize(self.root, self.review, migrated)
         self.assertEqual(am.verify_projection(self.root, self.review, migrated), [])
 
+    def test_migration_joins_consecutive_sessionless_revisions_with_the_same_title(self) -> None:
+        legacy = [("a1", "Site · 1", "2026-07-27"), ("a2", "Site · 2", "2026-07-28"), ("s1", "Site", "2026-07-29"),
+                  ("a3", "Site (r3)", "2026-07-30"), ("b1", "Other", "2026-07-31"), ("a4", "Site", "2026-08-01")]
+        for revision, title, day in legacy:
+            target = self.root / "revisions/learning" / revision
+            target.mkdir(parents=True)
+            target.joinpath("index.html").write_text(document(title).replace("22 Aug 2026", day))
+        flat = {"schemaVersion": 1, "projects": [{"id": "learning", "name": "Learning", "artifacts": [
+            {"id": revision, "project": "learning", "title": title, "date_label": day}
+            for revision, title, day in reversed(legacy)]}]}
+        migrated = am.plan_migration(self.root, flat, {"learning/s1": "slack:s"})
+        self.assertEqual(am.verify_store(self.root, migrated), [])
+        self.assertEqual([[v["revision"] for v in a["versions"]] for a in migrated["projects"][0]["artifacts"]],
+                         [["a1", "a2"], ["s1"], ["a3"], ["b1"], ["a4"]])
+        self.assertNotIn("session", migrated["projects"][0]["artifacts"][0])
+
 
 if __name__ == "__main__":
     unittest.main()

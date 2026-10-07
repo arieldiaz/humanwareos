@@ -417,7 +417,7 @@ def create(args: argparse.Namespace) -> None:
     print(artifact_url(project["id"], artifact["number"]))
 
 
-# Migration from the flat registry: group strictly by creating session.
+# Migration from the flat registry: group by creating session; without one, a run of consecutive same-title revisions.
 
 def revision_date(root: Path, project_id: str, item: dict) -> str:
     document = revisions_root(root) / project_id / item["id"] / "index.html"
@@ -430,8 +430,9 @@ def revision_date(root: Path, project_id: str, item: dict) -> str:
 def plan_migration(root: Path, registry: dict, sessions: dict[str, str | None]) -> dict:
     """Return a schema-3 registry: one artifact per creating session, versions and artifacts in date order.
 
-    `sessions` maps "<project>/<revision-id>" to its creating session; a revision without one is its own
-    artifact. Old labels, including title suffixes such as " · 13" or " (r2)", are dropped; old addresses become
+    `sessions` maps "<project>/<revision-id>" to its creating session. Sessionless revisions that are consecutive
+    in date order and share a title once legacy labels are dropped form one artifact; any other sessionless revision
+    is its own. This fallback is migration-only: `create` stays strictly one session, one artifact. Old labels, including title suffixes such as " · 13" or " (r2)", are dropped; old addresses become
     hidden redirects."""
     migrated = {"schemaVersion": SCHEMA, "projects": []}
     for project in registry["projects"]:
@@ -440,10 +441,15 @@ def plan_migration(root: Path, registry: dict, sessions: dict[str, str | None]) 
             for version in item.get("versions") or [item]:
                 flat.append({**version, "position": position, "stable": item["id"] if item.get("versions") else None,
                              "session": sessions.get(f"{project['id']}/{version['id']}") or item.get("session")})
-        groups: dict[str, list[dict]] = {}
         for entry in flat:
             entry["date"] = revision_date(root, project["id"], entry)
-            groups.setdefault(entry["session"] or f"revision:{entry['id']}", []).append(entry)
+        groups: dict[str, list[dict]] = {}
+        previous = None
+        for entry in sorted(flat, key=lambda entry: (entry["date"], entry["position"])):
+            title = LEGACY_LABEL.sub("", entry["title"]).strip().casefold()
+            key = entry["session"] or (previous[0] if previous and previous[1] == title else f"revision:{entry['id']}")
+            previous = (key, title) if not entry["session"] else None
+            groups.setdefault(key, []).append(entry)
         ordered = sorted(groups.items(), key=lambda group: min((entry["date"], entry["position"]) for entry in group[1]))
         artifacts = []
         for number, (key, members) in enumerate(ordered, start=1):
