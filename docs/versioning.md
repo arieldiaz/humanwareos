@@ -47,10 +47,10 @@ Every rendered version of a versioned item ends with one provenance block, the s
 4. a "History" link to the history page;
 5. a link to the current version, only when the shown version is not current.
 
-The history page states the item title, version count, and created and updated dates, then lists every version newest first with its number, date, title, optional note, a "View" link when `url` exists, and a "Diff from N" link when `diff_url` exists. The current version is marked with `aria-current`. The diff page names both versions and shows added and removed line counts and the classed unified diff.
+The history page states the item title, version count, and created and updated dates, then lists every version newest first with its number, date, title, optional note, a "View" link when `url` exists, and a "Diff from N" link when `diff_url` exists. The current version is marked with `aria-current`. The diff page names both versions and marks up the source's unified diff with line counts.
 
 ## Rendering
 
-The framework renderer at `surfaces/domain/versioning/` is the single implementation, shipped as matching JavaScript and Python modules: `renderVersionFooter(item, versionId)`, `renderVersionHistory(item)`, and `renderVersionDiff(item, versionId, diff)`, with snake-case Python equivalents. Sources compute the unified diff text; the renderer only marks it up. Both return HTML fragments and must produce byte-identical output for the shared golden fixtures.
+The framework renderer at `surfaces/domain/versioning/` is the single implementation, shipped as matching JavaScript and Python modules: `renderVersionFooter(item, versionId)`, `renderVersionHistory(item)`, and `renderVersionDiff(item, versionId, diff)`, with snake-case Python equivalents. Both return HTML fragments and must produce byte-identical output for the shared golden fixtures.
 
 Output is unstyled semantic HTML. It reuses the public site's footer, history, and diff-line class names shown in the fixtures, so one stylesheet structure serves both surfaces, and contains no CSS or scripts. The stable hooks are those classes plus `hw-version-footer`, `hw-version-history`, and `hw-version-diff` and the attributes `data-hw-item`, `data-hw-version`, and `data-hw-current`. Hosts style only through those hooks. Changing markup requires updating both modules and the fixtures together.
