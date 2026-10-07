@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-const code = readFileSync(new URL('./trace.js', import.meta.url), 'utf8');
-const {escapeHtml, freshness, matches, renderTrace, sessionLink, traceHtml} = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const {escapeHtml, freshness, matches, renderTrace, sessionLink, traceHtml} = await import('./trace.js');
 const row = {id:'event-1', kind:'action.send', logicalSessionId:'session-1', runId:'run-2', ts:'2026-09-30T12:00:00Z',
   actor:{identity:'liv',profileId:'local'}, authority:{result:'human_message',ref:{type:'human_message',id:'message-1'}},
   policy:{result:'allowed',id:'workspace',version:'1'}, outcome:'succeeded', reversibility:'outward',
@@ -32,5 +30,6 @@ test('shared trace renders authority, policy, local reference and escapes hostil
   assert(!hostile.includes('<img'));
   assert(!hostile.includes('UNUSED PAYLOAD'));
   assert.equal(escapeHtml('<script>'), '&lt;script&gt;');
+  assert.equal(escapeHtml(`a&b<"'>`), 'a&amp;b&lt;&quot;&#39;&gt;');
   assert(!container.innerHTML.includes('href="raw'));
 });

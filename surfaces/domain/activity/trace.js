@@ -1,5 +1,6 @@
 /* Shared metadata trace, used by Activity and by the session view/instance overlay. */
-export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+import {escapeHtml} from '../ui.js';
+export {escapeHtml};
 export const sessionLink = (session, run = null) => `/sessions/?${new URLSearchParams({session, ...(run ? {run} : {})})}`;
 export function freshness(data, now = Date.now()) {
   const time = Date.parse(data?.generatedAt);
