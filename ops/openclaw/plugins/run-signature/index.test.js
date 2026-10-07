@@ -70,8 +70,9 @@ test("registers one atomic Slack work-thread tool with the normal high-reasoning
   assert.deepEqual(tools.map(tool => tool.options.name), ["start_work_thread", "close_thread"]);
   const manifest = JSON.parse(readFileSync(new URL("./openclaw.plugin.json", import.meta.url), "utf8"));
   assert.deepEqual(manifest.contracts.tools, tools.map(tool => tool.options.name));
-  assert.equal(tools[0].factory({ messageChannel: "discord", agentId: "max" }), undefined);
-  const tool = tools[0].factory({
+  assert.equal(tools[0].factory.contextVersion, 2);
+  assert.equal(tools[0].factory.create({ messageChannel: "discord", agentId: "max" }), undefined);
+  const tool = tools[0].factory.create({
     messageChannel: "slack",
     nativeChannelId: "C123",
     agentId: "max",
