@@ -30,6 +30,7 @@
         "note": {"type": "string", "minLength": 1},
         "supersedes": {"$ref": "#/$defs/slug"},
         "url": {"type": "string", "minLength": 1},
+        "diff_url": {"type": "string", "minLength": 1},
         "type": {"type": "string", "minLength": 1}
       },
       "additionalProperties": false

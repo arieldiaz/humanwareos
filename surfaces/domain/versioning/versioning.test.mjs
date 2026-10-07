@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { renderVersionFooter, renderVersionHistory } from './versioning.mjs';
+import { renderVersionDiff, renderVersionFooter, renderVersionHistory } from './versioning.mjs';
 
 const dir = new URL('.', import.meta.url).pathname;
 const itemJson = readFileSync(`${dir}fixtures/item.json`, 'utf8');
@@ -14,6 +14,7 @@ const cases = [
   ['footer-current', ['footer', 'example-dossier-r3'], () => renderVersionFooter(item, 'example-dossier-r3')],
   ['footer-old', ['footer', 'example-dossier-r1'], () => renderVersionFooter(item, 'example-dossier-r1')],
   ['history', ['history'], () => renderVersionHistory(item)],
+  ['diff-r2', ['diff', 'example-dossier-r2', `${dir}fixtures/diff-r2.patch`], () => renderVersionDiff(item, 'example-dossier-r2', readFileSync(`${dir}fixtures/diff-r2.patch`, 'utf8'))],
 ];
 
 for (const [name, args, render] of cases) {
@@ -29,4 +30,5 @@ test('markup carries no styling', () => {
 
 test('unknown version fails closed', () => {
   assert.throws(() => renderVersionFooter(item, 'missing'), /unknown version/);
+  assert.throws(() => renderVersionDiff(item, 'example-dossier-r1', ''), /no predecessor/);
 });
