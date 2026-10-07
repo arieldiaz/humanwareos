@@ -21,6 +21,7 @@ printf '%s\n' '{"version":"2026.9.8"}' > "$TRANSACTION/stage.json"
 python3 "$ROOT/scripts/openclaw-package-transaction.py" install --transaction "$TRANSACTION" --target "$TARGET" >/dev/null
 [ "$(jq -r .version "$TARGET/package.json")" = 2026.9.8 ]
 [ "$(jq -r .version "$TRANSACTION/retained/openclaw/package.json")" = 2026.9.1 ]
+[ "$(jq -r .changed "$TRANSACTION/installed.json")" = true ]
 
 python3 "$ROOT/scripts/openclaw-package-transaction.py" restore --transaction "$TRANSACTION" --target "$TARGET" >/dev/null
 [ "$(jq -r .version "$TARGET/package.json")" = 2026.9.1 ]
@@ -33,5 +34,15 @@ python3 "$ROOT/scripts/openclaw-package-transaction.py" install --transaction "$
 python3 "$ROOT/scripts/openclaw-package-transaction.py" restore --transaction "$TRANSACTION" --target "$TARGET" >/dev/null
 [ "$(jq -r .version "$TARGET/package.json")" = 2026.9.1 ]
 [ "$(find "$TRANSACTION/failed" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 2 ]
+
+SAME_TRANSACTION="$TMP/same-transaction"
+SAME_TARGET="$TMP/same-global/openclaw"
+package "$SAME_TRANSACTION/staged/node_modules/openclaw" 2026.9.8
+package "$SAME_TARGET" 2026.9.8
+printf '%s\n' '{"version":"2026.9.8"}' > "$SAME_TRANSACTION/stage.json"
+
+python3 "$ROOT/scripts/openclaw-package-transaction.py" install --transaction "$SAME_TRANSACTION" --target "$SAME_TARGET" >/dev/null
+[ "$(jq -r .changed "$SAME_TRANSACTION/installed.json")" = false ]
+[ ! -e "$SAME_TRANSACTION/retained/openclaw" ]
 
 echo "openclaw package transaction: OK"

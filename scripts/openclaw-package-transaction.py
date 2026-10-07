@@ -81,6 +81,11 @@ def install(transaction, target):
     source = transaction / "staged/node_modules/openclaw"
     version = validate(source, marker["version"])
     previous = validate(target)
+    if previous == version:
+        write_json(transaction / "installed.json", {
+            "version": version, "previousVersion": previous, "target": str(target), "changed": False,
+        })
+        return
     retained = transaction / "retained/openclaw"
     if exists(retained):
         raise RuntimeError("a previous package is already retained")
@@ -93,7 +98,9 @@ def install(transaction, target):
     except Exception:
         os.replace(retained, target)
         raise
-    write_json(transaction / "installed.json", {"version": version, "previousVersion": previous, "target": str(target)})
+    write_json(transaction / "installed.json", {
+        "version": version, "previousVersion": previous, "target": str(target), "changed": True,
+    })
 
 
 def restore(transaction, target):
