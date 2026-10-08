@@ -97,8 +97,7 @@ export function resolveSlackRuntimeModule(kind, { projectsDir = SLACK_PROJECTS_D
 }
 
 // The gateway's events disagree about what they carry: model_call_started may
-// hold the thinking level but llm_output never does, while llm_output is the
-// only one with harnessId. Overwriting per event meant the last event erased
+// hold the thinking level but llm_output never does. Overwriting per event meant the last event erased
 // what an earlier one knew. A field the new event does not carry keeps its
 // last-known value; model and provider always follow the newest event so a
 // model switch is never masked.
@@ -114,11 +113,6 @@ export function mergeProvenance(prior, next) {
   };
 }
 
-export function recoverMissingHarness(live, recovered) {
-  if (!live || resolveHarnessTile(live) || !resolveHarnessTile(recovered)) return live;
-  return mergeProvenance(recovered, live);
-}
-
 export function buildRunSignature(provenance) {
   return buildRunReactionNames(provenance).map((name) => `:${name}:`).join(" ");
 }
@@ -126,7 +120,7 @@ export function buildRunSignature(provenance) {
 export function buildRunReactionNames(provenance) {
   const tiles = [
     resolveModelTile(provenance.model),
-    resolveHarnessTile(provenance),
+    resolveHarnessTile(provenance.harnessId),
     resolveThinkingTile(provenance),
   ].filter(Boolean);
   return tiles.map((tile) => tile.replaceAll(":", ""));
@@ -332,7 +326,7 @@ export function resolveConfiguredThinking(config, agentId) {
 
 // Persistent ACP bindings do not emit OpenClaw model-call events because the
 // provider runs inside the external harness. The binding session and the
-// configured ACP command still prove the harness and its selected model. Keep
+// configured ACP command still prove its selected model. Keep
 // this narrow: only an explicit Cursor --model value earns provenance.
 export function resolveConfiguredAcpProvenance(config, sessionKey, route = {}) {
   const session = String(sessionKey ?? "");
@@ -361,9 +355,23 @@ export function resolveConfiguredAcpProvenance(config, sessionKey, route = {}) {
   return {
     model: `cursor/${model}`,
     provider: "cursor",
-    harnessId: "cursor",
+    harnessId: acpAgentId,
     sessionKey,
   };
+}
+
+// The harness is a property of the execution profile the host selected for
+// the turn, never of model output: the session's recorded harness, else the
+// runtime the profile catalog binds to its selected model (or the agent's ACP
+// runtime).
+export function resolveSelectedHarness(config, agentId, session = {}) {
+  if (session.agentHarnessId) return session.agentHarnessId;
+  const agent = configuredAgent(config, agentId);
+  if (agent?.runtime?.type === "acp") return agent.runtime.acp?.agent;
+  const ref = typeof agent?.model === "string"
+    ? agent.model
+    : agent?.model?.primary ?? config?.agents?.defaults?.model?.primary;
+  return config?.agents?.defaults?.models?.[ref]?.agentRuntime?.id;
 }
 
 async function loadSessionThinking(sessionKey) {
@@ -393,13 +401,14 @@ export async function loadAgentProvenance(path = AGENT_PROVENANCE_SNAPSHOT) {
   }
 }
 
-async function loadSessionProvenance(sessionKey) {
+async function loadSessionProvenance(config, sessionKey) {
   const session = await loadSessionEntry(sessionKey);
   if (!session?.model) return;
+  const agentId = String(sessionKey ?? "").match(/^agent:([^:]+):/i)?.[1];
   return {
     model: session.model,
     provider: session.modelProvider,
-    harnessId: /^(?:openai|codex)$/i.test(session.modelProvider ?? "") ? "codex" : undefined,
+    harnessId: resolveSelectedHarness(config, agentId, session),
     // Only an explicit per-session override is stored here; the configured
     // default never reaches the session row, so its absence stays an absence.
     thinkLevel: session.thinkingLevel,
@@ -448,14 +457,16 @@ const plugin = {
       }
     });
 
-    const rememberProvenance = (event, ctx) => {
+    const rememberProvenance = async (event, ctx) => {
       const sessionKey = event.sessionKey ?? ctx.sessionKey;
       const prior = (sessionKey ? bySession.get(sessionKey) : undefined) ??
         (event.runId ? byRun.get(event.runId) : undefined);
+      const agentId = String(sessionKey ?? "").match(/^agent:([^:]+):/i)?.[1];
+      const session = sessionKey ? await loadSessionEntry(sessionKey).catch(() => undefined) : undefined;
       const provenance = mergeProvenance(prior, {
         model: event.resolvedRef ?? event.model ?? ctx.modelId,
         provider: event.provider ?? ctx.modelProviderId,
-        harnessId: event.harnessId ?? ctx.agentHarnessId,
+        harnessId: resolveSelectedHarness(api.config, agentId, session),
         sessionKey,
         thinkLevel: event.thinkLevel ?? ctx.thinkLevel,
         reasoningLevel: event.reasoningLevel ?? ctx.reasoningLevel,
@@ -518,25 +529,12 @@ const plugin = {
       let provenance = resolveConfiguredAcpProvenance(api.config, ctx.sessionKey, { accountId, channel });
       let provenanceSource = provenance ? "configured_acp_route" : "live_session_events";
       if (!provenance) provenance = ctx.sessionKey ? bySession.get(ctx.sessionKey) : undefined;
-      if (provenance && !resolveHarnessTile(provenance) && ctx.sessionKey) {
-        try {
-          const recovered = await loadSessionProvenance(ctx.sessionKey);
-          const completed = recoverMissingHarness(provenance, recovered);
-          if (completed !== provenance) {
-            provenance = completed;
-            provenanceSource = "live_session_events+session_store_disk";
-            rememberProvenance(provenance, {});
-          }
-        } catch (error) {
-          api.logger?.error?.(`session harness recovery failed for ${ctx.sessionKey}: ${String(error)}`);
-        }
-      }
       if (!provenance && ctx.sessionKey) {
         try {
-          provenance = await loadSessionProvenance(ctx.sessionKey);
+          provenance = await loadSessionProvenance(api.config, ctx.sessionKey);
           if (provenance) {
             provenanceSource = "session_store_disk";
-            rememberProvenance(provenance, {});
+            await rememberProvenance(provenance, {});
           }
         } catch (error) {
           api.logger?.error?.(`session provenance recovery failed for ${ctx.sessionKey}: ${String(error)}`);
@@ -551,6 +549,9 @@ const plugin = {
         await appendFaultJournal({ channel, messageTs, reason: "this sent message could not be attributed to a model, so its reaction signature was skipped" });
         return;
       }
+
+      if (!provenance.harnessId)
+        await appendFaultJournal({ channel, messageTs, reason: "the selected execution profile did not identify a harness, so the harness tile was omitted" });
 
       if (!resolveThinkingTile(provenance)) {
         const effective = (ctx.sessionKey ? await loadSessionThinking(ctx.sessionKey).catch(() => undefined) : undefined) ??

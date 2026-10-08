@@ -34,7 +34,7 @@ import {
   saveAgentProvenance,
   loadAgentProvenance,
   mergeProvenance,
-  recoverMissingHarness,
+  resolveSelectedHarness,
   normalizeReactions,
 } from "./index.js";
 import runSignaturePlugin from "./index.js";
@@ -97,11 +97,16 @@ test("maps the configured model and harness tiles", () => {
   assert.equal(resolveModelTile("cursor/cursor-grok-4.6-high"), ":m_grok:");
   assert.equal(resolveModelTile("cursor-agent/grok-4.7-low-fast"), ":m_grok:");
   assert.equal(resolveModelTile("mystery"), undefined);
-  assert.equal(resolveHarnessTile({ harnessId: "codex" }), ":h_codex:");
-  assert.equal(resolveHarnessTile({ provider: "claude-cli" }), ":h_cc:");
-  assert.equal(resolveHarnessTile({ harnessId: "cursor" }), ":h_cursor:");
-  assert.equal(resolveHarnessTile({ sessionKey: "agent:max:opencode:x" }), ":h_opencode:");
-  assert.equal(resolveHarnessTile({ provider: "ollama" }), undefined);
+  assert.equal(resolveHarnessTile("codex"), ":h_codex:");
+  assert.equal(resolveHarnessTile("claude-cli"), ":h_cc:");
+  assert.equal(resolveHarnessTile("cursor-agent"), ":h_cursor:");
+  assert.equal(resolveHarnessTile("cursor"), ":h_cursor:");
+  assert.equal(resolveHarnessTile("opencode"), ":h_opencode:");
+  // Exact ids only: provider names, model refs and session keys are not harnesses.
+  assert.equal(resolveHarnessTile("anthropic"), undefined);
+  assert.equal(resolveHarnessTile("agent:max:opencode:x"), undefined);
+  assert.equal(resolveHarnessTile("toString"), undefined);
+  assert.equal(resolveHarnessTile(undefined), undefined);
 });
 
 test("normalizes provider thinking vocabularies without guessing", () => {
@@ -123,10 +128,12 @@ test("uses the resolved think level for the tile and omits when unknown", () => 
 });
 
 test("builds the compact model harness signature", () => {
-  const provenance = { model: "claude-opus-5", provider: "claude-cli", thinkLevel: "off" };
+  const provenance = { model: "claude-opus-5", provider: "anthropic", harnessId: "claude-cli", thinkLevel: "off" };
   const signature = buildRunSignature(provenance);
   assert.equal(signature, ":m_opus: :h_cc: :think_off:");
   assert.deepEqual(buildRunReactionNames(provenance), ["m_opus", "h_cc", "think_off"]);
+  // A provider name is not a harness id.
+  assert.deepEqual(buildRunReactionNames({ model: "claude-opus-5", provider: "claude-cli", thinkLevel: "off" }), ["m_opus", "think_off"]);
 });
 
 test("native-local reaction signatures omit harness and unknown thinking", () => {
@@ -405,8 +412,8 @@ test("returns an empty provenance map when the snapshot is absent or corrupt", a
 });
 
 test("a later event without a thinking level keeps the one already known", () => {
-  const first = mergeProvenance(undefined, { model: "claude-fable-5", thinkLevel: "high" });
-  const second = mergeProvenance(first, { model: "claude-fable-5", harnessId: "claude-cli" });
+  const first = mergeProvenance(undefined, { model: "claude-fable-5", harnessId: "claude-cli", thinkLevel: "high" });
+  const second = mergeProvenance(first, { model: "claude-fable-5", provider: "claude-cli" });
   assert.equal(second.thinkLevel, "high");
   assert.equal(second.harnessId, "claude-cli");
 });
@@ -417,21 +424,26 @@ test("a newer explicit thinking level replaces the remembered one", () => {
   assert.equal(second.thinkLevel, "off");
 });
 
-test("a fresh live session recovers its provable Codex harness before the first send", () => {
-  const live = { model: "gpt-5.6-sol", provider: "openai", sessionKey: "agent:max:slack:channel:c1:thread:1" };
-  const disk = { ...live, harnessId: "codex" };
-  assert.deepEqual(buildRunReactionNames(recoverMissingHarness(live, disk)), ["m_gpt_sol", "h_codex"]);
-});
+const PROFILE_CONFIG = {
+  agents: {
+    defaults: {
+      models: {
+        "anthropic/claude-opus-5-5": { agentRuntime: { id: "claude-cli" } },
+      },
+    },
+    entries: {
+      liv: { model: { primary: "anthropic/claude-opus-5-5" }, runtime: { type: "embedded" } },
+    },
+  },
+};
 
-test("live harness provenance is never replaced by a recovered prior harness", () => {
-  const live = { model: "cursor/cursor-grok-4.6-high", provider: "cursor", harnessId: "cursor" };
-  const disk = { model: "gpt-5.6-sol", provider: "openai", harnessId: "codex" };
-  assert.equal(recoverMissingHarness(live, disk), live);
-});
-
-test("recognizes the claude-cli provider as the Claude Code harness", () => {
-  assert.equal(resolveHarnessTile({ provider: "claude-cli" }), ":h_cc:");
-  assert.equal(resolveHarnessTile({ harnessId: "claude-code" }), ":h_cc:");
+test("the selected profile harness is carried by run provenance into the reply signature", () => {
+  const selected = resolveSelectedHarness(PROFILE_CONFIG, "liv");
+  const started = mergeProvenance(undefined, {model: "claude-opus-5-5", provider: "anthropic", harnessId: selected});
+  const completed = mergeProvenance(started, {model: "claude-opus-5-5", provider: "claude-cli"});
+  assert.deepEqual(buildRunReactionNames(completed).filter((name) => name.startsWith("h_")), ["h_cc"]);
+  assert.equal(resolveSelectedHarness(PROFILE_CONFIG, "liv", {agentHarnessId: "codex"}), "codex");
+  assert.equal(resolveSelectedHarness({agents: {entries: {liv: {}}}}, "liv", {modelProvider: "claude-cli"}), undefined);
 });
 
 test("route cache keys carry the agent so a shared thread cannot cross-contaminate", () => {

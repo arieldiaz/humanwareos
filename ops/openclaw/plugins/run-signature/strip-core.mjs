@@ -38,21 +38,22 @@ const MODEL_TILES = [
   [/llama/i, ":m_llama:"],
 ];
 
-const HARNESS_TILES = [
-  [/(?:^|[:/])codex(?:$|[:/])|codex-thread/i, ":h_codex:"],
-  [/(?:claude|acp).*claude|claude[-_. ]?code|claude[-_. ]?cli/i, ":h_cc:"],
-  [/cursor/i, ":h_cursor:"],
-  [/opencode/i, ":h_opencode:"],
-];
+// Keyed by the harness id the selected execution profile declares.
+const HARNESS_TILES = {
+  codex: ":h_codex:",
+  "claude-cli": ":h_cc:",
+  "cursor-agent": ":h_cursor:",
+  cursor: ":h_cursor:",
+  opencode: ":h_opencode:",
+};
 
 export function resolveModelTile(model) {
   const value = String(model ?? "");
   return MODEL_TILES.find(([pattern]) => pattern.test(value))?.[1];
 }
 
-export function resolveHarnessTile({ harnessId, provider, sessionKey } = {}) {
-  const value = [harnessId, provider, sessionKey].filter(Boolean).join("/");
-  return HARNESS_TILES.find(([pattern]) => pattern.test(value))?.[1];
+export function resolveHarnessTile(harnessId) {
+  return Object.hasOwn(HARNESS_TILES, harnessId ?? "") ? HARNESS_TILES[harnessId] : undefined;
 }
 
 export function normalizeThinkingLevel(value) {
