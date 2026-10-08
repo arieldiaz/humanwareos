@@ -11,6 +11,7 @@ import {
   recordSessionClose,
 } from "./close-report.mjs";
 import {ThreadLifecycle} from "./lifecycle.mjs";
+import {normalizeReactions} from "./strip-core.mjs";
 
 const closeTransport = new AsyncLocalStorage();
 
@@ -102,8 +103,12 @@ export function closeThreadTool(context, {config, ownerUserId, lifecycle, curren
   };
 }
 
+// Slack is the record of closure: a configured bot holds ✅ on the root.
+export function rootShowsClosed(reactions, botUserIds) {
+  return normalizeReactions(reactions).some(reaction => reaction.name === "white_check_mark" && (reaction.users ?? []).some(user => botUserIds.has(user)));
+}
+
 export function registerHostClose(api, {
-  stateRoot,
   isExcludedChannel,
   maintainStatusTile,
   recordOutboundStatus,
@@ -116,8 +121,25 @@ export function registerHostClose(api, {
   currentInbound,
 }) {
   const threadLeads = new Map();
+  const slackAccounts = async () => {
+    const accounts = await import(resolveSlackRuntimeModule("accounts"));
+    const tokens = new Map(), accountByBotUserId = new Map();
+    for (const accountId of Object.keys(api.config?.channels?.slack?.accounts ?? {})) {
+      const token = accounts.resolveSlackAccount({cfg: api.config, accountId})?.botToken;
+      const botUserId = await resolveBotUserId(token, botIdCache);
+      if (token) tokens.set(accountId, token);
+      if (botUserId) accountByBotUserId.set(botUserId, accountId);
+    }
+    return {tokens, accountByBotUserId};
+  };
   const lifecycle = new ThreadLifecycle({
-    root: join(stateRoot, "run-signature"),
+    closed: async (route, accountId) => {
+      const {tokens, accountByBotUserId} = await slackAccounts();
+      accountId = tokens.has(accountId) ? accountId : String(api.pluginConfig?.defaultSlackAccount ?? "").toLowerCase();
+      const actions = await import(resolveSlackRuntimeModule("actions"));
+      const reactions = await actions.listSlackReactions(route.channel, route.threadId, {cfg: api.config, accountId, token: tokens.get(accountId)});
+      return rootShowsClosed(reactions, new Set(accountByBotUserId.keys()));
+    },
     excluded: isExcludedChannel,
     project: async (status, turn) => {
       const accounts = await import(resolveSlackRuntimeModule("accounts"));
@@ -131,7 +153,6 @@ export function registerHostClose(api, {
     record: turn => recordOutboundStatus({dataRoot: resolveDataRoot(api.config, api.pluginConfig, turn.accountId),
       channel: turn.route.channel, threadId: turn.route.threadId, status: turn.status,
       agent: turn.accountId, sessionKey: turn.sessionKey, runId: turn.runId, recovery: turn.recovery}),
-    fault: (turn, reason) => appendFaultJournal({runId: turn.runId, channel: turn.route.channel, rootTs: turn.route.threadId, reason}),
     send: turn => sendThreadMessage(api.config, turn),
     snapshot: async close => {
       const accounts = await import(resolveSlackRuntimeModule("accounts"));
@@ -159,7 +180,6 @@ export function registerHostClose(api, {
     },
   });
 
-  api.on("gateway_start", () => lifecycle.recover());
   api.on("inbound_claim", async (event, ctx) => {
     if (String(event.channel ?? ctx.channelId ?? "").toLowerCase() !== "slack") return;
     const channel = String(event.conversationId ?? ctx.conversationId ?? "").replace(/^channel:/i, "").toUpperCase();
@@ -167,20 +187,12 @@ export function registerHostClose(api, {
     const senderId = event.senderId ?? ctx.senderId;
     if (!channel || !threadId || !senderId) return;
     if (isExcludedChannel(channel)) return;
-    const accounts = await import(resolveSlackRuntimeModule("accounts"));
-    const botUserIds = new Set();
-    const accountByBotUserId = new Map();
-    for (const accountId of Object.keys(api.config?.channels?.slack?.accounts ?? {})) {
-      const token = accounts.resolveSlackAccount({cfg: api.config, accountId})?.botToken;
-      const botUserId = await resolveBotUserId(token, botIdCache);
-      if (botUserId) {
-        botUserIds.add(botUserId);
-        accountByBotUserId.set(botUserId, accountId);
-      }
-    }
-    const route = {channel, threadId};
+    const {accountByBotUserId} = await slackAccounts();
+    const botUserIds = new Set(accountByBotUserId.keys());
+    const accountId = String(ctx.accountId ?? event.accountId ?? ctx.sessionKey?.match(/^agent:([^:]+)/i)?.[1] ?? "").toLowerCase();
+    // Only bot-authored messages can be fenced, so only they cost a Slack read.
     if (shouldClaimClosedBotInbound({
-      closingOrClosed: await lifecycle.isClosingOrClosed(route), senderId, botUserIds,
+      closingOrClosed: botUserIds.has(senderId) && await lifecycle.isClosingOrClosed({channel, threadId}, accountId), senderId, botUserIds,
     })) return {handled: true};
     const fallback = String(api.pluginConfig?.defaultSlackAccount ?? "").toLowerCase();
     if (!fallback) return;
@@ -193,7 +205,6 @@ export function registerHostClose(api, {
     });
     if (!lead) return {handled: true};
     threadLeads.set(routeKey, lead);
-    const accountId = String(ctx.accountId ?? event.accountId ?? ctx.sessionKey?.match(/^agent:([^:]+)/i)?.[1] ?? "").toLowerCase();
     if (accountId !== lead) return {handled: true};
   });
   const lifecycleHook = transition => async (event, ctx) => {

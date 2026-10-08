@@ -435,7 +435,7 @@ const plugin = {
 
     const workThreadPosts = new Set();
     registerWorkThreadTool(api, {resolveSlackRuntimeModule, retrySlackRateLimit, maintainStatusTile, workThreadPosts});
-    registerHostClose(api, {stateRoot: STATE_ROOT, isExcludedChannel, maintainStatusTile,
+    registerHostClose(api, {isExcludedChannel, maintainStatusTile,
       recordOutboundStatus, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule,
       resolveBotUserId, slackApi, botIdCache, currentInbound});
 
