@@ -1,0 +1,11 @@
+# Serve the request path from the runtime build surface when the file exists
+# there, otherwise from the data-plane content root. Use inside a handle_path
+# (or after uri strip_prefix) so {path} is relative to both roots.
+# import <this file> "<build root>" "<content root>"
+@hw_build file {
+	root {args[0]}
+	try_files {path} {path}/index.html
+}
+root * {args[1]}
+root @hw_build {args[0]}
+file_server
