@@ -1,27 +1,27 @@
 import assert from 'node:assert/strict';
-import {mkdtemp, readFile, writeFile, rm} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
+import {mkdtemp, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
 import {ThreadLifecycle} from './lifecycle.mjs';
 import {formatCloseReport, reportParts, summarizeTrajectory, writeCloseReport, recordSessionClose} from './close-report.mjs';
-import {conversationFenceKey} from './conversation-fence.mjs';
-import {closeThreadTool, loadSlackThreadSnapshot, sendThreadMessage, shouldClaimClosedBotInbound} from './host-close.mjs';
+import {closeThreadTool, loadSlackThreadSnapshot, rootShowsClosed, sendThreadMessage, shouldClaimClosedBotInbound} from './host-close.mjs';
 const manifest = JSON.parse(await readFile(new URL('./openclaw.plugin.json', import.meta.url)));
 const route = {channel: 'C123', threadId: '1790050400.000001'};
 const input = {messageId: '1790050402.000001', principal: 'UOWNER', accountId: 'max'};
 const params = {sessionKey: 'agent:max:slack:channel:c123:thread:1790050400.000001', runId: 'r1'};
-async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), 'host-close-'));
-  t.after(() => rm(root, {recursive: true, force: true}));
-  const receipts = new Map(), completed = new Set(), files = new Map(), order = [];
-  const options = {root,
-    record: async () => {}, fault: async () => {},
+// Stubbed Slack: the root's reactions are the only lifecycle record.
+function fixture() {
+  const receipts = new Map(), completed = new Set(), files = new Map(), order = [], root = [];
+  const options = {
+    record: async () => {},
+    closed: async () => rootShowsClosed(root, new Set(['UMAX'])),
     snapshot: async close => {order.push('snapshot'); return {report: formatCloseReport({agent: close.accountId}), evidence: close.evidence};},
     writeReport: async close => {order.push('file'); files.set(close.key, close.snapshot.report);},
     send: async close => {order.push('send'); receipts.set(close.key, true);},
     completeClose: async close => {order.push('completion'); completed.add(close.key);},
-    project: async status => {order.push(status);}};
+    project: async status => {order.push(status); root.splice(0, root.length, {name: {working: 'arrows_counterclockwise', act: 'raised_hand', closed: 'white_check_mark'}[status], users: ['UMAX']});}};
   return {options, root, receipts, completed, files, order, runtime: new ThreadLifecycle(options)};
 }
 test('plugin schema accepts the owner principal required by host closure', () => {
@@ -56,7 +56,7 @@ const current = {messageId: '300.000000', senderId: 'UOWNER', content: 'answer t
 const toolOptions = (runtime, inbound = current) => ({config: {channels: {slack: {accounts: {max: {}}}}}, ownerUserId: 'UOWNER', lifecycle: runtime, currentInbound: () => inbound});
 const closeArgs = {request: 'close the thread'};
 test('owner mixed instruction: the run finishes its work, then the host closes after the run ends', async t => {
-  const f = await fixture(t);
+  const f = fixture();
   await f.runtime.start(params);
   // "merge this, deploy, then close out this thread": other work happens in the run, then the agent requests close.
   const result = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute('call', closeArgs);
@@ -64,10 +64,10 @@ test('owner mixed instruction: the run finishes its work, then the host closes a
   assert.equal(f.completed.size, 0, 'close never takes effect mid-run');
   await f.runtime.end(params);
   assert.deepEqual(f.order, ['working', 'act', 'snapshot', 'file', 'send', 'completion', 'closed']);
-  assert.equal((await f.runtime.state(state => state.conversations[conversationFenceKey(route)])).status, 'closed');
+  assert.equal(await f.runtime.isClosingOrClosed(route), true);
 });
 test('the close fence starts at reservation and remains after completion', async t => {
-  const f = await fixture(t);
+  const f = fixture();
   await f.runtime.start(params);
   await f.runtime.requestClose(params.sessionKey, input);
   assert.equal(await f.runtime.isClosingOrClosed(route), false, 'a pending model request is not yet host closure');
@@ -75,7 +75,7 @@ test('the close fence starts at reservation and remains after completion', async
   assert.equal(await f.runtime.isClosingOrClosed(route), true);
 });
 test('non-owner close request is refused and nothing closes', async t => {
-  const f = await fixture(t);
+  const f = fixture();
   await f.runtime.start(params);
   for (const context of [{...toolContext, requesterSenderId: 'UOTHER'}, {...toolContext, requesterSenderId: undefined}]) {
     const result = await closeThreadTool(context, toolOptions(f.runtime)).execute('call', closeArgs);
@@ -87,7 +87,7 @@ test('non-owner close request is refused and nothing closes', async t => {
   assert.deepEqual(f.order, ['working', 'act']);
 });
 test('closure must quote the current owner message, not thread history', async t => {
-  const f = await fixture(t);
+  const f = fixture();
   await f.runtime.start(params);
   const stale = {...current, content: 'read the first post'};
   for (const [inbound, args] of [[stale, {request: 'close this'}], [current, {request: ''}], [current, {}], [{...current, senderId: 'UOTHER'}, closeArgs]])
@@ -96,55 +96,30 @@ test('closure must quote the current owner message, not thread history', async t
   assert.deepEqual(f.order, ['working', 'act']);
 });
 test('accepted closure records the real inbound message id and checks invocation authority at the write', async t => {
-  const f = await fixture(t);
+  const f = fixture();
   await f.runtime.start(params);
   const revoked = await closeThreadTool({...toolContext, assertInvocationCurrent: () => { throw new Error('stale invocation'); }}, toolOptions(f.runtime)).execute('call', closeArgs);
   assert.match(revoked.content[0].text, /stale invocation/);
   const accepted = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute('call', closeArgs);
   assert.match(accepted.content[0].text, /Only your final response after this call is delivered/);
-  assert.equal((await f.runtime.state(state => state.conversations[conversationFenceKey(route)])).pendingClose.messageId, '300.000000');
-});
-test('a close requested by a run interrupted by restart is dropped', async t => {
-  const f = await fixture(t);
-  await f.runtime.start(params);
-  await closeThreadTool(toolContext, toolOptions(f.runtime)).execute('call', closeArgs);
-  await new ThreadLifecycle(f.options).recover();
-  await f.runtime.start({...params, runId: 'r2'}); await f.runtime.end({...params, runId: 'r2'});
-  assert.equal(f.completed.size, 0);
+  assert.equal([...f.runtime.pendingClose.values()][0].messageId, '300.000000');
 });
 test('no close without a request: an owner run that never calls close_thread ends in act', async t => {
-  const f = await fixture(t);
+  const f = fixture();
   await f.runtime.start(params); await f.runtime.end(params);
   assert.deepEqual(f.order, ['working', 'act']); assert.equal(f.completed.size, 0);
   assert.equal(closeThreadTool({...toolContext, messageChannel: 'webchat'}, toolOptions(f.runtime)), undefined);
 });
 for (const accountId of ['liv','max']) test(`${accountId}: duplicate callbacks freeze once and complete after identical file/report`, async t => {
-  const f = await fixture(t);
+  const f = fixture();
   await Promise.all(Array.from({length: 4}, () => f.runtime.closeCommand(route, {...input, accountId})));
   assert.equal(f.receipts.size, 1); assert.equal(f.completed.size, 1);
   assert.equal(f.files.size, 1);
   assert.deepEqual(f.order, ['snapshot','file','send','completion','closed']);
-  const state = JSON.parse(await readFile(join(f.root, 'final-decisions.json')));
-  assert.equal(state.conversations[conversationFenceKey(route)].status, 'closed');
-  assert.equal(Object.values(state.closes)[0].accountId, accountId);
-  assert.equal(Object.values(state.closes)[0].principal, input.principal);
-});
-for (const boundary of ['snapshot', 'writeReport', 'send', 'completeClose', 'project']) test(`restart at ${boundary} recovers without a model turn or false closure`, async t => {
-  const f = await fixture(t);
-  const original = f.runtime[boundary];
-  f.runtime[boundary] = async (...args) => {if (boundary === 'send' || boundary === 'completeClose') await original(...args); throw new Error('crash');};
-  await assert.rejects(f.runtime.closeCommand(route, input), /crash/);
-  const state = JSON.parse(await readFile(join(f.root, 'final-decisions.json')));
-  assert.notEqual(Object.values(state.closes)[0].phase, 'complete');
-  assert.notEqual(state.conversations[conversationFenceKey(route)].status, 'closed');
-  await new ThreadLifecycle(f.options).recover();
-  assert.equal(f.receipts.size, 1); assert.equal(f.completed.size, 1);
-  assert.equal(f.order.at(-1), 'closed');
-  await new ThreadLifecycle(f.options).recover();
-  assert.equal(f.receipts.size, 1);
+  assert.deepEqual(f.root, [{name: 'white_check_mark', users: ['UMAX']}]);
 });
 test('closed is soft: the next admitted run replaces ✅ through ordinary admission and can be closed again', async t => {
-  const f = await fixture(t), key = conversationFenceKey(route);
+  const f = fixture();
   await f.runtime.closeCommand(route, input);
   assert.equal(f.order.at(-1), 'closed');
   await f.runtime.closeCommand(route, {...input, messageId: '1790050403.000001'});
@@ -153,7 +128,7 @@ test('closed is soft: the next admitted run replaces ✅ through ordinary admiss
   await f.runtime.start({...params, runId: 'r2'});
   await f.runtime.end({...params, runId: 'r2'});
   assert.deepEqual(f.order.slice(-2), ['working', 'act']);
-  assert.equal((await f.runtime.state(state => state.conversations[key])).status, 'act');
+  assert.equal(await f.runtime.isClosingOrClosed(route), false);
   await f.runtime.closeCommand(route, {...input, messageId: '1790050404.000001'});
   assert.equal(f.order.at(-1), 'closed');
   assert.equal(f.receipts.size, 2); assert.equal(f.completed.size, 2);
@@ -165,20 +140,11 @@ test('a send the hook suppressed is reported as settled, not retried', async () 
   await assert.rejects(sendThreadMessage({}, {key: 'k', route, text: 'text'}, failed), /down/);
 });
 test('a run that ends after a close cannot overwrite the closed tile', async t => {
-  const f = await fixture(t);
+  const f = fixture();
   await f.runtime.start(params);
   await f.runtime.closeCommand(route, input);
   await f.runtime.end(params);
   assert.equal(f.order.at(-1), 'closed');
-});
-test('a run interrupted by restart restores the prior status', async t => {
-  const f = await fixture(t);
-  await f.runtime.start(params);
-  await f.runtime.end(params);
-  await f.runtime.start({...params, runId: 'r2'});
-  await new ThreadLifecycle(f.options).recover();
-  assert.deepEqual(f.order, ['working', 'act', 'working', 'act']);
-  assert.equal((await f.runtime.state(state => Object.values(state.turns).at(-1))).phase, 'failed');
 });
 test('missing usage is reported as unavailable, not zero', () => {
   const report = formatCloseReport({agent: 'max'});
@@ -203,7 +169,8 @@ test('segmented report retries reuse stable per-part intents and preserve semant
   assert.equal(sent.join(''), report); assert.equal(receipts.size, parts.length);
 });
 test('completion event is operation-idempotent and matches the already written Markdown', async t => {
-  const f = await fixture(t), report = formatCloseReport({agent: 'max'}), operationId = 'close:0';
+  const f = {root: await mkdtemp(join(tmpdir(), 'host-close-'))}, report = formatCloseReport({agent: 'max'}), operationId = 'close:0';
+  t.after(() => rm(f.root, {recursive: true, force: true}));
   const view = await writeCloseReport({dataRoot: f.root, operationId, report});
   const event = {dataRoot: f.root, operationId, report, agent: 'max', channel: route.channel, thread: route.threadId, now: new Date('2026-09-30T12:00:00Z')};
   await recordSessionClose(event); await recordSessionClose(event);
@@ -211,32 +178,27 @@ test('completion event is operation-idempotent and matches the already written M
   assert.equal((await readFile(join(f.root, 'evidence/sessions/events/2026-09-30.jsonl'), 'utf8')).trim().split('\n').length, 1);
 });
 
-test('expired uncertain close receipt stops for reconciliation', async t => {
-  const f = await fixture(t);
-  f.runtime.send = async () => {throw new Error('unknown');};
-  await assert.rejects(f.runtime.closeCommand(route, input));
-  await f.runtime.state(state => {Object.values(state.closes)[0].sendStartedAt = Date.now() - 86400001;});
-  await new ThreadLifecycle(f.options).recover();
-  assert.equal(f.receipts.size, 0);
-  assert.equal((await f.runtime.state(state => Object.values(state.closes)[0])).phase, 'sending');
-  assert.notEqual((await f.runtime.state(state => state.conversations[conversationFenceKey(route)])).status, 'closed');
+
+test('root tiles project with no state directory at all', async t => {
+  const missing = join(tmpdir(), `no-openclaw-state-${process.pid}`), prior = process.env.OPENCLAW_STATE_DIR;
+  process.env.OPENCLAW_STATE_DIR = missing;
+  t.after(() => { if (prior === undefined) delete process.env.OPENCLAW_STATE_DIR; else process.env.OPENCLAW_STATE_DIR = prior; });
+  const f = fixture();
+  await f.runtime.start(params); await f.runtime.end(params);
+  await f.runtime.closeCommand(route, input);
+  assert.deepEqual(f.order, ['working', 'act', 'snapshot', 'file', 'send', 'completion', 'closed']);
+  assert.equal(existsSync(missing), false);
 });
-for (const phase of ['reserved', 'snapshot', 'file', 'sending', 'delivered', 'recorded', 'complete']) test(`failed journal persistence at ${phase} replays the same operation safely`, async t => {
-  const f = await fixture(t), base = f.runtime.state.bind(f.runtime);
-  let interrupted = false;
-  f.runtime.state = operation => base(async state => {
-    const result = await operation(state);
-    if (!interrupted && Object.values(state.closes ?? {}).some(close => close.phase === phase)) {
-      interrupted = true; throw new Error('journal persistence failed');
-    }
-    return result;
-  });
-  await assert.rejects(f.runtime.closeCommand(route, input), /persistence/);
-  const restarted = new ThreadLifecycle(f.options);
-  // A request whose reservation never committed is repeated by the caller.
-  // Once reserved, startup recovery needs no inbound/model turn.
-  if (phase === 'reserved') await restarted.closeCommand(route, input);
-  else await restarted.recover();
-  assert.equal(f.receipts.size, 1); assert.equal(f.completed.size, 1);
-  assert.equal((await restarted.state(state => state.conversations[conversationFenceKey(route)])).status, 'closed');
+test('replay start, end, close and repeat close against Slack', async () => {
+  const f = fixture();
+  await f.runtime.start(params);
+  assert.deepEqual(f.root, [{name: 'arrows_counterclockwise', users: ['UMAX']}]);
+  await f.runtime.end(params);
+  assert.deepEqual(f.root, [{name: 'raised_hand', users: ['UMAX']}]);
+  await f.runtime.closeCommand(route, input);
+  assert.deepEqual(f.root, [{name: 'white_check_mark', users: ['UMAX']}]);
+  await f.runtime.closeCommand(route, {...input, messageId: '1790050409.000001'});
+  assert.equal(f.receipts.size, 1, 'a repeated close while ✅ is on the root is a no-op');
+  f.root.splice(0, 1, {name: 'white_check_mark', users: ['UOWNER']});
+  assert.equal(await f.runtime.isClosingOrClosed(route), false, 'a human-held ✅ is not host closure');
 });
