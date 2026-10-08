@@ -19,7 +19,7 @@ export function registerWorkThreadTool(api, {
   maintainStatusTile,
   workThreadPosts,
 }) {
-  api.registerTool?.((context) => {
+  api.registerTool?.({contextVersion: 2, create: context => {
     if (context.messageChannel !== "slack") return;
     const currentChannel = String(context.nativeChannelId ?? "").replace(/^channel:/i, "").toUpperCase();
     const agentId = String(context.agentId ?? "").toLowerCase();
@@ -87,5 +87,5 @@ export function registerWorkThreadTool(api, {
         }
       },
     };
-  }, {name: "start_work_thread"});
+  }}, {name: "start_work_thread"});
 }
