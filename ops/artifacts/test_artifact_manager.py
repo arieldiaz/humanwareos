@@ -136,6 +136,24 @@ class ArtifactManagerTests(unittest.TestCase):
                          [["a1", "a2"], ["s1"], ["a3"], ["b1"], ["a4"]])
         self.assertNotIn("session", migrated["projects"][0]["artifacts"][0])
 
+    def test_locate_prints_the_revision_for_an_address_and_media_by_filename(self) -> None:
+        self.promote("slack:a", "Draft")
+        self.promote("slack:a", "Final", body="<p>final</p>")
+        revisions = self.root / "revisions" / "learning"
+        self.assertEqual(am.locate_artifact(self.root, "learning/1"), revisions / "1-v2")
+        self.assertEqual(am.locate_artifact(self.root, "https://example.com/artifacts/learning/1/versions/1/"), revisions / "1-v1")
+        for address, message in (("learning/2", "no artifact learning/2"), ("learning/1/versions/3", "no version 3"),
+                                 ("Learning", "not an artifact address")):
+            with self.assertRaisesRegex(LookupError, message):
+                am.locate_artifact(self.root, address)
+        media = Path(self.temporary.name) / "media"
+        (media / "tool-image-generation").mkdir(parents=True)
+        (media / "tool-image-generation" / "cat.png").write_bytes(b"png")
+        self.assertEqual(am.locate_media("cat.png", [media, media / "missing"]), [media / "tool-image-generation" / "cat.png"])
+        for name, message in (("dog.png", "no media file dog.png"), ("../cat.png", "bare filename")):
+            with self.assertRaisesRegex(LookupError, message):
+                am.locate_media(name, [media])
+
 
 if __name__ == "__main__":
     unittest.main()

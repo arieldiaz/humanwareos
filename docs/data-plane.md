@@ -42,6 +42,10 @@ Derived files are reproducible and may be overwritten or discarded. Every durabl
 
 Imports preserve an external corpus exactly as received, including its original relative paths and a checksum manifest. A pre-consolidation repository tree belongs here when it is useful for later inspection or search but is no longer source configuration.
 
+## Locating things
+
+Agents find data-plane items by their identifiers, never by searching the home folder. `artifact_manager.py locate artifact <project>/<n>[/versions/<k>]` prints the canonical revision directory for an artifact address from the registry; artifacts have no per-project working path. `artifact_manager.py locate media <filename>` prints a generated media file from the configured media roots: `generated/media/` and the OpenClaw state `media/` directory. Both exit nonzero when nothing matches.
+
 ## Sessions
 
 Channels are inputs to the session ledger, not durable memory. A canonical conversation event records channel adapter, external thread identifier, agent identity, selected execution profile, timestamps, attachments, delivery result, and the same outbound status that rendered the root tile. A channel export may preserve the surface transcript, but memory promotion is a separate deliberate operation.

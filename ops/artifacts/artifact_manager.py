@@ -41,6 +41,9 @@ SHELL_SCRIPT_REFERENCE = 'src="/artifacts/artifact-shell.js"'
 VERSIONS, DIFF = "versions", "diff"
 LEGACY_LABEL = re.compile(r"\s*(?:·\s*(?:[A-Z]?\d+(?:\.\d+)?|[A-Z]\d*)|\((?:[rv]?\d+)\))\s*$")
 DATE_FORMATS = ("%Y-%m-%d", "%d %b %Y", "%B %d, %Y", "%b %d, %Y", "%b %d %Y")
+ARTIFACT_ADDRESS = re.compile(r"(?:.*/artifacts/)?([a-z0-9-]+)/(\d+)(?:/versions/(\d+))?/?")
+MEDIA_ROOTS = [Path(DATA_ROOT) / "generated" / "media"] if DATA_ROOT else []
+MEDIA_ROOTS.append(Path(os.environ.get("OPENCLAW_STATE_DIR") or Path.home() / ".openclaw") / "media")
 
 
 # Registry: projects own artifacts numbered 1..N; artifacts own versions numbered 1..N.
@@ -417,6 +420,32 @@ def create(args: argparse.Namespace) -> None:
     print(artifact_url(project["id"], artifact["number"]))
 
 
+# Locate: answer "where is it" from the registry and the configured media roots, never from a home-folder search.
+
+def locate_artifact(root: Path, address: str) -> Path:
+    match = ARTIFACT_ADDRESS.fullmatch(address.strip())
+    if not match:
+        raise LookupError(f"not an artifact address: {address} (expected <project>/<n>[/versions/<k>])")
+    project_id, number = match[1], int(match[2])
+    project = find_project(load_registry(root), project_id)
+    artifact = next((a for a in project["artifacts"] if a["number"] == number), None) if project else None
+    if not artifact:
+        raise LookupError(f"no artifact {project_id}/{number} in {registry_path(root)}")
+    k = int(match[3] or artifact["current_version"])
+    if not 1 <= k <= len(artifact["versions"]):
+        raise LookupError(f"artifact {project_id}/{number} has no version {k}")
+    return revisions_root(root) / project["id"] / artifact["versions"][k - 1]["revision"]
+
+
+def locate_media(name: str, roots: list[Path]) -> list[Path]:
+    if not name or Path(name).name != name:
+        raise LookupError(f"media lookup takes a bare filename, not a path: {name}")
+    found = sorted(path for root in roots if root.is_dir() for path in root.rglob(name) if path.is_file())
+    if not found:
+        raise LookupError(f"no media file {name} in " + ", ".join(map(str, roots)))
+    return found
+
+
 # Migration from the flat registry: group by creating session; without one, a run of consecutive same-title revisions.
 
 def revision_date(root: Path, project_id: str, item: dict) -> str:
@@ -487,11 +516,26 @@ def main() -> None:
     migrate_parser = sub.add_parser("migrate", help="plan the session migration; --write applies it to --root")
     migrate_parser.add_argument("--sessions", type=Path, required=True, help='JSON {"<project>/<revision>": "<session>"|null}')
     migrate_parser.add_argument("--write", action="store_true")
+    locate_parser = sub.add_parser("locate", help="print the exact path of an artifact revision or generated media file")
+    locate_parser.add_argument("kind", choices=("artifact", "media"))
+    locate_parser.add_argument("target", help="<project>/<n>[/versions/<k>] or artifact URL; media filename")
     args = parser.parse_args()
+    if args.command == "locate" and args.kind == "media":
+        try:
+            print("\n".join(map(str, locate_media(args.target, MEDIA_ROOTS))))
+        except LookupError as error:
+            raise SystemExit(f"locate: {error}")
+        return
     if args.root is None or args.review_root is None:
         parser.error("no data root: set HUMANWARE_DATA_ROOT or run from an assembled runtime")
     if args.command == "create":
         create(args)
+        return
+    if args.command == "locate":
+        try:
+            print(locate_artifact(args.root, args.target))
+        except LookupError as error:
+            raise SystemExit(f"locate: {error}")
         return
     registry = load_registry(args.root)
     if args.command == "migrate":
