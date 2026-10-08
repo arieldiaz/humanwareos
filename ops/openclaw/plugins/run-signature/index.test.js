@@ -84,6 +84,19 @@ test("registers one atomic Slack work-thread tool with the normal high-reasoning
   assert.match(tool.description, /durable high-reasoning session/);
 });
 
+test("exposes start_work_thread to claude-cli loopback sessions without nativeChannelId", () => {
+  const tools = [];
+  runSignaturePlugin.register({ config: {}, on() {}, registerTool(factory, options) { tools.push({ factory, options }); } });
+  const tool = tools[0].factory.create({
+    messageChannel: "slack",
+    agentId: "liv",
+    agentAccountId: "liv",
+    sessionKey: "agent:liv:slack:channel:c0br94zuu9y:thread:1791466852.431599",
+  });
+  assert.equal(tool?.name, "start_work_thread");
+  assert.equal(tools[0].factory.create({ messageChannel: "slack", agentId: "liv", sessionKey: "agent:liv:main" }), undefined);
+});
+
 // --- tiles ---
 
 test("maps the configured model and harness tiles", () => {
