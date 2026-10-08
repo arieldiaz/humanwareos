@@ -165,3 +165,14 @@ fi
 
 printf 'build-runtime: built %s\n' "$FINAL_DIR"
 [ "$ACTIVATE" -eq 0 ] || printf 'build-runtime: active %s\n' "$RUNTIME_ROOT/current"
+
+# Caddy reads its Caddyfile only on load; reload so routes match the activated surface.
+CADDYFILE="$RUNTIME_ROOT/current/config/services/caddy/Caddyfile"
+if [ "$ACTIVATE" -eq 1 ] && [ -f "$CADDYFILE" ]; then
+  CADDY=${CADDY:-$(command -v caddy 2>/dev/null || printf '%s' /opt/homebrew/bin/caddy)}
+  "$CADDY" reload --config "$CADDYFILE" --adapter caddyfile >&2 || {
+    printf 'build-runtime: Caddy reload failed; running Caddy still serves the previous config. Fix, then run: "%s" reload --config "%s" --adapter caddyfile\n' "$CADDY" "$CADDYFILE" >&2
+    exit 1
+  }
+  printf 'build-runtime: reloaded Caddy with %s\n' "$CADDYFILE"
+fi

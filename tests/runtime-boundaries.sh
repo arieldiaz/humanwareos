@@ -76,6 +76,21 @@ DEPENDENCY_BUILD=$(printf '%s\n' "$DEPENDENCY_OUTPUT" | sed -n 's/^build-runtime
 [ ! -e "$DEPENDENCY_BUILD/config/services/openclaw.json" ]
 [ ! -e "$DEPENDENCY_BUILD/config/ops" ]
 
+# Activation reloads Caddy with the activated Caddyfile and reports reload failure.
+mkdir -p "$INSTANCE/services/caddy"
+printf '%s\n' ':80' > "$INSTANCE/services/caddy/Caddyfile"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s"\nexit "${STUB_EXIT:-0}"\n' "$TEST_ROOT/caddy-args" > "$TEST_ROOT/caddy"
+chmod +x "$TEST_ROOT/caddy"
+CADDY="$TEST_ROOT/caddy" "$FRAMEWORK/scripts/build-runtime.sh" "$FRAMEWORK" "$INSTANCE" --activate >/dev/null 2>&1
+[ "$(cat "$TEST_ROOT/caddy-args")" = "reload --config $RUNTIME/current/config/services/caddy/Caddyfile --adapter caddyfile" ]
+sleep 1
+if STUB_EXIT=1 CADDY="$TEST_ROOT/caddy" "$FRAMEWORK/scripts/build-runtime.sh" "$FRAMEWORK" "$INSTANCE" --activate >/dev/null 2>"$TEST_ROOT/reload-err"; then
+  printf '%s\n' "runtime-boundaries: Caddy reload failure was not reported" >&2
+  exit 1
+fi
+grep -q 'Caddy reload failed' "$TEST_ROOT/reload-err"
+rm -r "$INSTANCE/services/caddy"
+
 # Route declarations cannot make either trace feed public.
 cp "$INSTANCE/surfaces/domain.json" "$TEST_ROOT/domain.json"
 "$JQ" '(.routes[] | select(.id == "activity").visibility) = "public"' "$TEST_ROOT/domain.json" > "$INSTANCE/surfaces/domain.json"
