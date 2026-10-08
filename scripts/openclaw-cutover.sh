@@ -20,7 +20,7 @@ prepare() {
   local framework instance data version output runtime build_id transaction staged_bin candidate
   framework=$(CDPATH= cd -- "$1" && pwd)
   instance=$(CDPATH= cd -- "$2" && pwd)
-  "$framework/scripts/validate-instance.sh" "$framework" "$instance"
+  "$framework/scripts/validate-instance.sh" "$framework" "$instance" >&2
   data=$($JQ -r '.paths.dataRoot' "$instance/humanware.instance.json")
   version=$($JQ -r '.openclaw.version' "$instance/humanware.instance.json")
   output=$("$framework/scripts/build-runtime.sh" "$framework" "$instance")
@@ -30,10 +30,10 @@ prepare() {
   transaction="$data/operations/cutovers/openclaw-$build_id"
   mkdir -p "$transaction"
   chmod 700 "$transaction"
-  /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" stage --transaction "$transaction" --version "$version"
+  /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" stage --transaction "$transaction" --version "$version" >&2
   staged_bin="$transaction/staged/node_modules/openclaw/openclaw.mjs"
   candidate="$runtime/config/openclaw/openclaw.json"
-  OPENCLAW_STATE_DIR="$transaction/validation-state" OPENCLAW_CONFIG_PATH="$candidate" "$NODE_BIN" "$staged_bin" config validate
+  OPENCLAW_STATE_DIR="$transaction/validation-state" OPENCLAW_CONFIG_PATH="$candidate" "$NODE_BIN" "$staged_bin" config validate >&2
   $JQ -n \
     --arg framework "$framework" --arg instance "$instance" --arg runtime "$runtime" \
     --arg transaction "$transaction" --arg version "$version" \
