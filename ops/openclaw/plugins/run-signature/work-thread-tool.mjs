@@ -21,7 +21,13 @@ export function registerWorkThreadTool(api, {
 }) {
   api.registerTool?.({contextVersion: 2, create: context => {
     if (context.messageChannel !== "slack") return;
-    const currentChannel = String(context.nativeChannelId ?? "").replace(/^channel:/i, "").toUpperCase();
+    // OpenClaw's loopback MCP surface (claude-cli) omits nativeChannelId; fall back to the delivery target, then the session key.
+    const currentChannel = String(
+      context.nativeChannelId
+        || context.deliveryContext?.to
+        || /:slack:(?:channel|group):([^:]+)/i.exec(context.sessionKey ?? "")?.[1]
+        || "",
+    ).replace(/^channel:/i, "").toUpperCase();
     const agentId = String(context.agentId ?? "").toLowerCase();
     const accountId = context.agentAccountId ?? agentId;
     if (!currentChannel || !agentId || !accountId) return;
