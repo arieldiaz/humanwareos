@@ -75,7 +75,10 @@ activate() {
   chmod 700 "$report"
 
   "$framework/scripts/runtime-restart-guard.sh" verify "$control" "$approval" "$instance_id" 0
-  if "$NODE_BIN" "$candidate_bin" gateway suspend --wait 60 --expect-final --json > "$report/suspend.json" 2> "$report/suspend.err"; then
+  "$NODE_BIN" "$candidate_bin" gateway status --json > "$report/gateway-pre-suspend-status.json"
+  if $JQ -e '.service.loaded == false and .port.status == "free"' "$report/gateway-pre-suspend-status.json" >/dev/null; then
+    active=0
+  elif "$NODE_BIN" "$candidate_bin" gateway suspend --wait 60 --expect-final --json > "$report/suspend.json" 2> "$report/suspend.err"; then
     active=0
   fi
   if ! "$framework/scripts/runtime-restart-guard.sh" verify "$control" "$approval" "$instance_id" "$active"; then
