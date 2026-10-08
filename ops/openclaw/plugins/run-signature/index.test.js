@@ -84,6 +84,18 @@ test("registers one atomic Slack work-thread tool with the normal high-reasoning
   assert.match(tool.description, /durable high-reasoning session/);
 });
 
+test("exposes start_work_thread to claude-cli loopback sessions that lack nativeChannelId", () => {
+  const tools = [];
+  runSignaturePlugin.register({ config: {}, on() {}, registerTool(factory, options) { tools.push({ factory, options }); } });
+  const sessionKey = "agent:liv:slack:channel:c0br94zuu9y:thread:1791466852.431599";
+  // Shape built by OpenClaw 2026.9.8 tool-resolution for the loopback surface: agentId from the session key, no nativeChannelId or sender.
+  const fromSessionKey = tools[0].factory.create({ messageChannel: "slack", agentId: "liv", sessionKey });
+  assert.equal(fromSessionKey?.name, "start_work_thread");
+  const fromDelivery = tools[0].factory.create({ messageChannel: "slack", agentId: "liv", agentAccountId: "liv", sessionKey: "agent:liv:main", deliveryContext: { channel: "slack", to: "channel:C0BR94ZUU9Y" } });
+  assert.equal(fromDelivery?.name, "start_work_thread");
+  assert.equal(tools[0].factory.create({ messageChannel: "slack", agentId: "liv", sessionKey: "agent:liv:main" }), undefined);
+});
+
 // --- tiles ---
 
 test("maps the configured model and harness tiles", () => {

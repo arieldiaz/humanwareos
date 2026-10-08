@@ -1,4 +1,5 @@
 import {matchSlackChannel, startSlackWorkThread} from "../../slack-spin-out.mjs";
+import {resolveSlackChannel} from "./conversation-fence.mjs";
 
 async function listSlackChannels(token) {
   const channels = [];
@@ -21,7 +22,7 @@ export function registerWorkThreadTool(api, {
 }) {
   api.registerTool?.({contextVersion: 2, create: context => {
     if (context.messageChannel !== "slack") return;
-    const currentChannel = String(context.nativeChannelId ?? "").replace(/^channel:/i, "").toUpperCase();
+    const currentChannel = resolveSlackChannel({channel: context.nativeChannelId, origin: context.deliveryContext, sessionKey: context.sessionKey});
     const agentId = String(context.agentId ?? "").toLowerCase();
     const accountId = context.agentAccountId ?? agentId;
     if (!currentChannel || !agentId || !accountId) return;

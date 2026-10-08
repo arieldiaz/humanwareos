@@ -12,6 +12,9 @@ import {
 import {registerWorkThreadTool} from "./work-thread-tool.mjs";
 import {isCloseTransport, registerHostClose} from "./host-close.mjs";
 import {createStatusProjector} from "./status-projector.mjs";
+import {resolveSlackChannel, slackRouteFromSessionKey} from "./conversation-fence.mjs";
+
+export {slackRouteFromSessionKey};
 
 export {closeThreadTool, sendThreadMessage, shouldClaimClosedBotInbound} from "./host-close.mjs";
 
@@ -272,18 +275,14 @@ export function sessionKeyForRoot(sessionKey, root) {
   return rekeyed === sessionKey ? undefined : rekeyed;
 }
 
-export function slackRouteFromSessionKey(sessionKey) {
-  const match = String(sessionKey ?? "").match(/:slack:channel:([^:]+):thread:([^:]+)$/i);
-  if (!match) return;
-  return { channel: match[1].toUpperCase(), rootTs: match[2] };
-}
-
 export function resolveSlackChannelId(event, ctx) {
-  const direct = String(event?.to ?? event?.conversationId ?? event?.metadata?.channelId ?? event?.metadata?.channel ?? ctx?.conversationId ?? "")
-    .replace(/^channel:/i, "")
-    .toUpperCase();
-  if (/^[CDG][A-Z0-9]+$/.test(direct)) return direct;
-  return slackRouteFromSessionKey(ctx?.sessionKey)?.channel;
+  return resolveSlackChannel({
+    channel: event?.to,
+    sessionKey: ctx?.sessionKey,
+    origin: {
+      conversationId: event?.conversationId ?? event?.metadata?.channelId ?? event?.metadata?.channel ?? ctx?.conversationId,
+    },
+  });
 }
 
 // The route cache exists for a send that outran its own session's events. Two

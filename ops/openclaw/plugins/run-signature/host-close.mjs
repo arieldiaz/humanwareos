@@ -74,10 +74,10 @@ export function closeThreadTool(context, {config, ownerUserId, lifecycle, curren
     async execute(_toolCallId, args) {
       if (!/^U[A-Z0-9]+$/.test(ownerUserId ?? "")) return reply("Closure requires configured ownerUserId", true);
       const inbound = currentInbound?.(context.sessionKey);
-      if (context.requesterSenderId !== ownerUserId || inbound?.senderId !== ownerUserId) return reply("Refused: only the owner can close this thread.", true);
+      if (inbound?.senderId !== ownerUserId) return reply("Refused: only the owner can close this thread.", true);
       if (!config?.channels?.slack?.accounts?.[accountId]) return reply("Closure requires a configured Slack sender", true);
       const request = String(args?.request ?? "").trim();
-      if (!request || !inbound.messageId || !String(inbound.content ?? "").includes(request))
+      if (!request || !inbound?.messageId || !String(inbound.content ?? "").includes(request))
         return reply("Refused: the request must be quoted from the owner's current message, not thread history.", true);
       try {
         await lifecycle.requestClose(context.sessionKey, {messageId: inbound.messageId, principal: ownerUserId, accountId}, () => context.assertInvocationCurrent?.());
