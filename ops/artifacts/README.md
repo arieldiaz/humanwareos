@@ -13,3 +13,5 @@ Promote a staged directory as the working session's artifact. The first promotio
 Never write the revision store, registry, or projection by hand. Verify the store and projection with `artifact_manager.py verify`, and rebuild the projection with `rebuild`.
 
 `migrate --sessions <FILE>` converts a pre-schema-3 registry: it groups revisions strictly by creating session (`{"<project>/<revision>": "<session>"|null}`), numbers artifacts and versions by date, keeps old addresses as redirects, and prints the plan with the current registry checksum. It writes only with `--write`; rehearse against a copied store first.
+
+`group --plan <FILE>` merges projects and folds artifacts: `{"projects": [{"id", "name", "merge": [<project>]}], "groups": [{"project", "title", "artifacts": [<n> | "<project>/<n>"]}]}`. Merged revisions are linked, never moved; folded versions are renumbered by date; every retired address becomes a registry redirect, and `--write` records the old-to-new mapping under `manifests/groupings/`. Without `--write` it prints the resulting layout, mapping, and warnings. Re-running an applied plan changes nothing.

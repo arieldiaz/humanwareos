@@ -78,6 +78,14 @@ def current(artifact: dict) -> dict:
     return artifact["versions"][artifact["current_version"] - 1]
 
 
+def artifact_title(artifact: dict) -> str:
+    return artifact.get("title") or current(artifact)["title"]
+
+
+def artifact_sessions(artifact: dict) -> list[str]:
+    return [*([artifact["session"]] if artifact.get("session") else []), *artifact.get("folded_sessions", [])]
+
+
 def artifact_url(project_id: str, number: int) -> str:
     return f"/artifacts/{project_id}/{number}/"
 
@@ -122,7 +130,7 @@ def versioned_item(project_id: str, artifact: dict) -> dict:
         if k > 1:
             record |= {"supersedes": f"v{k - 1}", "diff_url": f"{record['url']}{DIFF}/"}
         versions.append(record)
-    return {"id": f"{project_id}-{number}", "title": current(artifact)["title"],
+    return {"id": f"{project_id}-{number}", "title": artifact_title(artifact),
             "url": artifact_url(project_id, number), "current_version": f"v{artifact['current_version']}",
             "versions": versions}
 
@@ -154,7 +162,7 @@ def project_page(project: dict) -> str:
         number, count, shown = artifact["number"], len(artifact["versions"]), current(artifact)
         url = artifact_url(project["id"], number)
         links = f'<a href="{url}{VERSIONS}/">{count} versions</a>' if count > 1 else ""
-        cards.append(card(url, f'{number} · {shown["title"]}', shown["date_label"], f"#{number}", links))
+        cards.append(card(url, f'{number} · {artifact_title(artifact)}', shown["date_label"], f"#{number}", links))
     return card_page(project["name"], f'{len(project["artifacts"])} artifacts', cards)
 
 
@@ -167,9 +175,9 @@ def versions_page(project_id: str, artifact: dict, footer: str) -> str:
                   if version["number"] > 1 else "")
              for version in reversed(artifact["versions"])]
     url = artifact_url(project_id, number)
-    intro = (f'<a href="{url}">{number} · {html.escape(current(artifact)["title"])}</a> · {count} '
+    intro = (f'<a href="{url}">{number} · {html.escape(artifact_title(artifact))}</a> · {count} '
              f'{"version" if count == 1 else "versions"} · <a href="{url}{VERSIONS}/history/">History list</a>')
-    return card_page(current(artifact)["title"], intro, cards, footer)
+    return card_page(artifact_title(artifact), intro, cards, footer)
 
 
 def redirect_page(target: str) -> str:
@@ -195,7 +203,7 @@ def validate_document(path: Path, projects: list[str]) -> list[str]:
     return errors
 
 
-def verify_store(root: Path, registry: dict, strict_shell: bool = True) -> list[str]:
+def verify_store(root: Path, registry: dict, strict_shell: bool = True, planned: frozenset = frozenset()) -> list[str]:
     errors = [] if registry.get("schemaVersion") == SCHEMA else [f"unsupported registry schema: {registry.get('schemaVersion')!r}"]
     claimed: set[str] = set()
     sessions: dict[str, str] = {}
@@ -213,7 +221,7 @@ def verify_store(root: Path, registry: dict, strict_shell: bool = True) -> list[
             if not isinstance(number, int) or number < 1 or str(number) in addresses:
                 errors.append(f"invalid or duplicate artifact number: {label}")
             addresses.add(str(number))
-            if session := artifact.get("session"):
+            for session in artifact_sessions(artifact):
                 if session in sessions:
                     errors.append(f"session makes more than one artifact: {session} ({sessions[session]}, {label})")
                 sessions[session] = label
@@ -225,6 +233,8 @@ def verify_store(root: Path, registry: dict, strict_shell: bool = True) -> list[
                 errors.append(f"current version is not registered: {label}")
             for version in versions:
                 target = revisions_root(root) / project_id / str(version.get("revision", ""))
+                if (project_id, version.get("revision")) in planned:
+                    continue
                 if not SLUG.fullmatch(str(version.get("revision", ""))) or not (target / "index.html").is_file():
                     errors.append(f"missing revision: {label}/v{version['number']}")
                 elif strict_shell and not target.is_symlink():
@@ -234,6 +244,19 @@ def verify_store(root: Path, registry: dict, strict_shell: bool = True) -> list[
                 if not SLUG.fullmatch(legacy) or legacy.isdigit() or legacy in addresses:
                     errors.append(f"invalid or duplicate legacy address: {project_id}/{legacy}")
                 addresses.add(legacy)
+    live = {project["id"]: {str(a["number"]) for a in project["artifacts"]} | {l for a in project["artifacts"] for l in a.get("legacy", {})}
+            for project in registry.get("projects", [])}
+    for old, new in registry.get("redirects", {}).items():
+        parts = old.split("/")
+        if not all(SLUG.fullmatch(part) for part in parts) or parts[0] in claimed - set(live) or (
+                parts[0] in live and (len(parts) == 1 or parts[1] in live[parts[0]])):
+            errors.append(f"redirect shadows a live address: {old}")
+        try:
+            if "/" in new and resolve(registry, new) or find_project(registry, new):
+                continue
+            raise LookupError(new)
+        except LookupError:
+            errors.append(f"redirect target is not live: {old} -> {new}")
     return errors
 
 
@@ -293,10 +316,13 @@ def build_projection(root: Path, registry: dict, destination: Path) -> None:
             project_artifact(root, project_dir, project["id"], artifact)
         for alias in project.get("aliases", []):
             (destination / alias).symlink_to(project["id"], target_is_directory=True)
+    for old, new in registry.get("redirects", {}).items():
+        (destination / old).mkdir(parents=True, exist_ok=True)
+        (destination / old / "index.html").write_text(redirect_page(address_url(new)))
 
 
-def expected_entries(project: dict) -> set[str]:
-    entries = {"index.html"}
+def expected_entries(project: dict, redirects: dict) -> set[str]:
+    entries = {"index.html"} | {old.split("/")[1] for old in redirects if old.startswith(f"{project['id']}/")}
     for artifact in project["artifacts"]:
         entries |= {str(artifact["number"]), f"{artifact['number']}.footer.html", *artifact.get("legacy", {})}
     return entries
@@ -311,6 +337,7 @@ def verify_projection(root: Path, review_root: Path, registry: dict) -> list[str
         errors.append("missing or invalid projected registry")
     expected = {project["id"] for project in registry["projects"]}
     aliases = {alias: project["id"] for project in registry["projects"] for alias in project.get("aliases", [])}
+    expected |= {old.split("/")[0] for old in registry.get("redirects", {})}
     actual = {entry.name for entry in review_root.iterdir() if not entry.name.endswith(".json")} if review_root.is_dir() else set()
     errors.extend(f"unexpected projected project: {name}" for name in sorted(actual - expected - set(aliases)))
     errors.extend(f"missing projected project: {name}" for name in sorted((expected | set(aliases)) - actual))
@@ -322,7 +349,7 @@ def verify_projection(root: Path, review_root: Path, registry: dict) -> list[str
         if not project_dir.is_dir():
             continue
         names = {entry.name for entry in project_dir.iterdir()}
-        errors.extend(f"projection mismatch: {project['id']}/{name}" for name in sorted(names ^ expected_entries(project)))
+        errors.extend(f"projection mismatch: {project['id']}/{name}" for name in sorted(names ^ expected_entries(project, registry.get("redirects", {}))))
         for artifact in project["artifacts"]:
             label = f"{project['id']}/{artifact['number']}"
             live = project_dir / str(artifact["number"]) / "index.html"
@@ -366,7 +393,7 @@ def materialize(root: Path, review_root: Path, registry: dict) -> None:
 def add_version(registry: dict, project_id: str, project_name: str, session: str, title: str, date_label: str) -> tuple[dict, dict, dict]:
     updated = json.loads(json.dumps(registry))
     owner = next(((project, artifact) for project in updated["projects"] for artifact in project["artifacts"]
-                  if artifact.get("session") == session), None)
+                  if session in artifact_sessions(artifact)), None)
     if owner and project_id not in [owner[0]["id"], *owner[0].get("aliases", [])]:
         raise ValueError(f"session already made artifact {owner[0]['id']}/{owner[1]['number']}")
     if owner:
@@ -422,19 +449,38 @@ def create(args: argparse.Namespace) -> None:
 
 # Locate: answer "where is it" from the registry and the configured media roots, never from a home-folder search.
 
+def address_url(address: str) -> str:
+    return f"/artifacts/{address}/"
+
+
+def resolve(registry: dict, address: str) -> tuple[dict, dict, int]:
+    """Follow grouping redirects to the live (project, artifact, version number or 0 for live)."""
+    redirects = registry.get("redirects", {})
+    for _ in range(len(redirects) + 1):
+        match = ARTIFACT_ADDRESS.fullmatch(address.strip())
+        if not match:
+            raise LookupError(f"not an artifact address: {address} (expected <project>/<n>[/versions/<k>])")
+        key = f"{match[1]}/{match[2]}" + (f"/{VERSIONS}/{match[3]}" if match[3] else "")
+        if (key if key in redirects else f"{match[1]}/{match[2]}") in redirects:
+            address = redirects.get(key) or redirects[f"{match[1]}/{match[2]}"]
+            continue
+        project = find_project(registry, match[1])
+        artifact = next((a for a in project["artifacts"] if a["number"] == int(match[2])), None) if project else None
+        if not artifact:
+            raise LookupError(f"no artifact {match[1]}/{match[2]}")
+        k = int(match[3] or 0)
+        if not 0 <= k <= len(artifact["versions"]):
+            raise LookupError(f"artifact {match[1]}/{match[2]} has no version {k}")
+        return project, artifact, k
+    raise LookupError(f"redirect loop at {address}")
+
+
 def locate_artifact(root: Path, address: str) -> Path:
-    match = ARTIFACT_ADDRESS.fullmatch(address.strip())
-    if not match:
-        raise LookupError(f"not an artifact address: {address} (expected <project>/<n>[/versions/<k>])")
-    project_id, number = match[1], int(match[2])
-    project = find_project(load_registry(root), project_id)
-    artifact = next((a for a in project["artifacts"] if a["number"] == number), None) if project else None
-    if not artifact:
-        raise LookupError(f"no artifact {project_id}/{number} in {registry_path(root)}")
-    k = int(match[3] or artifact["current_version"])
-    if not 1 <= k <= len(artifact["versions"]):
-        raise LookupError(f"artifact {project_id}/{number} has no version {k}")
-    return revisions_root(root) / project["id"] / artifact["versions"][k - 1]["revision"]
+    try:
+        project, artifact, k = resolve(load_registry(root), address)
+    except LookupError as error:
+        raise LookupError(f"{error} in {registry_path(root)}") from None
+    return revisions_root(root) / project["id"] / artifact["versions"][(k or artifact["current_version"]) - 1]["revision"]
 
 
 def locate_media(name: str, roots: list[Path]) -> list[Path]:
@@ -444,6 +490,174 @@ def locate_media(name: str, roots: list[Path]) -> list[Path]:
     if not found:
         raise LookupError(f"no media file {name} in " + ", ".join(map(str, roots)))
     return found
+
+
+# Grouping: merge projects and fold artifacts by changing metadata only; old addresses become redirects.
+
+def version_key(version: dict) -> str:
+    return version.get("date") or iso_date(version["date_label"]) or "9999-12-31"
+
+
+def plan_grouping(registry: dict, plan: dict) -> tuple[dict, dict[str, str], list[tuple[str, str, str]], list[str]]:
+    """Apply a grouping plan to a copy of the registry.
+
+    Returns the new registry, the old -> new address mapping of every artifact and version that moved or was
+    renumbered, the revision links (project, new revision, source project/revision) a write must add, and
+    warnings. Re-applying an applied plan changes nothing: merged projects resolve through redirects, and folded
+    artifacts resolve to their one artifact."""
+    updated = json.loads(json.dumps(registry))
+    redirects = updated.setdefault("redirects", {})
+    mapping: dict[str, str] = {}
+    links: list[tuple[str, str, str]] = []
+    warnings: list[str] = []
+
+    def move(moves: dict[str, str], live: set[str]) -> None:
+        for old, new in list(mapping.items()):
+            mapping[old] = moves.get(new, new)
+        for old, new in list(redirects.items()):
+            redirects[old] = moves.get(new, new)
+        mapping.update({old: new for old, new in moves.items() if old != new})
+        redirects.update({old: new for old, new in moves.items() if old != new and old not in live})
+
+    for spec in plan.get("projects", []):
+        target = next((p for p in updated["projects"] if p["id"] == spec["id"]), None)
+        if target is None:
+            target = {"id": spec["id"], "name": spec.get("name", spec["id"]), "artifacts": []}
+            updated["projects"].append(target)
+        target["name"] = spec.get("name", target["name"])
+        for source_id in spec.get("merge", []):
+            source = next((p for p in updated["projects"] if p["id"] == source_id), None)
+            if source is None:
+                if redirects.get(source_id) != spec["id"]:
+                    warnings.append(f"unknown project to merge: {source_id}")
+                continue
+            moves = {source_id: spec["id"], **{alias: spec["id"] for alias in source.get("aliases", [])}}
+            taken = {v["revision"] for a in target["artifacts"] for v in a["versions"]}
+            for artifact in sorted(source["artifacts"], key=lambda item: item["number"]):
+                number = max((a["number"] for a in target["artifacts"]), default=0) + 1
+                old = f"{source_id}/{artifact['number']}"
+                moves[old] = f"{spec['id']}/{number}"
+                for version in artifact["versions"]:
+                    revision = f"{source_id}-{version['revision']}"
+                    if revision in taken:
+                        raise ValueError(f"revision name collision in {spec['id']}: {revision}")
+                    links.append((spec["id"], revision, f"{source_id}/{version['revision']}"))
+                    moves[f"{old}/{VERSIONS}/{version['number']}"] = f"{spec['id']}/{number}/{VERSIONS}/{version['number']}"
+                    version["revision"] = revision
+                moves |= {f"{source_id}/{legacy}": moves[old] + (f"/{VERSIONS}/{k}" if k else "")
+                          for legacy, k in artifact.pop("legacy", {}).items()}
+                target["artifacts"].append(artifact | {"number": number})
+            updated["projects"].remove(source)
+            move(moves, set())
+
+    claimed: dict[int, str] = {}
+    for group in plan.get("groups", []):
+        project = find_project(updated, group["project"])
+        if project is None:
+            warnings.append(f"unknown project in group {group['title']!r}: {group['project']}")
+            continue
+        members: list[dict] = []
+        for ref in group["artifacts"]:
+            address = f"{group['project']}/{ref}" if isinstance(ref, int) else ref
+            try:
+                owner, artifact, _ = resolve(updated, address)
+            except LookupError:
+                warnings.append(f"unknown artifact in group {group['title']!r}: {address}")
+                continue
+            if owner is not project:
+                warnings.append(f"artifact outside project in group {group['title']!r}: {address}")
+            elif claimed.setdefault(id(artifact), group["title"]) != group["title"]:
+                warnings.append(f"artifact already in group {claimed[id(artifact)]!r}, skipped in {group['title']!r}: {address}")
+            elif artifact not in members:
+                members.append(artifact)
+        if not members:
+            continue
+        members.sort(key=lambda artifact: artifact["number"])
+        keeper = members[0]
+        keeper["title"] = group["title"]
+        if len(members) == 1:
+            continue
+        ordered = sorted(((version_key(v), a["number"], v["number"], a, v) for a in members for v in a["versions"]),
+                         key=lambda row: row[:3])
+        prefix, moves, renumbered = f"{project['id']}/", {}, {}
+        for k, (_, number, old_k, _, version) in enumerate(ordered, start=1):
+            moves[f"{prefix}{number}/{VERSIONS}/{old_k}"] = f"{prefix}{keeper['number']}/{VERSIONS}/{k}"
+            renumbered[(number, old_k)] = k
+        legacy, sessions = {}, []
+        for artifact in members:
+            legacy |= {name: renumbered[(artifact["number"], k)] if k else 0 for name, k in artifact.get("legacy", {}).items()}
+            sessions += artifact_sessions(artifact)
+            if artifact is not keeper:
+                moves[f"{prefix}{artifact['number']}"] = f"{prefix}{keeper['number']}"
+                project["artifacts"].remove(artifact)
+        keeper["versions"] = [version | {"number": k} for k, (*_, version) in enumerate(ordered, start=1)]
+        keeper["current_version"] = len(keeper["versions"])
+        keeper.pop("session", None)
+        keeper.pop("folded_sessions", None)
+        if sessions:
+            keeper["session"] = sessions[0]
+        if sessions[1:]:
+            keeper["folded_sessions"] = sessions[1:]
+        if legacy:
+            keeper["legacy"] = legacy
+        live = {f"{prefix}{keeper['number']}/{VERSIONS}/{k}" for k in range(1, len(ordered) + 1)}
+        move(moves, live)
+    grouped = {group["project"] for group in plan.get("groups", [])}
+    warnings += [f"artifact in no group: {project['id']}/{artifact['number']}" for project in updated["projects"]
+                 if project["id"] in grouped for artifact in project["artifacts"] if id(artifact) not in claimed]
+    if not redirects:
+        updated.pop("redirects")
+    return updated, mapping, links, warnings
+
+
+def grouping_layout(before: dict, after: dict, mapping: dict, warnings: list[str]) -> str:
+    def counts(registry: dict) -> str:
+        artifacts = sum(len(p["artifacts"]) for p in registry["projects"])
+        versions = sum(len(a["versions"]) for p in registry["projects"] for a in p["artifacts"])
+        return f"{len(registry['projects'])} projects, {artifacts} artifacts, {versions} versions"
+    lines = [f"before: {counts(before)}", f"after:  {counts(after)}", ""]
+    for project in after["projects"]:
+        lines.append(f"{project['name']} ({address_url(project['id'])}) · {len(project['artifacts'])} artifacts")
+        lines += [f"  {a['number']:>3} · {artifact_title(a)} · {len(a['versions'])} versions"
+                  for a in sorted(project["artifacts"], key=lambda item: item["number"])]
+    lines += ["", f"redirects: {len(after.get('redirects', {}))}", f"moved or renumbered addresses: {len(mapping)}"]
+    lines += [f"  {old} -> {new}" for old, new in sorted(mapping.items())]
+    lines += ["", f"warnings: {len(warnings)}", *(f"  {warning}" for warning in warnings)]
+    return "\n".join(lines)
+
+
+def group(root: Path, review_root: Path, plan: dict, write: bool) -> str:
+    registry = load_registry(root)
+    updated, mapping, links, warnings = plan_grouping(registry, plan)
+    report = grouping_layout(registry, updated, mapping, warnings)
+    if not write or updated == registry:
+        errors = verify_store(root, updated, strict_shell=False, planned=frozenset((p, r) for p, r, _ in links))
+        return report + f"\n\nerrors: {len(errors)}" + "".join(f"\n  {error}" for error in errors)
+    created = []
+    try:
+        for project_id, revision, source in links:
+            link = revisions_root(root) / project_id / revision
+            if not link.is_symlink():
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.symlink_to(Path("..") / source, target_is_directory=True)
+                created.append(link)
+        errors = verify_store(root, updated, strict_shell=False)
+        if errors:
+            raise ValueError("grouping contract failed:\n- " + "\n- ".join(errors))
+        record = root / "manifests" / "groupings" / f"{date.today().isoformat()}-{hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()[:12]}.json"
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text(json.dumps({"plan": plan, "mapping": mapping}, indent=2, ensure_ascii=False) + "\n")
+        write_registry(root, updated)
+        try:
+            materialize(root, review_root, updated)
+        except Exception:
+            write_registry(root, registry)
+            raise
+    except Exception:
+        for link in created:
+            link.unlink()
+        raise
+    return report
 
 
 # Migration from the flat registry: group by creating session; without one, a run of consecutive same-title revisions.
@@ -516,6 +730,10 @@ def main() -> None:
     migrate_parser = sub.add_parser("migrate", help="plan the session migration; --write applies it to --root")
     migrate_parser.add_argument("--sessions", type=Path, required=True, help='JSON {"<project>/<revision>": "<session>"|null}')
     migrate_parser.add_argument("--write", action="store_true")
+    group_parser = sub.add_parser("group", help="merge projects and fold artifacts from a plan; --write applies it to --root")
+    group_parser.add_argument("--plan", type=Path, required=True,
+                              help='JSON {"projects": [{"id", "name", "merge": [<project>]}], "groups": [{"project", "title", "artifacts": [<n>|"<project>/<n>"]}]}')
+    group_parser.add_argument("--write", action="store_true")
     locate_parser = sub.add_parser("locate", help="print the exact path of an artifact revision or generated media file")
     locate_parser.add_argument("kind", choices=("artifact", "media"))
     locate_parser.add_argument("target", help="<project>/<n>[/versions/<k>] or artifact URL; media filename")
@@ -536,6 +754,9 @@ def main() -> None:
             print(locate_artifact(args.root, args.target))
         except LookupError as error:
             raise SystemExit(f"locate: {error}")
+        return
+    if args.command == "group":
+        print(group(args.root, args.review_root, json.loads(args.plan.read_text()), args.write))
         return
     registry = load_registry(args.root)
     if args.command == "migrate":

@@ -31,10 +31,11 @@ class ArtifactManagerTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    def promote(self, session: str, title: str = "Example", project: str = "learning", body: str = "") -> None:
+    def promote(self, session: str, title: str = "Example", project: str = "learning", body: str = "",
+                day: str = "22 Aug 2026") -> None:
         self.source.joinpath("index.html").write_text(document(title, project, body))
         am.create(Namespace(root=self.root, review_root=self.review, source=str(self.source), project=project,
-                            project_name=project.title(), session=session, title=title, date="22 Aug 2026"))
+                            project_name=project.title(), session=session, title=title, date=day))
 
     def test_one_session_is_one_artifact_and_another_session_is_a_new_artifact(self) -> None:
         self.promote("slack:a", "Draft")
@@ -153,6 +154,75 @@ class ArtifactManagerTests(unittest.TestCase):
         for name, message in (("dog.png", "no media file dog.png"), ("../cat.png", "bare filename")):
             with self.assertRaisesRegex(LookupError, message):
                 am.locate_media(name, [media])
+
+    def grouping_fixture(self) -> dict:
+        self.promote("s:mac", "Mac IA", "humanware", day="01 Sep 2026")
+        self.promote("s:menu", "Menu bar", "humanware-os", day="03 Sep 2026")
+        self.promote("s:menu", "Menu bar 2", "humanware-os", body="<p>2</p>", day="05 Sep 2026")
+        self.promote("s:records", "Records", "humanware-os", day="02 Sep 2026")
+        self.promote("s:menu-b", "Menu bar B", "humanware-os", day="04 Sep 2026")
+        registry = am.load_registry(self.root)
+        am.find_project(registry, "humanware-os")["artifacts"][0]["legacy"] = {"old-menu": 0}
+        am.write_registry(self.root, registry)
+        am.materialize(self.root, self.review, registry)
+        return {"projects": [{"id": "humanware", "name": "Humanware", "merge": ["humanware-os"]}],
+                "groups": [{"project": "humanware", "title": "Mac operator IA", "artifacts": [1]},
+                           {"project": "humanware", "title": "Menu bar app", "artifacts": ["humanware-os/3", "humanware-os/1"]},
+                           {"project": "humanware", "title": "Records", "artifacts": ["humanware-os/2", "humanware-os/9"]}]}
+
+    def test_group_dry_run_prints_the_layout_and_changes_nothing(self) -> None:
+        plan = self.grouping_fixture()
+        before = am.registry_path(self.root).read_bytes()
+        report = am.group(self.root, self.review, plan, write=False)
+        self.assertEqual(am.registry_path(self.root).read_bytes(), before)
+        self.assertFalse((self.root / "revisions/humanware/humanware-os-1-v1").exists())
+        self.assertIn("before: 2 projects, 4 artifacts, 5 versions", report)
+        self.assertIn("after:  1 projects, 3 artifacts, 5 versions", report)
+        self.assertIn("    2 · Menu bar app · 3 versions", report)
+        self.assertIn("unknown artifact in group 'Records': humanware-os/9", report)
+        self.assertIn("errors: 0", report)
+        plan["groups"].pop(0)
+        self.assertIn("artifact in no group: humanware/1", am.group(self.root, self.review, plan, write=False))
+
+    def test_group_merges_projects_folds_by_date_keeps_revisions_and_redirects_old_addresses(self) -> None:
+        plan = self.grouping_fixture()
+        files = sorted(path.relative_to(self.root) for path in (self.root / "revisions").rglob("*") if path.is_file())
+        am.group(self.root, self.review, plan, write=True)
+        registry = am.load_registry(self.root)
+        self.assertEqual([p["id"] for p in registry["projects"]], ["humanware"])
+        artifacts = registry["projects"][0]["artifacts"]
+        self.assertEqual([(a["number"], a["title"]) for a in artifacts], [(1, "Mac operator IA"), (2, "Menu bar app"), (3, "Records")])
+        menu = artifacts[1]
+        self.assertEqual([(v["number"], v["revision"]) for v in menu["versions"]],
+                         [(1, "humanware-os-1-v1"), (2, "humanware-os-3-v1"), (3, "humanware-os-1-v2")])
+        self.assertEqual((menu["current_version"], menu["session"], menu["folded_sessions"]), (3, "s:menu", ["s:menu-b"]))
+        for path in files:
+            self.assertTrue((self.root / path).is_file(), path)
+        self.assertEqual(am.locate_artifact(self.root, "humanware-os/3").name, "humanware-os-1-v2")
+        self.assertEqual(am.locate_artifact(self.root, "humanware-os/3/versions/1").name, "humanware-os-3-v1")
+        self.assertEqual(am.locate_artifact(self.root, "humanware-os/2"), self.root / "revisions/humanware/humanware-os-2-v1")
+        self.assertEqual(registry["redirects"]["humanware-os/old-menu"], "humanware/2")
+        self.assertEqual(am.verify_store(self.root, registry, strict_shell=False), [])
+        self.assertEqual(am.verify_projection(self.root, self.review, registry), [])
+        self.assertIn('"/artifacts/humanware/2/versions/2/"', (self.review / "humanware-os/3/versions/1/index.html").read_text())
+        self.assertIn('"/artifacts/humanware/"', (self.review / "humanware-os/index.html").read_text())
+        self.assertIn("Menu bar app", (self.review / "humanware/index.html").read_text())
+        record = json.loads(next((self.root / "manifests/groupings").iterdir()).read_text())
+        self.assertEqual(record["mapping"]["humanware-os/1/versions/2"], "humanware/2/versions/3")
+        self.promote("s:menu-b", "Menu bar C", "humanware", body="<p>c</p>", day="06 Sep 2026")
+        self.assertEqual(len(am.load_registry(self.root)["projects"][0]["artifacts"][1]["versions"]), 4)
+
+    def test_group_is_idempotent_and_rebuild_reflects_it(self) -> None:
+        plan = self.grouping_fixture()
+        am.group(self.root, self.review, plan, write=True)
+        before = am.registry_path(self.root).read_bytes()
+        report = am.group(self.root, self.review, plan, write=True)
+        self.assertEqual(am.registry_path(self.root).read_bytes(), before)
+        self.assertIn("moved or renumbered addresses: 0", report)
+        self.assertEqual(len(list((self.root / "manifests/groupings").iterdir())), 1)
+        registry = am.load_registry(self.root)
+        am.materialize(self.root, self.review, registry)
+        self.assertEqual(am.verify_projection(self.root, self.review, registry), [])
 
 
 if __name__ == "__main__":
