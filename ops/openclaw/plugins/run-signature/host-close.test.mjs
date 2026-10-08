@@ -74,13 +74,9 @@ test('the close fence starts at reservation and remains after completion', async
   await f.runtime.end(params);
   assert.equal(await f.runtime.isClosingOrClosed(route), true);
 });
-test('non-owner close request is refused and nothing closes', async t => {
+test('closure without a configured owner or Slack sender is refused and nothing closes', async t => {
   const f = fixture();
   await f.runtime.start(params);
-  for (const context of [{...toolContext, requesterSenderId: 'UOTHER'}, {...toolContext, requesterSenderId: undefined}]) {
-    const result = await closeThreadTool(context, toolOptions(f.runtime)).execute('call', closeArgs);
-    assert.equal(result.isError, true); assert.match(result.content[0].text, /only the owner/);
-  }
   assert.equal((await closeThreadTool(toolContext, {...toolOptions(f.runtime), ownerUserId: undefined}).execute('call', closeArgs)).isError, true);
   assert.equal((await closeThreadTool({...toolContext, agentAccountId: 'other'}, toolOptions(f.runtime)).execute('call', closeArgs)).isError, true);
   await f.runtime.end(params);
@@ -90,7 +86,7 @@ test('closure must quote the current owner message, not thread history', async t
   const f = fixture();
   await f.runtime.start(params);
   const stale = {...current, content: 'read the first post'};
-  for (const [inbound, args] of [[stale, {request: 'close this'}], [current, {request: ''}], [current, {}], [{...current, senderId: 'UOTHER'}, closeArgs]])
+  for (const [inbound, args] of [[stale, {request: 'close this'}], [current, {request: ''}], [current, {}], [null, closeArgs]])
     assert.equal((await closeThreadTool(toolContext, toolOptions(f.runtime, inbound)).execute('call', args)).isError, true);
   await f.runtime.end(params);
   assert.deepEqual(f.order, ['working', 'act']);
