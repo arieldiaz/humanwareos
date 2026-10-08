@@ -23,20 +23,6 @@ export function shouldClaimClosedBotInbound({closingOrClosed, senderId, botUserI
   return Boolean(closingOrClosed && senderId && botUserIds?.has(senderId));
 }
 
-export function mentionedSlackAccounts(content, accountByBotUserId) {
-  const accounts = new Set();
-  for (const match of String(content ?? "").matchAll(/<@([UW][A-Z0-9]+)>/g)) {
-    const account = accountByBotUserId.get(match[1]);
-    if (account) accounts.add(account);
-  }
-  return [...accounts];
-}
-
-export function chooseSlackLead({current, mentioned, fallback}) {
-  if (mentioned.length === 1) return mentioned[0];
-  return current ?? fallback;
-}
-
 export async function loadSlackThreadSnapshot({channel, threadId, latest, token, call, limit = 20}) {
   const messages = [];
   let cursor;
@@ -189,7 +175,7 @@ export function registerHostClose(api, {
     if (isExcludedChannel(channel)) return;
     const {accountByBotUserId} = await slackAccounts();
     const botUserIds = new Set(accountByBotUserId.keys());
-    const accountId = String(ctx.accountId ?? event.accountId ?? ctx.sessionKey?.match(/^agent:([^:]+)/i)?.[1] ?? "").toLowerCase();
+    const accountId = String(event.accountId ?? ctx.accountId ?? ctx.sessionKey?.match(/^agent:([^:]+)/i)?.[1] ?? "").toLowerCase();
     // Only bot-authored messages can be fenced, so only they cost a Slack read.
     if (shouldClaimClosedBotInbound({
       closingOrClosed: botUserIds.has(senderId) && await lifecycle.isClosingOrClosed({channel, threadId}, accountId), senderId, botUserIds,
@@ -198,11 +184,7 @@ export function registerHostClose(api, {
     if (!fallback) return;
     if (botUserIds.has(senderId)) return {handled: true};
     const routeKey = `${channel}:${threadId}`;
-    const lead = chooseSlackLead({
-      current: threadLeads.get(routeKey),
-      mentioned: mentionedSlackAccounts(event.content ?? event.text, accountByBotUserId),
-      fallback,
-    });
+    const lead = (event.wasMentioned ? accountId : "") || threadLeads.get(routeKey) || fallback;
     if (!lead) return {handled: true};
     threadLeads.set(routeKey, lead);
     if (accountId !== lead) return {handled: true};
