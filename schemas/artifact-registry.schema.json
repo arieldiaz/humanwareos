@@ -20,6 +20,11 @@
         },
         "additionalProperties": false
       }
+    },
+    "redirects": {
+      "type": "object",
+      "description": "Retired addresses from grouping, relative to /artifacts/: <project>[/<n>[/versions/<k>]] or <project>/<legacy> -> a live <project>[/<n>[/versions/<k>]].",
+      "additionalProperties": {"type": "string", "minLength": 1}
     }
   },
   "additionalProperties": false,
@@ -31,6 +36,8 @@
       "properties": {
         "number": {"type": "integer", "minimum": 1, "description": "Per-project artifact number, assigned once and never reused."},
         "session": {"type": "string", "minLength": 1, "description": "The one working session that made this artifact."},
+        "folded_sessions": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Sessions of artifacts folded into this one by grouping; their promotions continue it."},
+        "title": {"type": "string", "minLength": 1, "description": "Artifact title set by grouping; otherwise the current version's title."},
         "current_version": {"type": "integer", "minimum": 1},
         "versions": {
           "type": "array",
