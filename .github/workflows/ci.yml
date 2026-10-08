@@ -17,8 +17,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Service dependencies
+        run: |
+          npm --prefix services/email-intake ci --ignore-scripts
+          npm --prefix services/agent-email ci --ignore-scripts
       - name: Node contracts
-        run: node --test $(find . -name '*.test.mjs' -o -name '*.test.js' | sort)
+        run: node --test $(find . -path '*/node_modules' -prune -o \( -name '*.test.mjs' -o -name '*.test.js' \) -print | sort)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -29,6 +33,10 @@ jobs:
           PYTHONPATH=ops/menubar python3 -m unittest discover -s ops/menubar
           python3 -m unittest discover -s ops/session-console/tests
           python3 -m unittest discover -s ops/artifacts
+          python3 -m unittest discover -s services/share-auth -p "test_*.py"
+          python3 -m unittest discover -s services/ingest/server -p "test_*.py"
+          python3 services/observability/token-tracking/test_build_dashboard.py
+          python3 services/observability/net-monitor/test_net_monitor.py
       - name: macOS surface
         run: swift build --package-path surfaces/macos/HumanwareOS
       - name: Shell contracts

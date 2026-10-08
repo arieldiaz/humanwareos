@@ -1,0 +1,29 @@
+{
+  "routes": {
+    "max@bot.example.test": "max",
+    "liv@bot.example.test": "liv",
+    "kids@bot.example.test": "liv"
+  },
+  "labels": {
+    "max@bot.example.test": "Max",
+    "liv@bot.example.test": "Liv",
+    "kids@bot.example.test": "Kids"
+  },
+  "calendarRecipients": ["kids@bot.example.test"],
+  "tablePrefix": "email_intake",
+  "slackEventType": "email_intake",
+  "maxBytes": 65536,
+  "subjectWindowMs": 604800000,
+  "calendarUrl": "http://127.0.0.1:8794/inbound/email",
+  "ownerMailbox": "owner@example.test",
+  "sessionRecipients": [
+    "liv@bot.example.test",
+    "max@bot.example.test"
+  ],
+  "queue": {
+    "tokenSecretId": "agents/CLOUDFLARE_AGENT_EMAIL_TOKEN",
+    "accountId": "00000000000000000000000000000000",
+    "ingressId": "11111111111111111111111111111111",
+    "deadLetterId": "22222222222222222222222222222222"
+  }
+}

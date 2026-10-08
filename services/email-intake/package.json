@@ -1,0 +1,14 @@
+{
+  "name": "@humanwareos/email-intake",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "mailauth": "5.0.3",
+    "postal-mime": "2.4.3"
+  },
+  "overrides": {
+    "joi": "18.2.9",
+    "nodemailer": "10.0.10"
+  },
+  "humanwareRuntime": true
+}
