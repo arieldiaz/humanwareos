@@ -51,7 +51,7 @@ test('only configured bot messages are claimed while a thread is closing or clos
   assert.equal(shouldClaimClosedBotInbound({closingOrClosed: true, senderId: 'UOWNER', botUserIds}), false);
   assert.equal(shouldClaimClosedBotInbound({closingOrClosed: false, senderId: 'ULIV', botUserIds}), false);
 });
-const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, agentAccountId: 'max', requesterSenderId: 'UOWNER'};
+const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, agentAccountId: 'max'};
 const current = {messageId: '300.000000', senderId: 'UOWNER', content: 'answer this and close the thread'};
 const toolOptions = (runtime, inbound = current) => ({config: {channels: {slack: {accounts: {max: {}}}}}, ownerUserId: 'UOWNER', lifecycle: runtime, currentInbound: () => inbound});
 const closeArgs = {request: 'close the thread'};
@@ -74,9 +74,13 @@ test('the close fence starts at reservation and remains after completion', async
   await f.runtime.end(params);
   assert.equal(await f.runtime.isClosingOrClosed(route), true);
 });
-test('closure without a configured owner or Slack sender is refused and nothing closes', async t => {
+test('non-owner close request is refused and nothing closes', async t => {
   const f = fixture();
   await f.runtime.start(params);
+  for (const inbound of [{...current, senderId: 'UOTHER'}, {...current, senderId: undefined}]) {
+    const result = await closeThreadTool(toolContext, toolOptions(f.runtime, inbound)).execute('call', closeArgs);
+    assert.equal(result.isError, true); assert.match(result.content[0].text, /only the owner/);
+  }
   assert.equal((await closeThreadTool(toolContext, {...toolOptions(f.runtime), ownerUserId: undefined}).execute('call', closeArgs)).isError, true);
   assert.equal((await closeThreadTool({...toolContext, agentAccountId: 'other'}, toolOptions(f.runtime)).execute('call', closeArgs)).isError, true);
   await f.runtime.end(params);

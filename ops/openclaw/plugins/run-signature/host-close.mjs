@@ -74,6 +74,7 @@ export function closeThreadTool(context, {config, ownerUserId, lifecycle, curren
     async execute(_toolCallId, args) {
       if (!/^U[A-Z0-9]+$/.test(ownerUserId ?? "")) return reply("Closure requires configured ownerUserId", true);
       const inbound = currentInbound?.(context.sessionKey);
+      if (inbound?.senderId !== ownerUserId) return reply("Refused: only the owner can close this thread.", true);
       if (!config?.channels?.slack?.accounts?.[accountId]) return reply("Closure requires a configured Slack sender", true);
       const request = String(args?.request ?? "").trim();
       if (!request || !inbound?.messageId || !String(inbound.content ?? "").includes(request))
