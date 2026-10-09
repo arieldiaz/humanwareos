@@ -51,15 +51,14 @@ test('only configured bot messages are claimed while a thread is closing or clos
   assert.equal(shouldClaimClosedBotInbound({closingOrClosed: true, senderId: 'UOWNER', botUserIds}), false);
   assert.equal(shouldClaimClosedBotInbound({closingOrClosed: false, senderId: 'ULIV', botUserIds}), false);
 });
-const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, agentAccountId: 'max'};
-const current = {messageId: '300.000000', senderId: 'UOWNER', content: 'answer this and close the thread'};
+const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, agentAccountId: 'max', requesterSenderId: 'UOWNER'};
+const current = {messageId: '300.000000'};
 const toolOptions = (runtime, inbound = current) => ({config: {channels: {slack: {accounts: {max: {}}}}}, ownerUserId: 'UOWNER', lifecycle: runtime, currentInbound: () => inbound});
-const closeArgs = {request: 'close the thread'};
 test('owner mixed instruction: the run finishes its work, then the host closes after the run ends', async t => {
   const f = fixture();
   await f.runtime.start(params);
   // "merge this, deploy, then close out this thread": other work happens in the run, then the agent requests close.
-  const result = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute('call', closeArgs);
+  const result = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute();
   assert.equal(result.isError, undefined);
   assert.equal(f.completed.size, 0, 'close never takes effect mid-run');
   await f.runtime.end(params);
@@ -69,7 +68,7 @@ test('owner mixed instruction: the run finishes its work, then the host closes a
 test('the close fence starts at reservation and remains after completion', async t => {
   const f = fixture();
   await f.runtime.start(params);
-  await f.runtime.requestClose(params.sessionKey, input);
+  await f.runtime.requestClose(route, input);
   assert.equal(await f.runtime.isClosingOrClosed(route), false, 'a pending model request is not yet host closure');
   await f.runtime.end(params);
   assert.equal(await f.runtime.isClosingOrClosed(route), true);
@@ -77,32 +76,40 @@ test('the close fence starts at reservation and remains after completion', async
 test('non-owner close request is refused and nothing closes', async t => {
   const f = fixture();
   await f.runtime.start(params);
-  for (const inbound of [{...current, senderId: 'UOTHER'}, {...current, senderId: undefined}]) {
-    const result = await closeThreadTool(toolContext, toolOptions(f.runtime, inbound)).execute('call', closeArgs);
+  for (const requesterSenderId of ['UOTHER', undefined]) {
+    const result = await closeThreadTool({...toolContext, requesterSenderId}, toolOptions(f.runtime)).execute();
     assert.equal(result.isError, true); assert.match(result.content[0].text, /only the owner/);
   }
-  assert.equal((await closeThreadTool(toolContext, {...toolOptions(f.runtime), ownerUserId: undefined}).execute('call', closeArgs)).isError, true);
-  assert.equal((await closeThreadTool({...toolContext, agentAccountId: 'other'}, toolOptions(f.runtime)).execute('call', closeArgs)).isError, true);
+  assert.equal((await closeThreadTool(toolContext, {...toolOptions(f.runtime), ownerUserId: undefined}).execute()).isError, true);
+  assert.equal((await closeThreadTool({...toolContext, agentAccountId: 'other'}, toolOptions(f.runtime)).execute()).isError, true);
   await f.runtime.end(params);
   assert.deepEqual(f.order, ['working', 'act']);
 });
-test('closure must quote the current owner message, not thread history', async t => {
+test('closure requires the current Slack message', async t => {
   const f = fixture();
   await f.runtime.start(params);
-  const stale = {...current, content: 'read the first post'};
-  for (const [inbound, args] of [[stale, {request: 'close this'}], [current, {request: ''}], [current, {}], [null, closeArgs]])
-    assert.equal((await closeThreadTool(toolContext, toolOptions(f.runtime, inbound)).execute('call', args)).isError, true);
+  assert.equal((await closeThreadTool(toolContext, toolOptions(f.runtime, null)).execute()).isError, true);
   await f.runtime.end(params);
   assert.deepEqual(f.order, ['working', 'act']);
 });
 test('accepted closure records the real inbound message id and checks invocation authority at the write', async t => {
   const f = fixture();
   await f.runtime.start(params);
-  const revoked = await closeThreadTool({...toolContext, assertInvocationCurrent: () => { throw new Error('stale invocation'); }}, toolOptions(f.runtime)).execute('call', closeArgs);
+  const revoked = await closeThreadTool({...toolContext, assertInvocationCurrent: () => { throw new Error('stale invocation'); }}, toolOptions(f.runtime)).execute();
   assert.match(revoked.content[0].text, /stale invocation/);
-  const accepted = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute('call', closeArgs);
+  const accepted = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute();
   assert.match(accepted.content[0].text, /Only your final response after this call is delivered/);
   assert.equal([...f.runtime.pendingClose.values()][0].messageId, '300.000000');
+});
+test('closure uses the canonical Slack route when the harness session key differs', async () => {
+  const f = fixture();
+  await f.runtime.start(params);
+  const harnessContext = {...toolContext, sessionKey: 'agent:max:acp:claude-cli:session-1',
+    nativeChannelId: 'C123', deliveryContext: {channel: 'slack', to: 'channel:C123', threadId: route.threadId}};
+  let resolvedRoute;
+  const result = await closeThreadTool(harnessContext, {...toolOptions(f.runtime), currentInbound: value => { resolvedRoute = value; return current; }}).execute();
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(resolvedRoute, route);
 });
 test('no close without a request: an owner run that never calls close_thread ends in act', async t => {
   const f = fixture();
