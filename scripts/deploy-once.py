@@ -131,7 +131,10 @@ def schedule_wake(args, approval_id, report):
         OPENCLAW, 'automations', 'add', '--name', f'Cutover check {approval_id}', '--at', '30m',
         '--agent', args.agent, '--session', 'isolated', '--message', prompt, '--announce',
         '--channel', 'slack', '--account', args.agent, '--to', f'channel:{args.channel}',
-        '--thread-id', args.thread, '--delete-after-run', '--json',
+        # The CLI accepts only integer Telegram topic ids here; a Slack thread ts is
+        # kept in the approval provenance and the check posts to the channel.
+        *(['--thread-id', args.thread] if args.thread.isdigit() else []),
+        '--delete-after-run', '--json',
     ], capture_output=True, text=True, check=True)
     payload = json.loads(result.stdout)
     job = payload.get('job', payload)
