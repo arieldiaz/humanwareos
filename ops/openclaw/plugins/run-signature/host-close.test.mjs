@@ -49,21 +49,12 @@ test('close after a restart: no in-memory run still closes and reports immediate
   assert.deepEqual(f.order.slice(3), [], 'an unknown run end is ignored');
 });
 
-test('the host refuses a close the runtime attributes to a non-owner', async () => {
+test('the runtime owner bit is not consulted: external-harness runs always carry senderIsOwner=false', async () => {
   const f = fixture();
-  await f.runtime.start(params);
-  const result = await closeThreadTool({...toolContext, senderIsOwner: false}, {lifecycle: f.runtime}).execute();
-  assert.equal(result.isError, true);
-  assert.match(result.content[0].text, /only the owner/);
-  await f.runtime.end(params);
-  assert.deepEqual(f.order, ['record:working', 'working', 'record:act', 'act']);
-});
-
-test('an unattributed sender may close: the bridge to an external harness does not always carry the owner bit', async () => {
-  const f = fixture();
-  const {senderIsOwner, ...noOwnerBit} = toolContext;
-  assert.equal((await closeThreadTool(noOwnerBit, {lifecycle: f.runtime}).execute()).isError, undefined);
-  assert.equal(f.order.at(-1), 'report');
+  for (const context of [{...toolContext, senderIsOwner: false}, (({senderIsOwner, ...rest}) => rest)(toolContext)]) {
+    assert.equal((await closeThreadTool(context, {lifecycle: f.runtime}).execute()).isError, undefined);
+  }
+  assert.equal(f.reports.length, 2);
 });
 
 test('a stale invocation is refused before anything is projected', async () => {

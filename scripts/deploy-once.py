@@ -123,9 +123,10 @@ def submit(framework, instance, approval, version=None, label=None):
 def schedule_wake(args, approval_id, report):
     prompt = (
         f'Verify Humanware cutover {approval_id} using {report}. '
-        'Read the cutover logs and active runtime manifest, then report success or the precise failure in this conversation. '
+        'Read the cutover logs and active runtime manifest. Post one line to the channel stating success or the precise '
+        'failure, then put the evidence in the first reply in that thread, and answer NO_REPLY so nothing else is posted. '
         'Do not start, retry, or restart anything. If the cutover is still running, schedule one new check 15 minutes later '
-        'in this same conversation before ending.'
+        'to the same channel before ending.'
     )
     result = subprocess.run([
         OPENCLAW, 'automations', 'add', '--name', f'Cutover check {approval_id}', '--at', '30m',
