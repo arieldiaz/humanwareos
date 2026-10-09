@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
 
 // Stateless thread lifecycle. Status derives from the current run (working →
@@ -19,25 +20,22 @@ export class ThreadLifecycle {
   async isClosingOrClosed(route, accountId) {
     return this.closing.has(conversationFenceKey(route)) || Boolean(await this.closed(route, accountId));
   }
-  // The owner's request is held for the run and takes effect when it ends.
-  async requestClose(route, input, assertCurrent = () => {}) {
+  // A close requested during a run takes effect when that run ends. With no
+  // run in memory (restart, replay), the thread closes immediately.
+  async requestClose(route, accountId) {
     const conversation = conversationFenceKey(route);
-    if (!conversation) throw new Error('Closure needs a Slack thread');
     const run = [...this.runs.values()].findLast(turn => turn.conversation === conversation);
-    if (!run) throw new Error('Closure needs a running turn');
-    assertCurrent();
-    this.pendingClose.set(run.key, input);
+    if (run) this.pendingClose.set(run.key, accountId);
+    else await this.closeCommand(route, accountId);
   }
-  async closeCommand(route, {messageId, principal, accountId}) {
-    if (!messageId || !principal || !accountId) throw new Error('Closure requires source, principal and configured sender');
+  async closeCommand(route, accountId) {
     const conversation = conversationFenceKey(route);
-    if (!conversation) throw new Error('Canonical closure route is unavailable');
     if (this.closing.has(conversation)) return this.closing.get(conversation);
-    const key = `${conversation}:close:${messageId}`;
+    const startedAt = Date.now(), key = `${conversation}:close:${randomUUID()}`;
     const work = (async () => {
       // A repeated close on a thread whose root still shows ✅ is a no-op.
       if (await this.closed(route, accountId)) return;
-      const close = {key, conversation, route, sourceMessageId: messageId, principal, accountId, startedAt: Date.now(),
+      const close = {key, conversation, route, accountId, startedAt,
         evidence: [...this.runs.values()].filter(turn => turn.conversation === conversation).map(({runId}) => ({runId, phase: 'running'})),
         sessionKey: `agent:${accountId}:slack:channel:${route.channel.toLowerCase()}:thread:${route.threadId}`};
       this.latest.set(conversation, key);
@@ -68,10 +66,10 @@ export class ThreadLifecycle {
     const turn = this.runs.get(`${conversationFenceKey(route)}:${runId}`);
     if (!turn) return;
     this.runs.delete(turn.key);
-    const close = this.pendingClose.get(turn.key);
+    const accountId = this.pendingClose.get(turn.key);
     this.pendingClose.delete(turn.key);
     await this.settle(turn, 'act');
-    if (close) await this.closeCommand(route, close);
+    if (accountId) await this.closeCommand(route, accountId);
   }
   async settle(turn, status) {
     if (this.latest.get(turn.conversation) !== turn.key) return;
