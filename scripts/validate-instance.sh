@@ -61,25 +61,18 @@ for external_path in "$DATA_ROOT" "$RUNTIME_ROOT" "$WORKTREE_ROOT"; do
   esac
 done
 
-"$JQ" -e '
+PROFILE_CATALOG="$FRAMEWORK_DIR/runtime/profile-catalog.json"
+"$JQ" -e --slurpfile catalog "$PROFILE_CATALOG" '
+  ($catalog[0].profiles * (.profiles // {})) as $profiles |
   .schemaVersion == 2 and
   (.defaultProfile | type == "string") and
-  (.profiles[.defaultProfile] != null) and
+  ($profiles[.defaultProfile] != null) and
   (.agents | type == "object") and
-  ([.agents[] | .allowedProfiles[]] | all(. as $id | $id != null)) and
-  ([.profiles[] | .executionMode] | all(. == "general" or . == "task" or . == "workspace")) and
-  ([.profiles[] | .runtime] | all(. == "native" or . == "cli" or . == "acp" or . == "app-server"))
+  ([.agents[] | .defaultProfile, .escalationProfile?, .allowedProfiles[]] | all(. == null or $profiles[.] != null)) and
+  ([$profiles[] | .executionMode] | all(. == "general" or . == "task" or . == "workspace")) and
+  ([$profiles[] | .runtime] | all(. == "native" or . == "cli" or . == "acp" or . == "app-server"))
 ' "$INSTANCE_DIR/runtime/profiles.json" >/dev/null || {
-  printf '%s\n' "validate-instance: invalid runtime/profiles.json" >&2
-  exit 1
-}
-
-"$JQ" -e '
-  .profiles as $profiles |
-  [.agents[] | .allowedProfiles[]] |
-  all(. as $id | $profiles[$id] != null)
-' "$INSTANCE_DIR/runtime/profiles.json" >/dev/null || {
-  printf '%s\n' "validate-instance: agent references an unknown execution profile" >&2
+  printf '%s\n' "validate-instance: runtime/profiles.json is invalid or references an unknown execution profile" >&2
   exit 1
 }
 

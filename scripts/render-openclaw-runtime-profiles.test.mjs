@@ -6,7 +6,10 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
 
-import {applyRuntimeProfiles} from "./render-openclaw-runtime-profiles.mjs";
+import {applyRuntimeProfiles, loadProfilePolicy, mergeProfilePolicy, profileCatalogPath} from "./render-openclaw-runtime-profiles.mjs";
+
+const templatePath = fileURLToPath(new URL("../templates/instance/runtime/profiles.json", import.meta.url));
+const frameworkCatalog = JSON.parse(readFileSync(profileCatalogPath, "utf8"));
 
 const source = {
   runtimePath: "__HUMANWARE_RUNTIME_ROOT__/config",
@@ -75,10 +78,11 @@ test("renders each agent's selected profile into effective OpenClaw config", () 
 });
 
 test("keeps the reference instance on the task-capable harnesses by default", () => {
-  const templatePath = fileURLToPath(new URL("../templates/instance/runtime/profiles.json", import.meta.url));
-  const template = JSON.parse(readFileSync(templatePath, "utf8"));
+  const narrowing = JSON.parse(readFileSync(templatePath, "utf8"));
+  const template = loadProfilePolicy(templatePath);
   const rendered = applyRuntimeProfiles(source, template);
 
+  assert.equal(narrowing.profiles, undefined);
   assert.equal(template.defaultProfile, "codex-low");
   assert.equal(template.profiles["native-low"].enabled, false);
   assert.deepEqual(template.agents.liv.allowedProfiles, template.agents.max.allowedProfiles);
@@ -93,6 +97,59 @@ test("keeps the reference instance on the task-capable harnesses by default", ()
   assert.deepEqual(rendered.agents.list[1].runtime, {type: "embedded"});
   assert.equal(rendered.agents.list[1].model.primary, "openai/gpt-5.6-sol");
   assert.deepEqual(rendered.agents.list[1].models["openai/gpt-5.6-sol"].agentRuntime, {id: "codex"});
+});
+
+test("renders every enabled framework catalog profile", () => {
+  const allowedProfiles = Object.keys(frameworkCatalog.profiles);
+  const policy = mergeProfilePolicy(frameworkCatalog, {
+    schemaVersion: 2,
+    defaultProfile: "codex-low",
+    agents: {
+      liv: {defaultProfile: "codex-low", escalationProfile: "codex-high", allowedProfiles},
+      max: {defaultProfile: "codex-low", escalationProfile: "codex-high", allowedProfiles},
+    },
+  });
+  const rendered = applyRuntimeProfiles(source, policy);
+  const enabledModels = new Set(allowedProfiles.filter((id) => frameworkCatalog.profiles[id].enabled !== false).map((id) => frameworkCatalog.profiles[id].model));
+  assert.deepEqual(Object.keys(rendered.agents.defaults.models).sort(), [...enabledModels].sort());
+  assert.equal(rendered.agents.defaults.models["anthropic/claude-fable-5-1"].agentRuntime.id, "claude-cli");
+  assert.equal(rendered.agents.defaults.models["openai/gpt-6-astra"].agentRuntime.id, "codex");
+});
+
+test("instance profile overrides win over the framework catalog field by field", () => {
+  const policy = mergeProfilePolicy(frameworkCatalog, {
+    schemaVersion: 2,
+    defaultProfile: "codex-low",
+    agents: {
+      liv: {defaultProfile: "codex-low", allowedProfiles: ["codex-low", "local-only"]},
+      max: {defaultProfile: "local-only", allowedProfiles: ["codex-low", "local-only"]},
+    },
+    profiles: {
+      "codex-low": {model: "openai/gpt-5.6-terra", enabled: true},
+      "local-only": {executionMode: "workspace", runtime: "app-server", harness: "codex", backend: "codex", model: "openai/local", reasoning: "low", fastMode: false},
+    },
+  });
+  assert.equal(policy.profiles["codex-low"].model, "openai/gpt-5.6-terra");
+  assert.equal(policy.profiles["codex-low"].harness, "codex");
+  assert.deepEqual(policy.profiles["codex-low"].aliases, frameworkCatalog.profiles["codex-low"].aliases);
+  assert.equal(policy.profiles["codex-high"].model, frameworkCatalog.profiles["codex-high"].model);
+  const rendered = applyRuntimeProfiles(source, policy);
+  assert.equal(rendered.agents.list[0].model.primary, "openai/gpt-5.6-terra");
+  assert.equal(rendered.agents.list[1].model.primary, "openai/local");
+  assert.equal(rendered.agents.list[1].fastModeDefault, false);
+});
+
+test("rejects an allowed profile that neither the catalog nor the instance defines", () => {
+  const policy = mergeProfilePolicy(frameworkCatalog, {
+    schemaVersion: 2,
+    defaultProfile: "codex-low",
+    agents: {
+      liv: {defaultProfile: "codex-low", allowedProfiles: ["codex-low", "codex-mystery"]},
+      max: {defaultProfile: "codex-low", allowedProfiles: ["codex-low"]},
+    },
+  });
+  assert.throws(() => applyRuntimeProfiles(source, policy), /profile codex-mystery must be an object/);
+  assert.throws(() => mergeProfilePolicy({schemaVersion: 2, profiles: {}}, {agents: {}}), /schemaVersion 1/);
 });
 
 test("exposes every allowed CLI profile through OpenClaw model visibility", () => {
@@ -179,8 +236,7 @@ test("canonical keyed agents preserve the selected profiles and all agent policy
   canonical.agents.entries = Object.fromEntries(canonical.agents.list.map(({id, ...entry}) => [id, {...entry, tools: {deny: ["browser"]}}]));
   delete canonical.agents.list;
   const original = structuredClone(canonical);
-  const template = JSON.parse(readFileSync(new URL("../templates/instance/runtime/profiles.json", import.meta.url), "utf8"));
-  const rendered = applyRuntimeProfiles(canonical, template);
+  const rendered = applyRuntimeProfiles(canonical, loadProfilePolicy(templatePath));
   assert.equal(rendered.agents.list, undefined);
   assert.equal(rendered.agents.entries.liv.id, undefined);
   assert.equal(rendered.agents.entries.liv.model.primary, "cursor-agent/grok-4.7-low-fast");

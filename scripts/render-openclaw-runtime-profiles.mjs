@@ -46,6 +46,27 @@ function runtimeId(profile) {
   return "";
 }
 
+export const profileCatalogPath = fileURLToPath(new URL("../runtime/profile-catalog.json", import.meta.url));
+
+// The framework catalog owns profile definitions. The instance file keeps the
+// selection (defaultProfile and per-agent policy) plus optional `profiles`
+// entries that add to or override catalog entries field by field.
+export function mergeProfilePolicy(catalog, instance) {
+  if (catalog?.schemaVersion !== 1) fail("profile catalog must declare schemaVersion 1");
+  const profiles = structuredClone(requireObject(catalog.profiles, "catalog profiles"));
+  const policy = requireObject(instance, "instance profiles");
+  if (policy.profiles !== undefined) {
+    for (const [id, override] of Object.entries(requireObject(policy.profiles, "instance profiles.profiles"))) {
+      profiles[id] = {...(profiles[id] ?? {}), ...requireObject(override, `instance profile ${id}`)};
+    }
+  }
+  return {...policy, profiles};
+}
+
+export function loadProfilePolicy(instancePath, catalogPath = profileCatalogPath) {
+  return mergeProfilePolicy(JSON.parse(readFileSync(catalogPath, "utf8")), JSON.parse(readFileSync(instancePath, "utf8")));
+}
+
 export function applyRuntimeProfiles(sourceConfig, catalog) {
   const source = structuredClone(requireObject(sourceConfig, "source config"));
   const profiles = requireObject(catalog?.profiles, "profiles");
@@ -196,7 +217,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToP
     process.exit(2);
   }
   try {
-    const rendered = applyRuntimeProfiles(loadJson5(sourcePath), JSON.parse(readFileSync(profilesPath, "utf8")));
+    const rendered = applyRuntimeProfiles(loadJson5(sourcePath), loadProfilePolicy(profilesPath));
     let serialized = JSON.stringify(rendered, null, 2);
     if (serialized.includes("__HUMANWARE_RUNTIME_ROOT__") && !runtimeRoot) fail("source config requires RUNTIME_ROOT");
     if (runtimeRoot) serialized = serialized.replaceAll("__HUMANWARE_RUNTIME_ROOT__", JSON.stringify(canonicalRuntimeRoot(runtimeRoot)).slice(1, -1));
