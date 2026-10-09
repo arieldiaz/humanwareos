@@ -87,7 +87,8 @@ class ApprovalTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertEqual(command[command.index('--agent') + 1], 'agent-a')
         self.assertEqual(command[command.index('--to') + 1], 'channel:C1')
-        self.assertEqual(command[command.index('--thread-id') + 1], '1.2')
+        self.assertNotIn('--thread-id', command, 'a Slack ts is not a Telegram topic id')
+        self.assertEqual(command[command.index('--to') + 1], 'channel:C1')
         self.assertIn('--delete-after-run', command)
 
     def test_launch_removes_approval_and_wake_when_handoff_fails(self):
