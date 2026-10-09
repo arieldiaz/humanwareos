@@ -53,6 +53,16 @@ class ArtifactManagerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "session already made artifact learning/1"):
             self.promote("slack:a", project="health")
 
+    def test_new_artifact_skips_numbers_reserved_by_grouping_redirects(self) -> None:
+        self.promote("slack:a", "Existing")
+        registry = am.load_registry(self.root)
+        registry["redirects"] = {"learning/2": "learning/1", "learning/2/versions/1": "learning/1/versions/1"}
+        am.write_registry(self.root, registry)
+        self.promote("slack:b", "New")
+        artifacts = am.load_registry(self.root)["projects"][0]["artifacts"]
+        self.assertEqual([artifact["number"] for artifact in artifacts], [1, 3])
+        self.assertEqual(am.verify_store(self.root, am.load_registry(self.root)), [])
+
     def test_projection_serves_live_versions_history_diffs_footers_and_redirects(self) -> None:
         self.promote("slack:a", "Draft")
         self.promote("slack:a", "Final", body="<p>final</p>")
