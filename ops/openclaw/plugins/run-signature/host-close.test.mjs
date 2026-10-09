@@ -9,7 +9,7 @@ import {formatCloseReport, reportParts, summarizeTrajectory, writeCloseReport, r
 import {closeThreadTool, loadSlackThreadSnapshot, rootShowsClosed, sendThreadMessage, shouldClaimClosedBotInbound} from './host-close.mjs';
 const manifest = JSON.parse(await readFile(new URL('./openclaw.plugin.json', import.meta.url)));
 const route = {channel: 'C123', threadId: '1790050400.000001'};
-const input = 'max';
+const input = {reservationId: 'request-1', principal: 'UOWNER', accountId: 'max'};
 const params = {sessionKey: 'agent:max:slack:channel:c123:thread:1790050400.000001', runId: 'r1'};
 // Stubbed Slack: the root's reactions are the only lifecycle record.
 function fixture() {
@@ -24,8 +24,8 @@ function fixture() {
     project: async status => {order.push(status); root.splice(0, root.length, {name: {working: 'arrows_counterclockwise', act: 'raised_hand', closed: 'white_check_mark'}[status], users: ['UMAX']});}};
   return {options, root, receipts, completed, files, order, runtime: new ThreadLifecycle(options)};
 }
-test('plugin schema rejects retired owner closure keys', () => {
-  assert.equal(manifest.configSchema.properties.ownerUserId, undefined);
+test('plugin schema keeps the owner principal and rejects the retired display label', () => {
+  assert.deepEqual(manifest.configSchema.properties.ownerUserId, {type: 'string', pattern: '^U[A-Z0-9]+$'});
   assert.equal(manifest.configSchema.properties.ownerLabel, undefined);
 });
 test('large thread snapshots use bounded cursor pages and preserve every reply', async () => {
@@ -52,8 +52,9 @@ test('only configured bot messages are claimed while a thread is closing or clos
   assert.equal(shouldClaimClosedBotInbound({closingOrClosed: true, senderId: 'UOWNER', botUserIds}), false);
   assert.equal(shouldClaimClosedBotInbound({closingOrClosed: false, senderId: 'ULIV', botUserIds}), false);
 });
-const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, agentAccountId: 'max'};
-const toolOptions = runtime => ({config: {channels: {slack: {accounts: {max: {}}}}}, lifecycle: runtime});
+const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, agentAccountId: 'max',
+  requesterSenderId: 'UOWNER', assertInvocationCurrent: () => {}};
+const toolOptions = runtime => ({config: {channels: {slack: {accounts: {max: {}}}}}, ownerUserId: 'UOWNER', lifecycle: runtime});
 test('owner mixed instruction: the run finishes its work, then the host closes after the run ends', async t => {
   const f = fixture();
   await f.runtime.start(params);
@@ -70,14 +71,39 @@ test('close after a restart: no in-memory run or inbound message still closes th
   const f = fixture(); // a fresh lifecycle is what the host holds after a gateway restart mid-turn
   const result = await closeThreadTool(toolContext, toolOptions(f.runtime)).execute();
   assert.equal(result.isError, undefined);
+  assert.equal(f.completed.size, 0, 'the close report waits for the final response');
+  await f.runtime.end(params);
   assert.deepEqual(f.order, ['snapshot', 'file', 'send', 'completion', 'closed']);
   assert.deepEqual(f.root, [{name: 'white_check_mark', users: ['UMAX']}]);
 });
+test('the host refuses a close without the configured owner authority', async () => {
+  const f = fixture();
+  await f.runtime.start(params);
+  for (const requesterSenderId of ['UOTHER', undefined]) {
+    const result = await closeThreadTool({...toolContext, requesterSenderId}, toolOptions(f.runtime)).execute();
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /only the owner/);
+  }
+  assert.equal((await closeThreadTool(toolContext, {...toolOptions(f.runtime), ownerUserId: undefined}).execute()).isError, true);
+  await f.runtime.end(params);
+  assert.deepEqual(f.order, ['working', 'act']);
+});
+test('the current invocation is rechecked at the close reservation', async () => {
+  const f = fixture();
+  await f.runtime.start(params);
+  const result = await closeThreadTool({...toolContext, assertInvocationCurrent: () => { throw new Error('stale invocation'); }}, toolOptions(f.runtime)).execute();
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /stale invocation/);
+  await f.runtime.end(params);
+  assert.deepEqual(f.order, ['working', 'act']);
+});
 test('closure uses the canonical Slack route when the harness session key differs', async () => {
   const f = fixture();
+  await f.runtime.start(params);
   const harnessContext = {...toolContext, sessionKey: 'agent:max:acp:claude-cli:session-1',
     nativeChannelId: 'C123', deliveryContext: {channel: 'slack', to: 'channel:C123', threadId: route.threadId}};
   assert.equal((await closeThreadTool(harnessContext, toolOptions(f.runtime)).execute()).isError, undefined);
+  await f.runtime.end(params);
   assert.equal(await f.runtime.isClosingOrClosed(route), true);
 });
 test('close needs a Slack thread and a configured sender', async () => {
@@ -94,7 +120,7 @@ test('no close without a request: an owner run that never calls close_thread end
 });
 for (const accountId of ['liv','max']) test(`${accountId}: duplicate callbacks freeze once and complete after identical file/report`, async t => {
   const f = fixture();
-  await Promise.all(Array.from({length: 4}, () => f.runtime.closeCommand(route, accountId)));
+  await Promise.all(Array.from({length: 4}, () => f.runtime.closeCommand(route, {...input, accountId})));
   assert.equal(f.receipts.size, 1); assert.equal(f.completed.size, 1);
   assert.equal(f.files.size, 1);
   assert.deepEqual(f.order, ['snapshot','file','send','completion','closed']);
@@ -102,9 +128,9 @@ for (const accountId of ['liv','max']) test(`${accountId}: duplicate callbacks f
 });
 test('closed is soft: the next admitted run replaces ✅ through ordinary admission and can be closed again', async t => {
   const f = fixture();
-  await f.runtime.closeCommand(route, input);
+  await f.runtime.closeCommand(route, {...input, reservationId: 'request-2'});
   assert.equal(f.order.at(-1), 'closed');
-  await f.runtime.closeCommand(route, input);
+  await f.runtime.closeCommand(route, {...input, reservationId: 'request-3'});
   assert.equal(f.receipts.size, 1);
   await f.runtime.start({...params, runId: 'r2'});
   await f.runtime.start({...params, runId: 'r2'});

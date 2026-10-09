@@ -63,7 +63,7 @@ export async function sendThreadMessage(config, turn, sdk) {
   });
 }
 
-export function closeThreadTool(context, {config, lifecycle}) {
+export function closeThreadTool(context, {config, ownerUserId, lifecycle}) {
   if (context.messageChannel !== "slack" || !context.sessionKey) return;
   const accountId = context.agentAccountId ?? String(context.agentId ?? "").toLowerCase();
   const reply = (text, isError) => ({content: [{type: "text", text}], ...(isError ? {isError} : {})});
@@ -73,6 +73,8 @@ export function closeThreadTool(context, {config, lifecycle}) {
     parameters: {type: "object", additionalProperties: false},
     async execute() {
       // The run's own thread is the only input; nothing about the triggering message is required.
+      if (!/^U[A-Z0-9]+$/.test(ownerUserId ?? "")) return reply("Closure requires configured ownerUserId", true);
+      if (context.requesterSenderId !== ownerUserId) return reply("Refused: only the owner can close this thread.", true);
       const route = conversationFenceRoute({
         channel: context.nativeChannelId,
         threadId: context.deliveryContext?.threadId,
@@ -80,7 +82,11 @@ export function closeThreadTool(context, {config, lifecycle}) {
         origin: context.deliveryContext,
       });
       if (!route || !config?.channels?.slack?.accounts?.[accountId]) return reply("close_thread needs a Slack thread and a configured Slack sender", true);
-      await lifecycle.requestClose(route, accountId);
+      try {
+        await lifecycle.requestClose(route, {principal: ownerUserId, accountId}, () => context.assertInvocationCurrent?.());
+      } catch (error) {
+        return reply(String(error?.message ?? error), true);
+      }
       return reply("Accepted. Only your final response after this call is delivered: put the complete answer to the owner's message there, never a placeholder like \"(Final reply above.)\". The host then posts the close report and ✅; do not announce the closure yourself.");
     },
   };
@@ -199,6 +205,10 @@ export function registerHostClose(api, {
         (!emoji || ["arrows_counterclockwise", "raised_hand", "hand", "calendar", "white_check_mark", "🔄", "✋", "🗓", "🗓️", "✅"].includes(emoji)))
       return {block: true, blockReason: "Lifecycle reactions belong to the projector"};
   });
-  api.registerTool?.({contextVersion: 2, create: context => closeThreadTool(context, {config: api.config, lifecycle})}, {name: "close_thread"});
+  api.registerTool?.({contextVersion: 2, create: context => closeThreadTool(context, {
+    config: api.config,
+    ownerUserId: api.pluginConfig?.ownerUserId,
+    lifecycle,
+  })}, {name: "close_thread"});
   return lifecycle;
 }

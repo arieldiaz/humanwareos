@@ -11,6 +11,7 @@
   "configSchema": {
     "type": "object",
     "properties": {
+      "ownerUserId": {"type": "string", "pattern": "^U[A-Z0-9]+$"},
       "defaultSlackAccount": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
       "dataRoot": {"type": "string", "pattern": "^/"},
       "excludedChannels": {
