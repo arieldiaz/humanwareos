@@ -218,11 +218,40 @@ class ArtifactManagerTests(unittest.TestCase):
         before = am.registry_path(self.root).read_bytes()
         report = am.group(self.root, self.review, plan, write=True)
         self.assertEqual(am.registry_path(self.root).read_bytes(), before)
-        self.assertIn("moved or renumbered addresses: 0", report)
+        self.assertIn("plan already applied: ", report)
+        self.assertIn("moved or renumbered addresses: 0", am.group(self.root, self.review, plan | {"note": 1}, write=False))
         self.assertEqual(len(list((self.root / "manifests/groupings").iterdir())), 1)
         registry = am.load_registry(self.root)
         am.materialize(self.root, self.review, registry)
         self.assertEqual(am.verify_projection(self.root, self.review, registry), [])
+
+    def test_group_moves_listed_versions_renumbers_by_date_and_removes_emptied_artifacts(self) -> None:
+        for session, day in (("s:a", "01"), ("s:b", "02"), ("s:a", "03"), ("s:c", "04"), ("s:a", "05"), ("s:c", "06")):
+            self.promote(session, session, body=f"<p>{day}</p>", day=f"{day} Sep 2026")
+        plan = {"groups": [{"project": "learning", "title": "A", "artifacts": [1]},
+                           {"project": "learning", "title": "B", "artifacts": [2, "learning/1/versions/2", "learning/3/versions/2",
+                                                                               "learning/3/versions/1"]}]}
+        before = am.load_registry(self.root)
+        am.group(self.root, self.review, plan, write=True)
+        registry = am.load_registry(self.root)
+        artifacts = registry["projects"][0]["artifacts"]
+        self.assertEqual([(a["title"], [v["revision"] for v in a["versions"]]) for a in artifacts],
+                         [("A", ["1-v1", "1-v3"]), ("B", ["2-v1", "1-v2", "3-v1", "3-v2"])])
+        for old, new in (("learning/1/versions/3", "learning/1/versions/2"),
+                         ("learning/3", "learning/2"), ("learning/3/versions/1", "learning/2/versions/3")):
+            self.assertEqual(registry["redirects"][old], new)
+        self.assertEqual(am.locate_artifact(self.root, "learning/3/versions/2").name, "3-v2")
+        record = json.loads(next((self.root / "manifests/groupings").iterdir()).read_text())
+        self.assertEqual(record["mapping"]["learning/1/versions/2"], "learning/2/versions/2")
+        self.assertEqual(am.verify_projection(self.root, self.review, registry), [])
+        self.assertIn("plan already applied: ", am.group(self.root, self.review, plan, write=False))
+        for groups, message in (([["learning/2/versions/1", 1, "learning/2/versions/1"]], "version listed twice"),
+                                ([[1, 2], [3, "learning/2/versions/1"]], "folded into 'G0' but one of its versions")):
+            with self.assertRaisesRegex(ValueError, message):
+                am.plan_grouping(before, {"groups": [{"project": "learning", "title": f"G{i}", "artifacts": refs}
+                                                       for i, refs in enumerate(groups)]})
+        self.promote("s:a", "s:a", body="<p>07</p>", day="07 Sep 2026")
+        self.assertNotIn("learning/1/versions/3", am.load_registry(self.root)["redirects"])
 
     def test_allocator_uses_next_number_yields_redirects_and_never_reuses_a_revision_name(self) -> None:
         self.promote("s:a", "A")
@@ -250,7 +279,7 @@ class ArtifactManagerTests(unittest.TestCase):
             artifact["number"] = number
         registry["schemaVersion"] = 3
         registry["projects"][0].pop("nextNumber")
-        registry["redirects"] = {"learning/1": "learning/7", "learning/3/versions/2": "learning/9", "learning/12": "learning/9/versions/1"}
+        registry["redirects"] = {"learning/1": "learning/7", "learning/3/versions/1": "learning/9", "learning/12": "learning/9/versions/1"}
         am.write_registry(self.root, registry)
         return registry
 
@@ -259,7 +288,7 @@ class ArtifactManagerTests(unittest.TestCase):
         report = am.renumber(self.root, self.review, apply=False)
         self.assertEqual(am.load_registry(self.root), before)
         self.assertIn("learning/7 -> learning/1\n  learning/9 -> learning/2\n  learning/4 -> learning/3", report)
-        self.assertIn("dropped redirects: 2\n  learning/1 -> learning/1\n  learning/3/versions/2 -> learning/2", report)
+        self.assertIn("dropped redirects: 2\n  learning/1 -> learning/1\n  learning/3/versions/1 -> learning/2", report)
         self.assertIn("untitled artifacts: 3\n  learning/1 (version title: s:b)", report)
         report = am.renumber(self.root, self.review, apply=True)
         self.assertIn("errors: 0", report)
@@ -283,10 +312,11 @@ class ArtifactManagerTests(unittest.TestCase):
         self.promote("s:b")
         registry = am.load_registry(self.root)
         registry["projects"][0]["artifacts"][1]["number"] = 3
-        registry["redirects"] = {"learning/1/versions/9": "learning/1"}
+        registry["redirects"] = {"learning/1/versions/1": "learning/1", "learning/1/versions/2": "learning/1"}
         errors = am.verify_store(self.root, registry)
         self.assertIn("artifact numbers are not dense 1..N: learning", errors)
-        self.assertIn("redirect shadows a live address: learning/1/versions/9", errors)
+        self.assertIn("redirect shadows a live address: learning/1/versions/1", errors)
+        self.assertNotIn("redirect shadows a live address: learning/1/versions/2", errors)
         registry["projects"][0]["nextNumber"] = 5
         self.assertIn("nextNumber is not N+1: learning", am.verify_store(self.root, registry))
 

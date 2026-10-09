@@ -281,11 +281,15 @@ def verify_store(root: Path, registry: dict, strict_shell: bool = True, planned:
 
 
 def shadows(registry: dict, address: str) -> bool:
-    """True when a redirect at this address would sit on or under a live project or artifact address."""
+    """True when a redirect at this address would sit on or under a live project or artifact address; a vacated
+    version number past an artifact's last version is not live."""
     parts = address.split("/")
     project = find_project(registry, parts[0])
     if project is None:
         return False
+    artifact = next((a for a in project["artifacts"] if str(a["number"]) == parts[1]), None) if len(parts) == 4 else None
+    if artifact and parts[0] == project["id"] and parts[2] == VERSIONS and parts[3].isdigit():
+        return int(parts[3]) <= len(artifact["versions"])
     live = {str(a["number"]) for a in project["artifacts"]} | {name for a in project["artifacts"] for name in a.get("legacy", {})}
     return parts[0] != project["id"] or len(parts) == 1 or parts[1] in live
 
@@ -464,6 +468,7 @@ def add_version(registry: dict, project_id: str, project_name: str, session: str
         version["date"] = iso
     artifact["versions"].append(version)
     artifact["current_version"] = k
+    updated.get("redirects", {}).pop(f"{project['id']}/{artifact['number']}/{VERSIONS}/{k}", None)
     updated["schemaVersion"] = SCHEMA
     return updated, project, artifact
 
@@ -558,8 +563,8 @@ def plan_grouping(registry: dict, plan: dict) -> tuple[dict, dict[str, str], lis
 
     Returns the new registry, the old -> new address mapping of every artifact and version that moved or was
     renumbered, the revision links (project, new revision, source project/revision) a write must add, and
-    warnings. Re-applying an applied plan changes nothing: merged projects resolve through redirects, and folded
-    artifacts resolve to their one artifact."""
+    warnings. Re-applying an applied whole-artifact plan changes nothing: merged projects resolve through redirects,
+    and folded artifacts resolve to their one artifact. Version addresses always name the current version."""
     updated = json.loads(json.dumps(registry))
     redirects = updated.setdefault("redirects", {})
     mapping: dict[str, str] = {}
@@ -606,57 +611,98 @@ def plan_grouping(registry: dict, plan: dict) -> tuple[dict, dict[str, str], lis
             move(moves, set())
 
     claimed: dict[int, str] = {}
+    picks: dict[int, tuple[str, dict]] = {}
+    folds = []
     for group in plan.get("groups", []):
         project = find_project(updated, group["project"])
         if project is None:
             warnings.append(f"unknown project in group {group['title']!r}: {group['project']}")
             continue
         members: list[dict] = []
+        picked: list[tuple[dict, dict]] = []
         for ref in group["artifacts"]:
             address = f"{group['project']}/{ref}" if isinstance(ref, int) else ref
             try:
-                owner, artifact, _ = resolve(updated, address)
+                owner, artifact, k = resolve(updated, address)
             except LookupError:
                 warnings.append(f"unknown artifact in group {group['title']!r}: {address}")
                 continue
             if owner is not project:
                 warnings.append(f"artifact outside project in group {group['title']!r}: {address}")
+            elif k:
+                version = artifact["versions"][k - 1]
+                if id(version) in picks:
+                    raise ValueError(f"version listed twice: {address}")
+                picks[id(version)] = (group["title"], artifact)
+                picked.append((artifact, version))
             elif claimed.setdefault(id(artifact), group["title"]) != group["title"]:
                 warnings.append(f"artifact already in group {claimed[id(artifact)]!r}, skipped in {group['title']!r}: {address}")
             elif artifact not in members:
                 members.append(artifact)
-        if not members:
-            continue
-        members.sort(key=lambda artifact: artifact["number"])
-        keeper = members[0]
+        if picked and not members:
+            raise ValueError(f"group {group['title']!r} lists versions but no artifact")
+        if members:
+            folds.append((group, project, sorted(members, key=lambda artifact: artifact["number"]), picked))
+
+    moves, live, homes = {}, set(), {}
+    legacies = {id(a): a.get("legacy", {}) for p in updated["projects"] for a in p["artifacts"]}
+    for group, project, members, picked in folds:
+        keeper, prefix = members[0], f"{project['id']}/"
         keeper["title"] = group["title"]
-        if len(members) == 1:
+        for artifact in members[1:]:
+            if any(title != group["title"] for title, source in picks.values() if source is artifact):
+                raise ValueError(f"{prefix}{artifact['number']} is folded into {group['title']!r} but one of its versions is listed in another group")
+        split = any(source is artifact for _, source in picks.values() for artifact in members)
+        if len(members) == 1 and not picked and not split:
             continue
-        ordered = sorted(((version_key(v), a["number"], v["number"], a, v) for a in members for v in a["versions"]),
-                         key=lambda row: row[:3])
-        prefix, moves, renumbered = f"{project['id']}/", {}, {}
-        for k, (_, number, old_k, _, version) in enumerate(ordered, start=1):
+        ordered = sorted([(version_key(v), a["number"], v["number"], a, v) for a in members for v in a["versions"] if id(v) not in picks]
+                         + [(version_key(v), a["number"], v["number"], a, v) for a, v in picked], key=lambda row: row[:3])
+        if not ordered:
+            raise ValueError(f"group {group['title']!r} is left with no versions")
+        renumbered = {}
+        for k, (_, number, old_k, artifact, _) in enumerate(ordered, start=1):
             moves[f"{prefix}{number}/{VERSIONS}/{old_k}"] = f"{prefix}{keeper['number']}/{VERSIONS}/{k}"
-            renumbered[(number, old_k)] = k
+            renumbered[(id(artifact), old_k)] = k
         legacy, sessions = {}, []
+        for artifact in {id(a): a for a in members + [source for source, _ in picked]}.values():
+            legacy |= {name: renumbered[(id(artifact), k)] if k else 0 for name, k in legacies[id(artifact)].items()
+                       if (id(artifact), k) in renumbered or not k and artifact in members}
         for artifact in members:
-            legacy |= {name: renumbered[(artifact["number"], k)] if k else 0 for name, k in artifact.get("legacy", {}).items()}
             sessions += artifact_sessions(artifact)
             if artifact is not keeper:
                 moves[f"{prefix}{artifact['number']}"] = f"{prefix}{keeper['number']}"
                 project["artifacts"].remove(artifact)
+        for source, _ in picked:
+            homes.setdefault(id(source), (project, source, keeper))
         keeper["versions"] = [version | {"number": k} for k, (*_, version) in enumerate(ordered, start=1)]
         keeper["current_version"] = len(keeper["versions"])
         keeper.pop("session", None)
         keeper.pop("folded_sessions", None)
+        keeper.pop("legacy", None)
         if sessions:
             keeper["session"] = sessions[0]
         if sessions[1:]:
             keeper["folded_sessions"] = sessions[1:]
         if legacy:
             keeper["legacy"] = legacy
-        live = {f"{prefix}{keeper['number']}/{VERSIONS}/{k}" for k in range(1, len(ordered) + 1)}
-        move(moves, live)
+        live |= {f"{prefix}{keeper['number']}/{VERSIONS}/{k}" for k in range(1, len(ordered) + 1)}
+    for project, source, keeper in homes.values():
+        if id(source) in claimed:
+            continue
+        old, remaining = f"{project['id']}/{source['number']}", [v for v in source["versions"] if id(v) not in picks]
+        if not remaining:
+            moves[old] = f"{project['id']}/{keeper['number']}"
+            project["artifacts"].remove(source)
+            keeper.setdefault("legacy", {}).update({name: 0 for name, k in source.get("legacy", {}).items() if not k})
+            continue
+        renumbered = {v["number"]: k for k, v in enumerate(remaining, start=1)}
+        moves |= {f"{old}/{VERSIONS}/{old_k}": f"{old}/{VERSIONS}/{k}" for old_k, k in renumbered.items()}
+        live |= {f"{old}/{VERSIONS}/{k}" for k in renumbered.values()}
+        source["versions"] = [v | {"number": renumbered[v["number"]]} for v in remaining]
+        source["current_version"] = len(remaining)
+        if source.get("legacy"):
+            source["legacy"] = {name: renumbered[k] if k else 0 for name, k in source["legacy"].items() if not k or k in renumbered}
+    move(moves, live)
     moves, dropped = densify(updated)
 
     def existed(address: str) -> bool:
@@ -754,6 +800,9 @@ def grouping_layout(before: dict, after: dict, mapping: dict, warnings: list[str
 
 
 def group(root: Path, review_root: Path, plan: dict, write: bool) -> str:
+    record = root / "manifests" / "groupings" / f"{date.today().isoformat()}-{hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()[:12]}.json"
+    if applied := sorted(record.parent.glob(f"*{record.name[10:]}")):
+        return f"plan already applied: {applied[0]}"
     registry = load_registry(root)
     updated, mapping, links, warnings = plan_grouping(registry, plan)
     report = grouping_layout(registry, updated, mapping, warnings)
@@ -771,7 +820,6 @@ def group(root: Path, review_root: Path, plan: dict, write: bool) -> str:
         errors = verify_store(root, updated, strict_shell=False)
         if errors:
             raise ValueError("grouping contract failed:\n- " + "\n- ".join(errors))
-        record = root / "manifests" / "groupings" / f"{date.today().isoformat()}-{hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()[:12]}.json"
         record.parent.mkdir(parents=True, exist_ok=True)
         record.write_text(json.dumps({"plan": plan, "mapping": mapping}, indent=2, ensure_ascii=False) + "\n")
         write_registry(root, updated)
@@ -860,7 +908,7 @@ def main() -> None:
     migrate_parser.add_argument("--write", action="store_true")
     group_parser = sub.add_parser("group", help="merge projects and fold artifacts from a plan; --write applies it to --root")
     group_parser.add_argument("--plan", type=Path, required=True,
-                              help='JSON {"projects": [{"id", "name", "merge": [<project>]}], "groups": [{"project", "title", "artifacts": [<n>|"<project>/<n>"]}]}')
+                              help='JSON {"projects": [{"id", "name", "merge": [<project>]}], "groups": [{"project", "title", "artifacts": [<n>|"<project>/<n>"|"<project>/<n>/versions/<k>"]}]}')
     group_parser.add_argument("--write", action="store_true")
     renumber_parser = sub.add_parser("renumber", help="number artifacts densely by first version date; --apply snapshots and writes")
     renumber_parser.add_argument("--apply", action="store_true")
