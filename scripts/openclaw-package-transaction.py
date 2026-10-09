@@ -76,14 +76,17 @@ def stage(transaction, version, npm):
     write_json(marker, {"version": version, "package": str(core)})
 
 
-def install(transaction, target):
+def install(transaction, target, force=False):
     marker = json.loads((transaction / "stage.json").read_text())
     source = transaction / "staged/node_modules/openclaw"
     version = validate(source, marker["version"])
     previous = validate(target)
-    if previous == version:
+    # Same version is a no-op unless the caller needs stock text back (the
+    # patch set changed), in which case the staged stock tree replaces the
+    # live, patched one.
+    if previous == version and not force:
         write_json(transaction / "installed.json", {
-            "version": version, "previousVersion": previous, "target": str(target), "changed": False,
+            "version": version, "previousVersion": previous, "target": str(target), "changed": False, "replaced": False,
         })
         return
     retained = transaction / "retained/openclaw"
@@ -99,7 +102,7 @@ def install(transaction, target):
         os.replace(retained, target)
         raise
     write_json(transaction / "installed.json", {
-        "version": version, "previousVersion": previous, "target": str(target), "changed": True,
+        "version": version, "previousVersion": previous, "target": str(target), "changed": previous != version, "replaced": True,
     })
 
 
@@ -122,6 +125,7 @@ def main():
     parser.add_argument("--version")
     parser.add_argument("--target", type=Path, default=Path("/opt/homebrew/lib/node_modules/openclaw"))
     parser.add_argument("--npm", default="/opt/homebrew/bin/npm")
+    parser.add_argument("--force", action="store_true", help="replace the package even when the version is unchanged")
     args = parser.parse_args()
     os.umask(0o077)
     try:
@@ -132,7 +136,7 @@ def main():
                 raise RuntimeError("stage requires --version")
             stage(args.transaction, args.version, args.npm)
         elif args.operation == "install":
-            install(args.transaction, args.target)
+            install(args.transaction, args.target, force=args.force)
         else:
             restore(args.transaction, args.target)
         print(f"OpenClaw package {args.operation} complete: {args.transaction}")

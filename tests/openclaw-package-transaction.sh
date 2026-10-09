@@ -43,6 +43,15 @@ printf '%s\n' '{"version":"2026.9.8"}' > "$SAME_TRANSACTION/stage.json"
 
 python3 "$ROOT/scripts/openclaw-package-transaction.py" install --transaction "$SAME_TRANSACTION" --target "$SAME_TARGET" >/dev/null
 [ "$(jq -r .changed "$SAME_TRANSACTION/installed.json")" = false ]
+[ "$(jq -r .replaced "$SAME_TRANSACTION/installed.json")" = false ]
 [ ! -e "$SAME_TRANSACTION/retained/openclaw" ]
+
+# A changed patch set needs stock text back even at the same version.
+printf '%s\n' 'patched' > "$SAME_TARGET/patched.marker"
+python3 "$ROOT/scripts/openclaw-package-transaction.py" install --force --transaction "$SAME_TRANSACTION" --target "$SAME_TARGET" >/dev/null
+[ "$(jq -r .changed "$SAME_TRANSACTION/installed.json")" = false ]
+[ "$(jq -r .replaced "$SAME_TRANSACTION/installed.json")" = true ]
+[ ! -e "$SAME_TARGET/patched.marker" ]
+[ -f "$SAME_TRANSACTION/retained/openclaw/patched.marker" ]
 
 echo "openclaw package transaction: OK"

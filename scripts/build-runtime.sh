@@ -80,9 +80,7 @@ cp "$FRAMEWORK_DIR/scripts/openclaw-agent-entries.mjs" "$BUILD_DIR/framework/scr
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-agent-context.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-agent-context.mjs"
 cp "$FRAMEWORK_DIR/scripts/materialize-openclaw-workspaces.mjs" "$BUILD_DIR/framework/scripts/materialize-openclaw-workspaces.mjs"
 cp "$FRAMEWORK_DIR/scripts/apply-openclaw-patches.sh" "$BUILD_DIR/framework/scripts/apply-openclaw-patches.sh"
-cp "$FRAMEWORK_DIR/scripts/runtime-cutover-lease.sh" "$BUILD_DIR/framework/scripts/runtime-cutover-lease.sh"
 cp "$FRAMEWORK_DIR/scripts/runtime-restart-guard.sh" "$BUILD_DIR/framework/scripts/runtime-restart-guard.sh"
-cp "$FRAMEWORK_DIR/scripts/repair-openclaw-terminal-sessions.mjs" "$BUILD_DIR/framework/scripts/repair-openclaw-terminal-sessions.mjs"
 cp "$FRAMEWORK_DIR/scripts/document-workspace-server.mjs" "$BUILD_DIR/framework/scripts/document-workspace-server.mjs"
 for plugin in cursor-cli run-signature; do cp -R "$FRAMEWORK_DIR/ops/openclaw/plugins/$plugin" "$BUILD_DIR/framework/ops/openclaw/plugins/$plugin"; done
 cp -R "$FRAMEWORK_DIR/ops/openclaw/patches/." "$BUILD_DIR/framework/ops/openclaw/patches/"
@@ -137,10 +135,14 @@ fi
   "$BUILD_DIR/config/openclaw/openclaw.json" \
   "$FINAL_DIR"
 
+# The patch set fingerprint lets activation tell when the installed OpenClaw
+# text must return to stock before patches apply again.
+PATCH_SET=$(cd "$FRAMEWORK_DIR/ops/openclaw/patches" && find . -type f \( -name 'patch-*.mjs' -o -name 'slack-plugin-root.mjs' -o -path './slack-rich-text/*' \) ! -name '*.test.mjs' | LC_ALL=C sort | while IFS= read -r file; do cat "$file"; done | shasum -a 256 | cut -c1-16)
 cat > "$BUILD_DIR/manifest.json" <<EOF
 {
   "schemaVersion": 1,
   "buildId": "$BUILD_ID",
+  "patchSet": "$PATCH_SET",
   "createdAt": "$(date -u +%FT%TZ)",
   "frameworkRevision": "$FRAMEWORK_REVISION",
   "instanceRevision": "$INSTANCE_REVISION",

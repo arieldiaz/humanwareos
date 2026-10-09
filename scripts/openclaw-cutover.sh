@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 prepare FRAMEWORK_DIR INSTANCE_DIR | activate PREPARED_JSON APPROVAL_FILE" >&2
+  echo "Usage: $0 prepare FRAMEWORK_DIR INSTANCE_DIR | activate PREPARED_JSON APPROVAL_FILE | prune RUNTIME_ROOT DATA_ROOT [KEEP]" >&2
   exit 2
 }
 
@@ -15,14 +15,46 @@ NODE_BIN=${NODE_BIN:-/opt/homebrew/opt/node/bin/node}
 OPENCLAW_BIN=${OPENCLAW_BIN:-/opt/homebrew/bin/openclaw}
 PACKAGE_TARGET=${OPENCLAW_PACKAGE_ROOT:-/opt/homebrew/lib/node_modules/openclaw}
 
+# Builds and cutover transactions are rebuildable. Keep the newest KEEP of each
+# plus whatever `current` points at, so a rollback target always survives.
+prune() {
+  [ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
+  local runtime_root=$1 data=$2 keep=${3:-3} current="" name
+  [ ! -L "$runtime_root/current" ] || current=$(basename "$(readlink "$runtime_root/current")")
+  if [ -d "$runtime_root/runtime" ]; then
+    ls -1 "$runtime_root/runtime" | grep -vx -- "$current" | sort -r | tail -n +"$((keep + 1))" | while IFS= read -r name; do
+      rm -rf "$runtime_root/runtime/$name"
+    done
+  fi
+  if [ -d "$data/operations/cutovers" ]; then
+    ls -1 "$data/operations/cutovers" | grep '^openclaw-' | sort -r | tail -n +"$((keep + 1))" | while IFS= read -r name; do
+      rm -rf "$data/operations/cutovers/$name"
+    done
+  fi
+  # An approval is valid for at most 30 minutes, so an older pending file can never be consumed.
+  if [ -d "$data/operations/control/restart-approvals/pending" ]; then
+    find "$data/operations/control/restart-approvals/pending" -name '*.json' -mmin +31 -delete
+  fi
+  # Finished one-shot cutover jobs stay registered in launchd until something boots them out.
+  if command -v launchctl >/dev/null 2>&1; then
+    launchctl list 2>/dev/null | awk '$3 ~ /^com\.humanwareos\.cutover\./ && $1 == "-" {print $3}' | while IFS= read -r label; do
+      launchctl bootout "gui/$(id -u)/$label" >/dev/null 2>&1 || true
+    done
+  fi
+}
+
 prepare() {
   [ "$#" -eq 2 ] || usage
-  local framework instance data version output runtime build_id transaction staged_bin candidate
+  local framework instance data runtime_root version output runtime build_id transaction staged_bin candidate
   framework=$(CDPATH= cd -- "$1" && pwd)
   instance=$(CDPATH= cd -- "$2" && pwd)
-  "$framework/scripts/validate-instance.sh" "$framework" "$instance" >&2
+  # The only thing prepare prints on stdout is the prepared.json path; everything else goes to stderr.
+  exec 3>&1 1>&2
+  "$framework/scripts/validate-instance.sh" "$framework" "$instance"
   data=$($JQ -r '.paths.dataRoot' "$instance/humanware.instance.json")
+  runtime_root=$($JQ -r '.paths.runtimeRoot' "$instance/humanware.instance.json")
   version=$($JQ -r '.openclaw.version' "$instance/humanware.instance.json")
+  prune "$runtime_root" "$data"
   output=$("$framework/scripts/build-runtime.sh" "$framework" "$instance")
   runtime=$(printf '%s\n' "$output" | /usr/bin/sed -n 's/^build-runtime: built //p' | /usr/bin/tail -n 1)
   [ -d "$runtime" ] || { echo "OpenClaw prepare did not produce a runtime" >&2; exit 1; }
@@ -30,23 +62,23 @@ prepare() {
   transaction="$data/operations/cutovers/openclaw-$build_id"
   mkdir -p "$transaction"
   chmod 700 "$transaction"
-  /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" stage --transaction "$transaction" --version "$version" >&2
+  /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" stage --transaction "$transaction" --version "$version"
   staged_bin="$transaction/staged/node_modules/openclaw/openclaw.mjs"
   candidate="$runtime/config/openclaw/openclaw.json"
-  OPENCLAW_STATE_DIR="$transaction/validation-state" OPENCLAW_CONFIG_PATH="$candidate" "$NODE_BIN" "$staged_bin" config validate >&2
+  OPENCLAW_STATE_DIR="$transaction/validation-state" OPENCLAW_CONFIG_PATH="$candidate" "$NODE_BIN" "$staged_bin" config validate
   $JQ -n \
     --arg framework "$framework" --arg instance "$instance" --arg runtime "$runtime" \
     --arg transaction "$transaction" --arg version "$version" \
     '{schemaVersion:1,framework:$framework,instance:$instance,runtime:$runtime,transaction:$transaction,version:$version}' \
     > "$transaction/prepared.json"
   chmod 600 "$transaction/prepared.json"
-  echo "$transaction/prepared.json"
+  echo "$transaction/prepared.json" >&3
 }
 
 activate() {
   [ "$#" -eq 2 ] || usage
   local prepared approval framework instance runtime transaction version data runtime_root current control instance_id
-  local report previous_runtime live_config config_rollback workspace_rollback lease lease_dir candidate_bin active=1
+  local report previous_runtime live_config config_rollback workspace_rollback candidate_bin active=1 previous_patch_set="" stock_needed=0
   local cutover_started=0 package_installed=0 config_replaced=0 workspace_applied=0 runtime_switched=0
   prepared=$(CDPATH= cd -- "$(dirname "$1")" && pwd)/$(basename "$1")
   approval=$(CDPATH= cd -- "$(dirname "$2")" && pwd)/$(basename "$2")
@@ -67,34 +99,29 @@ activate() {
   live_config="$HOME/.openclaw/openclaw.json"
   config_rollback="$report/openclaw-before.json"
   workspace_rollback="$report/workspaces"
-  lease="$framework/scripts/runtime-cutover-lease.sh"
-  lease_dir="$runtime_root/locks/runtime-deploy"
   candidate_bin="$transaction/staged/node_modules/openclaw/openclaw.mjs"
   [ -f "$candidate_bin" ] || { echo "Prepared OpenClaw candidate is missing: $candidate_bin" >&2; exit 1; }
   mkdir -p "$report"
   chmod 700 "$report"
 
-  "$framework/scripts/runtime-restart-guard.sh" verify "$control" "$approval" "$instance_id" 0
+  # Drain, then consume the approval, then stop: the suspension window is short,
+  # so nothing slow may sit between the drain and the stop.
   "$NODE_BIN" "$candidate_bin" gateway status --json > "$report/gateway-pre-suspend-status.json"
   if $JQ -e '.service.loaded == false and .port.status == "free"' "$report/gateway-pre-suspend-status.json" >/dev/null; then
     active=0
   elif "$NODE_BIN" "$candidate_bin" gateway suspend --wait 60 --expect-final --json > "$report/suspend.json" 2> "$report/suspend.err"; then
     active=0
   fi
-  if ! "$framework/scripts/runtime-restart-guard.sh" verify "$control" "$approval" "$instance_id" "$active"; then
-    "$OPENCLAW_BIN" gateway resume --json >/dev/null 2>&1 || true
-    return 1
-  fi
-  if ! "$lease" acquire "$lease_dir" "$$" "$instance_id:$version"; then
-    "$OPENCLAW_BIN" gateway resume --json >/dev/null 2>&1 || true
-    return 1
-  fi
-  trap '"$OPENCLAW_BIN" gateway resume --json >/dev/null 2>&1 || true; "$lease" release "$lease_dir" "$$" >/dev/null 2>&1 || true' EXIT
+  trap '"$OPENCLAW_BIN" gateway resume --json >/dev/null 2>&1 || true' EXIT
   "$framework/scripts/runtime-restart-guard.sh" consume "$control" "$approval" "$instance_id" "$active" "$report/restart-approval.json" > "$report/consumed-approval-path"
 
   previous_runtime=""
   [ ! -L "$current" ] || previous_runtime=$(readlink "$current")
   printf '%s\n' "$previous_runtime" > "$report/previous-runtime"
+  # A changed patch set means the live package carries edits that no longer
+  # exist in source; it must return to stock text before patches apply.
+  [ ! -f "$previous_runtime/manifest.json" ] || previous_patch_set=$($JQ -r '.patchSet // ""' "$previous_runtime/manifest.json")
+  [ "$previous_patch_set" = "$($JQ -r '.patchSet // ""' "$runtime/manifest.json")" ] || stock_needed=1
   cp -p "$live_config" "$config_rollback"
   chmod 600 "$config_rollback"
 
@@ -128,7 +155,6 @@ activate() {
       "$OPENCLAW_BIN" gateway start --json >/dev/null 2>&1
       echo "OpenClaw activation failed; rollback was attempted. Inspect the report before retrying: $report" >&2
     fi
-    "$lease" release "$lease_dir" "$$" >/dev/null 2>&1
     exit "$status"
   }
   trap rollback EXIT
@@ -137,21 +163,23 @@ activate() {
   trap 'exit 143' TERM
 
   cutover_started=1
-  "$NODE_BIN" "$candidate_bin" gateway status --json > "$report/gateway-pre-stop-status.json"
-  if $JQ -e '.service.loaded == false and .port.status == "free"' "$report/gateway-pre-stop-status.json" >/dev/null; then
+  if [ "$active" -eq 0 ] && $JQ -e '.service.loaded == false and .port.status == "free"' "$report/gateway-pre-suspend-status.json" >/dev/null; then
     $JQ -n '{action:"stop",ok:true,result:"already-stopped",message:"Gateway service is not loaded and its port is free."}' > "$report/gateway-stop.json"
   else
     "$NODE_BIN" "$candidate_bin" gateway stop --disable --force --json > "$report/gateway-stop.json"
   fi
-  /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" install --transaction "$transaction" --target "$PACKAGE_TARGET"
-  if $JQ -e '.changed == true' "$transaction/installed.json" >/dev/null; then
+  /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" install --transaction "$transaction" --target "$PACKAGE_TARGET" $([ "$stock_needed" -eq 1 ] && echo --force)
+  if $JQ -e '.replaced == true' "$transaction/installed.json" >/dev/null; then
     package_installed=1
   fi
   cp -p "$runtime/config/openclaw/openclaw.json" "$live_config"
   chmod 600 "$live_config"
   config_replaced=1
-  if [ "$package_installed" -eq 1 ]; then
+  # A version change refreshes every plugin; a patch-set change refreshes only the Slack plugin the patches edit.
+  if $JQ -e '.changed == true' "$transaction/installed.json" >/dev/null; then
     while IFS= read -r plugin; do "$OPENCLAW_BIN" plugins update "$plugin" > "$report/plugin-$(basename "$plugin").log" 2>&1; done < <($JQ -r '.openclaw.plugins[]' "$instance/humanware.instance.json")
+  elif [ "$stock_needed" -eq 1 ]; then
+    while IFS= read -r plugin; do "$OPENCLAW_BIN" plugins update "$plugin" > "$report/plugin-$(basename "$plugin").log" 2>&1; done < <($JQ -r '.openclaw.plugins[] | select(startswith("@openclaw/slack"))' "$instance/humanware.instance.json")
   fi
   NODE_BIN="$NODE_BIN" "$framework/scripts/apply-openclaw-patches.sh" > "$report/patches.log"
   HUMANWARE_WORKSPACE_BACKUP_DIR="$workspace_rollback" "$NODE_BIN" "$framework/scripts/materialize-openclaw-workspaces.mjs" apply "$runtime" "$live_config"
@@ -171,12 +199,12 @@ activate() {
     sleep 5
   done
   trap - EXIT HUP INT TERM
-  "$lease" release "$lease_dir" "$$"
   echo "OpenClaw $version active. Report: $report"
 }
 
 case "$ACTION" in
   prepare) prepare "$@" ;;
   activate) activate "$@" ;;
+  prune) prune "$@" ;;
   *) usage ;;
 esac
