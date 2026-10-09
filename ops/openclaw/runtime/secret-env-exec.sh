@@ -14,7 +14,7 @@
 # The bootstrap file is HUMANWARE_DOPPLER_ENV_FILE, as for secret-exec.sh.
 set -eu
 
-JQ_BIN=${JQ_BIN:-/usr/bin/jq}
+JQ_BIN=${JQ_BIN:-$(command -v jq || echo /usr/bin/jq)}
 SECRET_EXEC=${HUMANWARE_SECRET_EXEC:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/secret-exec.sh}
 
 usage() {
