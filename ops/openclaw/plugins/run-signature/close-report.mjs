@@ -154,7 +154,7 @@ function duration(seconds) {
   return minutes < 60 ? `${Math.max(1, Math.round(minutes))}m` : minutes < 60 * 48 ? `${(minutes / 60).toFixed(1)}h` : `${Math.round(minutes / 1440)}d`;
 }
 
-export function formatCloseReport({ stats, usage, agent, followUps = [], pullRequests = [], prices }) {
+export function formatCloseReport({ stats, usage, agent, pullRequests = [], prices }) {
   const records = (Array.isArray(usage) ? usage : [{agent, usage}]).filter(record => record.usage);
   const usages = records.map(record => record.usage);
   const header = ["**Session closed**", stats?.elapsedSeconds != null && duration(stats.elapsedSeconds), stats && `${stats.totalMessages} msgs`].filter(Boolean).join(" · ");
@@ -169,8 +169,24 @@ export function formatCloseReport({ stats, usage, agent, followUps = [], pullReq
   if (!records.some(record => record.agent === agent)) lines.push(`- Tokens: ${agent ?? "agent"} usage unavailable`);
   if (pullRequests.length) lines.push(`- Code: ${pullRequests.map(pr => [`[PR #${pr.number}](${pr.url})`, pr.state?.toLowerCase(),
     pr.additions != null && `+${pr.additions}/−${pr.deletions}`, pr.changedFiles != null && `${pr.changedFiles} files`].filter(Boolean).join(" · ")).join("; ")}`);
-  lines.push(`- Follow-up: ${followUps.length ? followUps.join("; ") : "none"}`);
   return lines.join("\n");
+}
+
+// Slack posts the report straight through chat.postMessage, which reads mrkdwn, not Markdown.
+export function slackMrkdwn(markdown) {
+  return String(markdown ?? "").replace(/\*\*(.+?)\*\*/g, "*$1*").replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, "<$2|$1>").replace(/^- /gm, "• ");
+}
+
+export async function loadSlackThreadSnapshot({channel, threadId, latest, token, call, limit = 20}) {
+  const messages = [];
+  let cursor;
+  do {
+    const page = await call("conversations.replies", token, {channel, ts: threadId, latest, inclusive: true, limit, ...(cursor ? {cursor} : {})});
+    messages.push(...(page.messages ?? []).filter(message => Number(message.ts) <= Number(latest)));
+    cursor = page.response_metadata?.next_cursor;
+    if (page.has_more && !cursor) throw new Error("Incomplete thread evidence without a continuation cursor");
+  } while (cursor);
+  return messages;
 }
 
 export function closeReportPath(dataRoot, operationId) {
@@ -182,19 +198,6 @@ export async function writeCloseReport({dataRoot, operationId, report}) {
   await mkdir(dirname(viewPath), {recursive: true});
   await writeFile(viewPath, report + '\n', {mode: 0o600});
   return viewPath;
-}
-
-export function reportParts(report, limit = 3000) {
-  const parts = [];
-  let rest = report;
-  while (rest.length > limit) {
-    let end = rest.lastIndexOf('\n', limit);
-    if (end < 1) end = limit;
-    if (/^[\uDC00-\uDFFF]$/.test(rest[end])) end--;
-    parts.push(rest.slice(0, end)); rest = rest.slice(end);
-  }
-  if (rest) parts.push(rest);
-  return parts;
 }
 
 export async function recordSessionClose({ dataRoot, channel, thread, agent, summary, stats, usage, operationId, report, now = new Date() }) {

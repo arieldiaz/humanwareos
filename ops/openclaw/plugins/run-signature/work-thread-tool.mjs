@@ -1,5 +1,5 @@
 import {matchSlackChannel, startSlackWorkThread} from "../../slack-spin-out.mjs";
-import {resolveSlackChannel} from "./conversation-fence.mjs";
+import {resolveSlackChannel} from "./slack-route.mjs";
 
 async function listSlackChannels(token) {
   const channels = [];

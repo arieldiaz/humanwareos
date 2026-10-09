@@ -1,82 +1,54 @@
-import {randomUUID} from 'node:crypto';
-import {conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
+import {slackRoute, slackRouteKey} from './slack-route.mjs';
 
-// Stateless thread lifecycle. Status derives from the current run (working →
-// act) plus host close; the root's bot-held ✅ in Slack is the only record of
-// closure and the append-only session ledger is the public record. In-process
-// maps only dedupe repeated hook events and in-flight closes.
+// Stateless thread lifecycle. A run's first model input projects 🔄 and its end
+// projects ✋. An owner close projects ✅ at once; the close report follows the
+// run's final reply. Nothing is stored: the in-process maps only pair a run's
+// start with its end and remember a close until that run ends.
 export class ThreadLifecycle {
-  constructor({project, record, closed, snapshot, writeReport, completeClose, send, excluded = () => false}) {
-    Object.assign(this, {project, record, closed, snapshot, writeReport, completeClose, send, excluded});
+  constructor({project, record, report, excluded = () => false}) {
+    Object.assign(this, {project, record, report, excluded});
     this.runs = new Map(); // run key → running turn
-    this.latest = new Map(); // conversation → latest admitted run or close key
-    this.pendingClose = new Map(); // run key → owner close request
-    this.closing = new Map(); // conversation → in-flight close
+    this.latest = new Map(); // conversation → latest admitted run or close
+    this.closes = new Map(); // conversation → turn whose end posts the close report
   }
   route(sessionKey) {
-    const route = conversationFenceRoute({sessionKey});
+    const route = slackRoute({sessionKey});
     return route && !this.excluded(route.channel) ? route : undefined;
   }
-  async isClosingOrClosed(route, accountId) {
-    return this.closing.has(conversationFenceKey(route)) || Boolean(await this.closed(route, accountId));
-  }
-  // A close requested during a run takes effect when that run ends. If a
-  // restart lost the start hook, the matching conversation's end hook still
-  // applies the request after the final response has settled.
-  async requestClose(route, input, assertCurrent = () => {}) {
-    const conversation = conversationFenceKey(route);
-    if (!conversation) throw new Error('Closure needs a Slack thread');
-    const run = [...this.runs.values()].findLast(turn => turn.conversation === conversation);
-    assertCurrent();
-    this.pendingClose.set(run?.key ?? conversation, {...input, reservationId: randomUUID()});
-  }
-  async closeCommand(route, {reservationId, principal, accountId}) {
-    if (!reservationId || !principal || !accountId) throw new Error('Closure requires reservation, principal and configured sender');
-    const conversation = conversationFenceKey(route);
-    if (!conversation) throw new Error('Canonical closure route is unavailable');
-    if (this.closing.has(conversation)) return this.closing.get(conversation);
-    const startedAt = Date.now(), key = `${conversation}:close:${reservationId}`;
-    const work = (async () => {
-      // A repeated close on a thread whose root still shows ✅ is a no-op.
-      if (await this.closed(route, accountId)) return;
-      const close = {key, conversation, route, principal, accountId, startedAt,
-        evidence: [...this.runs.values()].filter(turn => turn.conversation === conversation).map(({runId}) => ({runId, phase: 'running'})),
-        sessionKey: `agent:${accountId}:slack:channel:${route.channel.toLowerCase()}:thread:${route.threadId}`};
-      this.latest.set(conversation, key);
-      close.snapshot = await this.snapshot(close);
-      await this.writeReport(close);
-      await this.send({...close, text: close.snapshot.report, closeOperation: key});
-      await this.completeClose(close);
-      if (this.latest.get(conversation) === key) await this.project('closed', close);
-    })().finally(() => this.closing.delete(conversation));
-    this.closing.set(conversation, work);
-    return work;
-  }
-  // The first model input of a run admits it; repeated calls are no-ops.
   async start({sessionKey, runId}) {
     const route = this.route(sessionKey);
     if (!route || !runId) return;
-    const conversation = conversationFenceKey(route), key = `${conversation}:${runId}`;
+    const conversation = slackRouteKey(route), key = `${conversation}:${runId}`;
     if (this.runs.has(key)) return;
     const turn = {key, route, conversation, runId, sessionKey, accountId: sessionKey.split(':')[1]};
     this.runs.set(key, turn);
     this.latest.set(conversation, key);
     await this.settle(turn, 'working');
   }
-  // A finished run returns the turn to the human, whatever its reply was.
   async end({sessionKey, runId}) {
     const route = this.route(sessionKey);
     if (!route || !runId) return;
-    const conversation = conversationFenceKey(route);
+    const conversation = slackRouteKey(route);
     const turn = this.runs.get(`${conversation}:${runId}`);
-    const close = this.pendingClose.get(turn?.key) ?? this.pendingClose.get(conversation);
-    if (turn) {
-      this.runs.delete(turn.key);
-      await this.settle(turn, 'act');
-      this.pendingClose.delete(turn.key);
-    }
-    this.pendingClose.delete(conversation);
-    if (close) await this.closeCommand(route, close);
+    if (!turn) return;
+    this.runs.delete(turn.key);
+    const close = this.closes.get(conversation);
+    if (!close) return this.settle(turn, 'act');
+    this.closes.delete(conversation);
+    await this.report(close);
+  }
+  // ✅ goes on the root now. The report waits for the live run to end so it
+  // lands after the final reply; without a live run it posts immediately.
+  async close({route, sessionKey, accountId}) {
+    if (!route || this.excluded(route.channel)) throw new Error('close_thread needs a Slack thread outside excluded channels');
+    const conversation = slackRouteKey(route);
+    const run = [...this.runs.values()].findLast(turn => turn.conversation === conversation);
+    const turn = run ?? {key: `${conversation}:close`, route, conversation, sessionKey, accountId};
+    this.latest.set(conversation, turn.key);
+    await this.record({...turn, status: 'closed'});
+    await this.project('closed', turn);
+    if (run) this.closes.set(conversation, turn);
+    else await this.report(turn);
   }
   async settle(turn, status) {
     if (this.latest.get(turn.conversation) !== turn.key) return;

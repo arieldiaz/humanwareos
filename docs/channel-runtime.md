@@ -48,9 +48,9 @@ OpenClaw remains owner of the conversation when it delegates a task to an extern
 
 Short work runs inline and returns results to the owning identity. Longer work may run as a durable child task with the escalation profile, while the control plane exposes working state without a model-authored acknowledgement. A long coding conversation may explicitly bind the thread to a persistent ACP session. Permanent channel-wide ACP bindings are exceptional because they couple delivery, permissions, model choice, and startup behavior to one harness.
 
-Switching profiles creates a handoff event; it does not pretend two harness session stores are one transcript. The run provenance records the selected profile's harness ID, and the visible response signature reads it directly rather than inferring it from the model or provider.
+Switching profiles creates a handoff event; it does not pretend two harness session stores are one transcript. The run provenance records the selected harness, and the visible response signature reads it from the session's selected model rather than inferring it from the model name or provider.
 
-A direct human request to change model, harness, reasoning, or fast mode is control-plane input, not conversational advice. Apply and verify the requested switch before content work or other tool use in that turn, then continue under the effective profile. If the switch is unavailable, state the exact constraint before continuing. Never acknowledge the switch while leaving the old profile active, and never defer an explicit switch behind the work it was meant to govern.
+A human request to change model or reasoning is control-plane input. The agent calls `switch_model` with the requested alias before any other work in that turn. The host persists the selection on the conversation's session; the rendered catalog binds every allowed model to its harness, so the harness follows. The switch applies from the next turn, and the agent says so in one line. If the model is outside the allowlist, the tool names the allowed ones and the agent states that constraint. The human may also use OpenClaw's native `/model` and `/think` commands.
 
 ## Permissions
 
