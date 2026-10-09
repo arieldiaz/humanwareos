@@ -60,12 +60,12 @@ One project per trust domain, configs `dev` and `prd`:
 
 | Project | Holds | Read by |
 |---------|-------|---------|
-| `humanwareos-core` | Shared infra: model API keys, DNS tokens, PATs | The app/runtime |
-| `humanwareos-agents` | Shared agent-facing services (single-app era) | The app/runtime |
-| `humanwareos-liv`, `humanwareos-max` | Per-agent credentials (per-agent Slack/Notion) | That agent only |
+| `<prefix>-core` | Shared infra: model API keys, DNS tokens, PATs | The app/runtime |
+| `<prefix>-agents` | Shared agent-facing services (single-app era) | The app/runtime |
+| `<prefix>-<agent>`, one per agent in `humanware.instance.json` (for example `humanware-liv`, `humanware-max`) | Per-agent credentials (per-agent Slack/Notion) | That agent only |
 
-If your Doppler workplace is shared with other projects, prefix these
-(`<you>os-core`, …) — set the prefix at the top of the scripts here.
+The prefix defaults to `humanware`; set `HUMANWARE_SECRETS_PREFIX` when your
+Doppler workplace is shared with other projects.
 
 Key naming: `SCREAMING_SNAKE`, prefixed by service (`SLACK_BOT_TOKEN`,
 `NOTION_TOKEN`). The secret name always matches what the code reads.
@@ -83,13 +83,16 @@ Key naming: `SCREAMING_SNAKE`, prefixed by service (`SLACK_BOT_TOKEN`,
 
 ## Tooling in this directory
 
-- `setup-doppler.sh` — idempotent: creates the projects and issues one
-  read-only `prd` service token per consumer into
+Both scripts take the instance directory as their argument and read the
+agent list from its `humanware.instance.json`.
+
+- `setup-doppler.sh <instance-dir>` — idempotent: creates the projects and
+  issues one read-only `prd` service token per consumer into
   `~/.config/humanwareos/doppler.env` (mode 600). Needs `doppler login`.
-- `verify-agents.sh` — the isolation smoke test: each token must read its
-  own project and fail to read the others; optional per-agent Slack/Notion
-  liveness checks. Run it after any token or project change. It must
-  always pass.
+- `verify-agents.sh <instance-dir>` — the isolation smoke test: each token
+  must read its own project and fail to read the others; optional per-agent
+  Slack/Notion liveness checks. Run it after any token or project change. It
+  must always pass.
 
 ## Governance
 

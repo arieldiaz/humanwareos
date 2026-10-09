@@ -10,16 +10,29 @@
 # Prints PASS/FAIL/SKIP per check. Never prints secret values.
 #
 # Run after any token or project change. It must always pass.
+#
+# Usage: verify-agents.sh <instance-dir>
+# The agents come from humanware.instance.json in that directory.
 set -uo pipefail
 
+INSTANCE_DIR="${1:?usage: verify-agents.sh <instance-dir>}"
 PREFIX="${HUMANWARE_SECRETS_PREFIX:-humanware}"
 DOPPLER_ENV_FILE="${HUMANWARE_TOKEN_FILE:-$HOME/.config/humanwareos/doppler.env}"
 DOPPLER_BIN="$(command -v doppler || echo /opt/homebrew/bin/doppler)"
+MANIFEST="$INSTANCE_DIR/humanware.instance.json"
 
 if [ ! -x "$DOPPLER_BIN" ] || [ ! -f "$DOPPLER_ENV_FILE" ]; then
   echo "verify-agents: needs the doppler CLI and $DOPPLER_ENV_FILE (run setup-doppler.sh first)." >&2
   exit 1
 fi
+if [ ! -f "$MANIFEST" ] || ! command -v jq >/dev/null 2>&1; then
+  echo "verify-agents: needs jq and $MANIFEST." >&2
+  exit 1
+fi
+
+AGENTS="$(jq -r '.agents[]' "$MANIFEST")"
+token_var() { printf 'DOPPLER_TOKEN_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"; }
+agent_projects() { local a; for a in $AGENTS; do [ "$a" = "${1:-}" ] || printf '%s-%s\n' "$PREFIX" "$a"; done; }
 
 dtok() { grep "^$1=" "$DOPPLER_ENV_FILE" | cut -d= -f2-; }
 
@@ -82,7 +95,8 @@ check_notion() {
 }
 
 verify_agent() {
-  local agent="$1" var="$2" other_project="$3"
+  local agent="$1" var="$2"
+  shift 2
   local token slack_token notion_token
 
   token="$(dtok "$var")"
@@ -92,7 +106,7 @@ verify_agent() {
     return
   fi
 
-  check_scoping "$agent" "$token" "$other_project"
+  check_scoping "$agent" "$token" "$@"
 
   slack_token="$(dp "$token" secrets get SLACK_BOT_TOKEN --plain 2>/dev/null)" || slack_token=""
   notion_token="$(dp "$token" secrets get NOTION_TOKEN --plain 2>/dev/null)" || notion_token=""
@@ -115,10 +129,9 @@ app_token() {
   check_scoping "$label" "$token" "$@"
 }
 
-app_token core DOPPLER_TOKEN_CORE "$PREFIX-liv" "$PREFIX-max"
-app_token agents DOPPLER_TOKEN_AGENTS "$PREFIX-liv" "$PREFIX-max"
-verify_agent liv DOPPLER_TOKEN_LIV "$PREFIX-max"
-verify_agent max DOPPLER_TOKEN_MAX "$PREFIX-liv"
+app_token core DOPPLER_TOKEN_CORE $(agent_projects)
+app_token agents DOPPLER_TOKEN_AGENTS $(agent_projects)
+for agent in $AGENTS; do verify_agent "$agent" "$(token_var "$agent")" $(agent_projects "$agent"); done
 
 echo
 if [ "$FAILURES" -eq 0 ]; then

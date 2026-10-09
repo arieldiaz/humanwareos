@@ -42,6 +42,10 @@ Memory stores facts, decisions, and project state, never behavioral rules. Apply
 - `docs/versioning.md` — versioned content items, version URLs, footer, and history.
 - `docs/design-agent.md` — visual and interface work.
 - `docs/domain-surface.md` — public and private domain surfaces.
+- `docs/calendar-service.md` — canonical calendar store, mutations, and feeds.
+- `docs/email-intake.md` — email intake contract, correlation, and effects.
+- `docs/document-workspace.md` — read-only document workspace and proposals.
+- `docs/traceable-activity-index-spec.md` — activity events, index, and session trace.
 
 Instance facts belong in `AGENTS-instance.md` and `docs/*-instance.md`. Those files may narrow declared choices but may not copy generic rules.
 

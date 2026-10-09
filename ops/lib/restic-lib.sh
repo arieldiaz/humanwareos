@@ -1,4 +1,4 @@
-# restic-lib: shared helpers for the backup jobs (macbook → mini, mini → SSD).
+# restic-lib: shared helpers for the backup jobs (mini → NAS, mini → SSD).
 # Sourced AFTER stream-paths.env and lib/gate.sh. Keeps every restic job
 # using the same repo resolution, password handling, flags, and retention —
 # so a job script is just "pick a repo + a path list", nothing else.

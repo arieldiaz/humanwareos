@@ -10,17 +10,17 @@ test("renders framework, instance, identity, and data-plane references", () => {
   const rendered = renderAgentContext({
     agentId: "max",
     frameworkRules: "Framework rules.",
-    instanceRules: "Owner: Ariel.",
+    instanceRules: "Owner: the human.",
     responseContract: "Use ## TLDR for substantive replies.",
     agentTemplate: "---\nname: max\ndescription: CEO-minded operator\n---\n# Max",
-    agentOverlay: "---\nname: Max\nemoji: fox_face\n---\nOwn Ariel Works.",
+    agentOverlay: "---\nname: Max\nemoji: fox_face\n---\nOwn the product.",
     runtimeCurrent: "/runtime/current",
     dataRoot: "/data",
   });
   assert.match(rendered["AGENTS.md"], /Framework rules/);
-  assert.match(rendered["AGENTS.md"], /Owner: Ariel/);
+  assert.match(rendered["AGENTS.md"], /Owner: the human/);
   assert.match(rendered["AGENTS.md"], /## Reply shape[\s\S]*Use ## TLDR/);
-  assert.match(rendered["SOUL.md"], /Own Ariel Works/);
+  assert.match(rendered["SOUL.md"], /Own the product/);
   assert.match(rendered["SOUL.md"], /\/data\/current\/memory/);
   assert.doesNotMatch(rendered["SOUL.md"], /Before every Slack reply, read/);
   assert.match(rendered["IDENTITY.md"], /Name: Max/);

@@ -6,7 +6,7 @@ import test from "node:test";
 import { agentPrompt, createBridge, extractAgentResult, extractReply, isMainModule, keyedQueue, postReply, renderCampfireReply, sessionKey, validateWebhook } from "./bridge.mjs";
 
 const payload = {
-  user: { id: 7, name: "Ariel" },
+  user: { id: 7, name: "Pat" },
   room: { id: 11, name: "Lobby", path: "/rooms/11/2-AbCd123/messages" },
   message: { id: 23, body: { html: "<p>Hello</p>", plain: "Hello" }, path: "/rooms/11/@23" },
 };
@@ -21,7 +21,7 @@ test("recognizes execution through a runtime symlink as the main module", () => 
 test("validates Campfire payloads and stable room sessions", () => {
   assert.deepEqual(validateWebhook(payload), payload);
   assert.equal(sessionKey("max", 11), "campfire:room:11");
-  assert.match(agentPrompt(payload), /Sender: Ariel/);
+  assert.match(agentPrompt(payload), /Sender: Pat/);
   assert.throws(() => validateWebhook({ ...payload, room: { ...payload.room, path: "https://evil.test/" } }), /reply path/);
 });
 

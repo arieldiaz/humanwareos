@@ -2,21 +2,24 @@
 # setup-doppler: create the Doppler projects and per-project read-only
 # service tokens for a humanwareos instance (see runbook.md).
 #
+# Usage: setup-doppler.sh <instance-dir>
+# The instance directory holds humanware.instance.json; its `agents` array
+# names the per-agent projects.
+#
 # Run as YOU — needs a personal CLI session (`doppler login`), because
 # project/token management is a human-tier operation; the runtime only
 # ever holds the read-only tokens this script issues.
 #
-# Projects: $PREFIX-core, $PREFIX-agents, $PREFIX-liv, $PREFIX-max.
-# Change PREFIX if your Doppler workplace is shared with other projects.
-# Doppler creates dev/stg/prd configs by default; humanwareos uses dev + prd
-# and leaves stg unused.
+# Projects: $PREFIX-core, $PREFIX-agents, and $PREFIX-<agent> per agent.
+# Set HUMANWARE_SECRETS_PREFIX if your Doppler workplace is shared with other
+# projects. Doppler creates dev/stg/prd configs by default; humanwareos uses
+# dev + prd and leaves stg unused.
 #
 # Service tokens (one per consumer, config prd, access read) land in
 # ~/.config/humanwareos/doppler.env (mode 600, outside the repo — this file is
 # the bootstrap tier, see runbook.md § contract point 4):
 #   DOPPLER_TOKEN_CORE, DOPPLER_TOKEN_AGENTS  — the app/runtime
-#   DOPPLER_TOKEN_LIV                         — liv only
-#   DOPPLER_TOKEN_MAX                         — max only
+#   DOPPLER_TOKEN_<AGENT>                     — that agent only
 #
 # Idempotent: existing projects are kept; a token is only issued if its
 # variable is not already in doppler.env (token values are shown once at
@@ -24,13 +27,23 @@
 # values — names and counts only.
 set -euo pipefail
 
+INSTANCE_DIR="${1:?usage: setup-doppler.sh <instance-dir>}"
 PREFIX="${HUMANWARE_SECRETS_PREFIX:-humanware}"
 TOKEN_FILE="${HUMANWARE_TOKEN_FILE:-$HOME/.config/humanwareos/doppler.env}"
 TOKEN_NAME="launchd"
 
-PROJECTS="$PREFIX-core $PREFIX-agents $PREFIX-liv $PREFIX-max"
-
 fail() { echo "setup-doppler: $*" >&2; exit 1; }
+
+MANIFEST="$INSTANCE_DIR/humanware.instance.json"
+[ -f "$MANIFEST" ] || fail "no humanware.instance.json in $INSTANCE_DIR"
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+AGENTS="$(jq -r '.agents[]' "$MANIFEST")"
+[ -n "$AGENTS" ] || fail "manifest declares no agents"
+
+token_var() { printf 'DOPPLER_TOKEN_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"; }
+
+PROJECTS="$PREFIX-core $PREFIX-agents"
+for agent in $AGENTS; do PROJECTS="$PROJECTS $PREFIX-$agent"; done
 
 doppler me >/dev/null 2>&1 || fail "doppler CLI has no session — run: doppler login"
 
@@ -67,7 +80,6 @@ issue_token() {
 
 issue_token DOPPLER_TOKEN_CORE "$PREFIX-core"
 issue_token DOPPLER_TOKEN_AGENTS "$PREFIX-agents"
-issue_token DOPPLER_TOKEN_LIV "$PREFIX-liv"
-issue_token DOPPLER_TOKEN_MAX "$PREFIX-max"
+for agent in $AGENTS; do issue_token "$(token_var "$agent")" "$PREFIX-$agent"; done
 
-echo "setup-doppler: done — next: add secrets in the dashboard, then run verify-agents.sh"
+echo "setup-doppler: done — next: add secrets in the dashboard, then run verify-agents.sh $INSTANCE_DIR"
