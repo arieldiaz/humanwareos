@@ -6,33 +6,21 @@ import {
   addReactionsInOrder,
   slackApi,
   buildRunReactionNames,
-  buildRunSignature,
   ADMITTED_STATUS,
   createKeyedSerialQueue,
   planStatusTile,
   resolveHarnessTile,
   resolveModelTile,
   resolveStatusTile,
-  resolveThreadRoot,
-  rememberInboundThreadRoot,
-  rememberAcpBoundThread,
-  boundThreadFromSession,
-  sessionBoundThread,
-  isAcpBindingSession,
   resolveBotUserId,
-  sessionKeyForRoot,
-  routeCacheKey,
   resolveConfiguredThinking,
   slackRouteFromSessionKey,
   resolveSlackChannelId,
-  resolveConfiguredAcpProvenance,
   resolveDataRoot,
   normalizeThinkingLevel,
   resolveThinkingTile,
   retrySlackRateLimit,
   resolveSlackRuntimeModule,
-  saveAgentProvenance,
-  loadAgentProvenance,
   mergeProvenance,
   resolveSelectedHarness,
   normalizeReactions,
@@ -141,8 +129,6 @@ test("uses the resolved think level for the tile and omits when unknown", () => 
 
 test("builds the compact model harness signature", () => {
   const provenance = { model: "claude-opus-5", provider: "anthropic", harnessId: "claude-cli", thinkLevel: "off" };
-  const signature = buildRunSignature(provenance);
-  assert.equal(signature, ":m_opus: :h_cc: :think_off:");
   assert.deepEqual(buildRunReactionNames(provenance), ["m_opus", "h_cc", "think_off"]);
   // A provider name is not a harness id.
   assert.deepEqual(buildRunReactionNames({ model: "claude-opus-5", provider: "claude-cli", thinkLevel: "off" }), ["m_opus", "think_off"]);
@@ -280,63 +266,12 @@ test("retries Slack rate limits using retry-after", async () => {
   assert.deepEqual(slept, [1000, 1000]);
 });
 
-test("rekeys a session onto the thread root and refuses a no-op rekey", () => {
-  assert.equal(
-    sessionKeyForRoot("agent:liv:slack:channel:c0b:thread:1786710044.475489", "1786705095.330309"),
-    "agent:liv:slack:channel:c0b:thread:1786705095.330309",
-  );
-  assert.equal(sessionKeyForRoot("agent:liv:slack:channel:c0b:thread:1786705095.330309", "1786705095.330309"), undefined);
-  assert.equal(sessionKeyForRoot(undefined, "1786705095.330309"), undefined);
-});
-
 test("recovers the canonical Slack route from the session key", () => {
   assert.deepEqual(
     slackRouteFromSessionKey("agent:liv:slack:channel:c0bkfafgj72:thread:1787577204.722849"),
     { channel: "C0BKFAFGJ72", rootTs: "1787577204.722849" },
   );
   assert.equal(slackRouteFromSessionKey("agent:liv:main"), undefined);
-});
-
-
-
-test("resolves an inbound message ts to its thread root and caches it", async () => {
-  const calls = [];
-  const call = async (method, token, body) => {
-    calls.push({ method, body });
-    return { messages: [{ ts: body.ts, thread_ts: "1786705095.330309" }] };
-  };
-  const cache = new Map();
-  const root = await resolveThreadRoot("C0B", "1786710044.475489", "tok", cache, call);
-  assert.equal(root, "1786705095.330309");
-  const again = await resolveThreadRoot("C0B", "1786710044.475489", "tok", cache, call);
-  assert.equal(again, "1786705095.330309");
-  assert.equal(calls.length, 1);
-});
-
-test("falls back to the given ts when Slack cannot resolve the root", async () => {
-  const call = async () => { throw new Error("nope"); };
-  const root = await resolveThreadRoot("C0B", "123.456", "tok", new Map(), call);
-  assert.equal(root, "123.456");
-});
-
-test("remembers the canonical root carried by the inbound Slack event", () => {
-  const cache = new Map();
-  assert.deepEqual(rememberInboundThreadRoot(
-    { messageId: "1786710044.475489", threadId: "1786705095.330309" },
-    { channelId: "slack", conversationId: "channel:C0B" },
-    cache,
-  ), { channel: "C0B", rootTs: "1786705095.330309" });
-  assert.equal(cache.get("C0B:1786710044.475489"), "1786705095.330309");
-  assert.deepEqual(
-    rememberInboundThreadRoot(
-      { channel: "slack", conversationId: "channel:C0B", messageId: "1786710050.000001" },
-      {},
-      cache,
-    ),
-    { channel: "C0B", rootTs: "1786710050.000001" },
-  );
-  rememberInboundThreadRoot({ messageId: "1.2", threadId: "1.1" }, { channelId: "telegram" }, cache);
-  assert.equal(cache.size, 2);
 });
 
 test("asks Slack for the bot user id once per token", async () => {
@@ -406,23 +341,6 @@ test("does not substitute an internal Slack chunk with minified exports", () => 
   }), /no actions runtime chunk/);
 });
 
-test("round-trips the per-agent provenance snapshot and drops junk entries", async () => {
-  const path = `/tmp/run-signature-test-snapshot-${process.pid}.json`;
-  const byAgent = new Map([
-    ["liv", { model: "claude-fable-5", provider: "claude-cli" }],
-    ["max", { model: "gpt-5.6-sol", provider: "openai" }],
-  ]);
-  await saveAgentProvenance(byAgent, path);
-  const loaded = await loadAgentProvenance(path);
-  assert.deepEqual(loaded.get("liv"), { model: "claude-fable-5", provider: "claude-cli" });
-  assert.equal(loaded.size, 2);
-});
-
-test("returns an empty provenance map when the snapshot is absent or corrupt", async () => {
-  const loaded = await loadAgentProvenance(`/tmp/does-not-exist-${process.pid}.json`);
-  assert.equal(loaded.size, 0);
-});
-
 test("a later event without a thinking level keeps the one already known", () => {
   const first = mergeProvenance(undefined, { model: "claude-fable-5", harnessId: "claude-cli", thinkLevel: "high" });
   const second = mergeProvenance(first, { model: "claude-fable-5", provider: "claude-cli" });
@@ -458,13 +376,6 @@ test("the selected profile harness is carried by run provenance into the reply s
   assert.equal(resolveSelectedHarness({agents: {entries: {liv: {}}}}, "liv", {modelProvider: "claude-cli"}), undefined);
 });
 
-test("route cache keys carry the agent so a shared thread cannot cross-contaminate", () => {
-  assert.equal(routeCacheKey("liv", "C0BJUS07HUH", "123.456"), "liv:c0bjus07huh:123.456");
-  assert.notEqual(routeCacheKey("liv", "C1", "1.2"), routeCacheKey("max", "C1", "1.2"));
-  assert.equal(routeCacheKey(undefined, "C1", "1.2"), undefined);
-  assert.equal(routeCacheKey("liv", "C1", undefined), undefined);
-});
-
 test("configured thinking default resolves per agent with a global fallback", () => {
   const config = { agents: { defaults: { thinkingDefault: "low" }, list: [{ id: "max", thinkingDefault: "high" }] } };
   assert.equal(resolveConfiguredThinking(config, "max"), "high");
@@ -472,94 +383,6 @@ test("configured thinking default resolves per agent with a global fallback", ()
   assert.equal(resolveConfiguredThinking(config, "liv"), "low");
   assert.equal(resolveConfiguredThinking(undefined, "max"), undefined);
   assert.equal(resolveConfiguredThinking(config, undefined), undefined);
-});
-
-test("configured Cursor ACP bindings carry provable Auto provenance", () => {
-  const config = {
-    agents: { list: [{ id: "liv", runtime: { type: "acp", acp: { agent: "cursor" } } }] },
-    plugins: { entries: { acpx: { config: { agents: { cursor: { args: ["--model", "auto", "acp"] } } } } } },
-  };
-  const sessionKey = "agent:liv:acp:binding:slack:liv:1234";
-  assert.deepEqual(resolveConfiguredAcpProvenance(config, sessionKey), {
-    model: "cursor/auto",
-    provider: "cursor",
-    harnessId: "cursor",
-    sessionKey,
-  });
-  assert.equal(buildRunSignature(resolveConfiguredAcpProvenance(config, sessionKey)), ":m_cursor_auto: :h_cursor:");
-  assert.equal(resolveConfiguredAcpProvenance(config, "agent:liv:slack:channel:x"), undefined);
-});
-
-test("configured Cursor ACP routes outrank stale native session provenance", () => {
-  const config = {
-    agents: { list: [{ id: "liv", runtime: { type: "acp", acp: { agent: "cursor" } } }] },
-    bindings: [{
-      type: "acp",
-      agentId: "liv",
-      match: { channel: "slack", accountId: "liv", peer: { kind: "channel", id: "C123" } },
-    }],
-    plugins: { entries: { acpx: { config: { agents: { cursor: { args: ["--model", "cursor-grok-4.6-high", "acp"] } } } } } },
-  };
-  const sessionKey = "agent:liv:slack:channel:c123:thread:456.789";
-  const provenance = resolveConfiguredAcpProvenance(config, sessionKey, { accountId: "liv", channel: "C123" });
-  assert.deepEqual(provenance, {
-    model: "cursor/cursor-grok-4.6-high",
-    provider: "cursor",
-    harnessId: "cursor",
-    sessionKey,
-  });
-  assert.deepEqual(buildRunReactionNames(provenance), ["m_grok", "h_cursor"]);
-  assert.equal(resolveConfiguredAcpProvenance(config, sessionKey, { accountId: "liv", channel: "C999" }), undefined);
-});
-
-test("caches the inbound Slack root on the ACP binding session", () => {
-  const cache = new Map();
-  const sessionKey = "agent:liv:acp:binding:slack:liv:8b291ea29ca808cc";
-  rememberAcpBoundThread(
-    { messageId: "1787189113.861049", threadId: "1787187673.847529" },
-    { channelId: "slack", conversationId: "channel:C0BLQJAVD2L", sessionKey },
-    cache,
-  );
-  assert.deepEqual(boundThreadFromSession(sessionKey, cache), {
-    channel: "C0BLQJAVD2L",
-    rootTs: "1787187673.847529",
-  });
-  rememberAcpBoundThread(
-    { messageId: "1.2", threadId: "1.1" },
-    { channelId: "slack", conversationId: "channel:C0B", sessionKey: "agent:liv:slack:channel:c0b:thread:1.1" },
-    cache,
-  );
-  assert.equal(cache.size, 1);
-});
-
-test("reads the Slack root from the ACP session row when the send omits threadId", () => {
-  const sessionKey = "agent:liv:acp:binding:slack:liv:000430882a43355e";
-  assert.deepEqual(
-    sessionBoundThread({
-      origin: {
-        nativeChannelId: "C0BGF5593PE",
-        to: "channel:C0BGF5593PE",
-        threadId: "1786963060.631729",
-      },
-      deliveryContext: { channel: "slack", threadId: "1786963060.631729" },
-      lastThreadId: "1786963060.631729",
-    }),
-    { channel: "C0BGF5593PE", rootTs: "1786963060.631729" },
-  );
-  assert.equal(sessionBoundThread({ origin: { nativeChannelId: "C0B" } }), undefined);
-  assert.equal(
-    String(
-      undefined ?? undefined ?? boundThreadFromSession(sessionKey, new Map())?.rootTs ??
-        sessionBoundThread({ origin: { threadId: "1786963060.631729" } })?.rootTs ??
-        "",
-    ),
-    "1786963060.631729",
-  );
-});
-
-test("identifies ACP binding sessions without interpreting reply prose", () => {
-  assert.equal(isAcpBindingSession("agent:liv:acp:binding:slack:liv:abc"), true);
-  assert.equal(isAcpBindingSession("agent:liv:slack:channel:c0b:thread:1.1"), false);
 });
 
 test("resolves the canonical data root explicitly or from an agent workspace", () => {
@@ -579,15 +402,10 @@ test("maps Astra to its Slack model tile", () => {
   assert.equal(resolveModelTile("openai/gpt-6-astra"), ":stars:");
 });
 
-
-test("canonical keyed agents retain thinking and ACP provenance after migration", () => {
-  const config = {
-    agents: {defaults: {thinkingDefault: "low"}, entries: {liv: {thinkingDefault: "high", runtime: {type: "acp", acp: {agent: "cursor"}}}}},
-    plugins: {entries: {acpx: {config: {agents: {cursor: {args: ["--model", "auto"]}}}}}},
-  };
+test("canonical keyed agents retain their thinking default after migration", () => {
+  const config = {agents: {defaults: {thinkingDefault: "low"}, entries: {liv: {thinkingDefault: "high"}}}};
   assert.equal(resolveConfiguredThinking(config, "LIV"), "high");
   assert.equal(resolveConfiguredThinking(config, "max"), "low");
-  assert.equal(resolveConfiguredAcpProvenance(config, "agent:liv:acp:binding:slack:liv:1234").model, "cursor/auto");
 });
 
 test('agent reaction calls cannot add, remove, or clear lifecycle tiles', () => {

@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { readdirSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import {loadSessionEntry} from "./session-store.mjs";
@@ -118,10 +118,6 @@ export function mergeProvenance(prior, next) {
   };
 }
 
-export function buildRunSignature(provenance) {
-  return buildRunReactionNames(provenance).map((name) => `:${name}:`).join(" ");
-}
-
 export function buildRunReactionNames(provenance) {
   const tiles = [
     resolveModelTile(provenance.model),
@@ -163,11 +159,9 @@ export async function retrySlackRateLimit(task, { attempts = 4, sleep = (ms) => 
   }
 }
 
-// Form-encoded, not JSON. Slack's read methods — conversations.replies among
-// them — reject a JSON body with invalid_arguments, and resolveThreadRoot
-// swallows that as "no root", which silently keys every provenance lookup to
-// the wrong session. Every call here passes flat string params, so form
-// encoding is correct for all of them.
+// Form-encoded, not JSON: Slack's read methods, conversations.replies among
+// them, reject a JSON body with invalid_arguments. Every call here passes flat
+// string params, so form encoding is correct for all of them.
 export async function slackApi(method, token, body) {
   const response = await fetch(`https://slack.com/api/${method}`, {
     method: "POST",
@@ -181,78 +175,6 @@ export async function slackApi(method, token, body) {
   const payload = await response.json();
   if (!payload.ok) throw new Error(`slack ${method} failed: ${payload.error}`);
   return payload;
-}
-
-// The gateway sometimes keys an outbound delivery session by the inbound message
-// ts rather than the thread root, which sends every provenance lookup to a
-// session that never ran a model call. Slack is the authority on the root.
-export async function resolveThreadRoot(channel, ts, token, cache = new Map(), call = slackApi) {
-  if (!channel || !ts) return ts;
-  const key = `${channel}:${ts}`;
-  if (cache.has(key)) return cache.get(key);
-  let root = ts;
-  try {
-    const payload = await call("conversations.replies", token, { channel, ts, limit: 1 });
-    root = payload.messages?.[0]?.thread_ts ?? payload.messages?.[0]?.ts ?? ts;
-  } catch {
-    root = ts;
-  }
-  cache.set(key, root);
-  return root;
-}
-
-export function rememberInboundThreadRoot(event, ctx, cache = new Map()) {
-  if (String(event?.channel ?? ctx?.channelId ?? "").toLowerCase() !== "slack") return;
-  const channel = String(
-    event?.conversationId ?? ctx?.conversationId ?? event?.metadata?.channelId ?? event?.metadata?.channel ?? "",
-  ).replace(/^channel:/, "").toUpperCase();
-  const messageTs = String(event?.messageId ?? event?.metadata?.messageId ?? "");
-  const rootTs = String(
-    event?.threadId ?? event?.replyToId ?? event?.metadata?.threadId ?? event?.metadata?.threadTs ?? messageTs,
-  );
-  if (!channel || !messageTs || !rootTs) return;
-  cache.set(`${channel}:${messageTs}`, rootTs);
-  return { channel, rootTs };
-}
-
-export function isAcpBindingSession(sessionKey) {
-  return /^agent:[^:]+:acp:binding:/i.test(String(sessionKey ?? ""));
-}
-
-export function rememberAcpBoundThread(event, ctx, cache = new Map()) {
-  if (!isAcpBindingSession(ctx?.sessionKey)) return;
-  if (ctx?.channelId !== "slack") return;
-  const channel = String(
-    ctx.conversationId ?? event?.metadata?.channelId ?? event?.metadata?.channel ?? "",
-  ).replace(/^channel:/, "").toUpperCase();
-  const rootTs = String(
-    event?.threadId ??
-      event?.replyToId ??
-      event?.metadata?.threadId ??
-      event?.metadata?.threadTs ??
-      event?.metadata?.rootTs ??
-      event?.messageId ??
-      event?.metadata?.messageId ??
-      "",
-  );
-  if (!channel || !rootTs) return;
-  cache.set(ctx.sessionKey, { channel, rootTs });
-}
-
-export function boundThreadFromSession(sessionKey, cache = new Map()) {
-  return sessionKey ? cache.get(sessionKey) : undefined;
-}
-
-export function sessionBoundThread(session) {
-  if (!session || typeof session !== "object") return;
-  const rootTs = String(
-    session.origin?.threadId ?? session.deliveryContext?.threadId ?? session.lastThreadId ?? "",
-  );
-  const channel = String(session.origin?.nativeChannelId ?? session.origin?.to ?? "")
-    .replace(/^channel:/, "")
-    .toUpperCase();
-  if (!rootTs) return;
-  return { channel: channel || undefined, rootTs };
 }
 
 // Ownership decides what we are allowed to remove, so it cannot be guessed.
@@ -271,12 +193,6 @@ export async function resolveBotUserId(token, cache = new Map(), call = slackApi
   return userId;
 }
 
-export function sessionKeyForRoot(sessionKey, root) {
-  if (!sessionKey || !root) return undefined;
-  const rekeyed = sessionKey.replace(/(:thread:)[^:]+$/i, `$1${root}`);
-  return rekeyed === sessionKey ? undefined : rekeyed;
-}
-
 export function resolveSlackChannelId(event, ctx) {
   return resolveSlackChannel({
     channel: event?.to,
@@ -285,15 +201,6 @@ export function resolveSlackChannelId(event, ctx) {
       conversationId: event?.conversationId ?? event?.metadata?.channelId ?? event?.metadata?.channel ?? ctx?.conversationId,
     },
   });
-}
-
-// The route cache exists for a send that outran its own session's events. Two
-// agents legitimately share one thread, so a key of channel+root alone hands
-// one agent the other's provenance — Liv's sends in a thread Max was building
-// in went out signed sol/codex (2026-08-18). The agent id is part of the key.
-export function routeCacheKey(agentId, channel, ts) {
-  if (!agentId || !channel || !ts) return undefined;
-  return `${String(agentId).toLowerCase()}:${String(channel).toLowerCase()}:${ts}`;
 }
 
 // The effective reasoning level when run events carry none: an explicit
@@ -325,42 +232,6 @@ export function resolveConfiguredThinking(config, agentId) {
   return entry?.thinkingDefault ?? config?.agents?.defaults?.thinkingDefault;
 }
 
-// Persistent ACP bindings do not emit OpenClaw model-call events because the
-// provider runs inside the external harness. The binding session and the
-// configured ACP command still prove its selected model. Keep
-// this narrow: only an explicit Cursor --model value earns provenance.
-export function resolveConfiguredAcpProvenance(config, sessionKey, route = {}) {
-  const session = String(sessionKey ?? "");
-  const match = session.match(/^agent:([^:]+):/i);
-  if (!match) return;
-  const agentId = match[1].toLowerCase();
-  if (!isAcpBindingSession(session)) {
-    const accountId = String(route.accountId ?? "").toLowerCase();
-    const peerId = String(route.peerId ?? route.channel ?? "").toLowerCase();
-    const bound = (config?.bindings ?? []).some((binding) =>
-      binding?.type === "acp" &&
-      String(binding?.agentId ?? "").toLowerCase() === agentId &&
-      String(binding?.match?.channel ?? "").toLowerCase() === "slack" &&
-      String(binding?.match?.accountId ?? "").toLowerCase() === accountId &&
-      String(binding?.match?.peer?.id ?? "").toLowerCase() === peerId);
-    if (!bound) return;
-  }
-  const agent = configuredAgent(config, agentId);
-  const acpAgentId = String(agent?.runtime?.acp?.agent ?? "").toLowerCase();
-  if (agent?.runtime?.type !== "acp" || acpAgentId !== "cursor") return;
-  const args = config?.plugins?.entries?.acpx?.config?.agents?.[acpAgentId]?.args;
-  if (!Array.isArray(args)) return;
-  const modelFlag = args.findIndex((arg) => arg === "--model");
-  const model = modelFlag >= 0 ? String(args[modelFlag + 1] ?? "").trim().toLowerCase() : "";
-  if (!model) return;
-  return {
-    model: `cursor/${model}`,
-    provider: "cursor",
-    harnessId: acpAgentId,
-    sessionKey,
-  };
-}
-
 // The harness is a property of the execution profile the host selected for
 // the turn, never of model output: the session's recorded harness, else the
 // runtime the profile catalog binds to the session's selected model (a switch
@@ -377,29 +248,6 @@ export function resolveSelectedHarness(config, agentId, session = {}) {
 
 async function loadSessionThinking(sessionKey) {
   return (await loadSessionEntry(sessionKey))?.thinkingLevel;
-}
-
-// The in-memory provenance maps die with the process, so the first reply after
-// every gateway restart went out bare. The per-agent last-known provenance is
-// tiny and changes rarely — persist it beside the fault journal, seed on boot.
-const AGENT_PROVENANCE_SNAPSHOT = `${STATE_ROOT}/run-signature/agent-provenance.json`;
-
-export async function saveAgentProvenance(byAgent, path = AGENT_PROVENANCE_SNAPSHOT) {
-  try {
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, `${JSON.stringify(Object.fromEntries(byAgent), null, 2)}\n`);
-  } catch {
-    // The snapshot is a warm-start aid. It must never affect delivery.
-  }
-}
-
-export async function loadAgentProvenance(path = AGENT_PROVENANCE_SNAPSHOT) {
-  try {
-    const entries = Object.entries(JSON.parse(await readFile(path, "utf8")));
-    return new Map(entries.filter(([, value]) => value && typeof value === "object" && value.model));
-  } catch {
-    return new Map();
-  }
 }
 
 async function loadSessionProvenance(config, sessionKey) {
@@ -457,15 +305,6 @@ const plugin = {
     registerSwitchModelTool(api);
     registerThreadLead(api, {isExcludedChannel, botUserIds: slackBotUserIds});
 
-    // Seed the last-resort fallback from the previous process's snapshot, so
-    // the first reply after a restart still carries tiles. Live events win.
-    let agentSnapshotSerialized;
-    void loadAgentProvenance().then((loaded) => {
-      for (const [agentId, provenance] of loaded) {
-        if (!byAgent.has(agentId)) byAgent.set(agentId, provenance);
-      }
-    });
-
     const rememberProvenance = async (event, ctx) => {
       const sessionKey = event.sessionKey ?? ctx.sessionKey;
       const prior = (sessionKey ? bySession.get(sessionKey) : undefined) ??
@@ -496,11 +335,6 @@ const plugin = {
         // than no tiles at all.
         if (eventAgentId && provenance.model) byAgent.set(eventAgentId.toLowerCase(), provenance);
       }
-      const serialized = JSON.stringify(Object.fromEntries(byAgent));
-      if (serialized !== agentSnapshotSerialized) {
-        agentSnapshotSerialized = serialized;
-        void saveAgentProvenance(byAgent);
-      }
     };
 
     api.on("model_call_started", rememberProvenance);
@@ -529,9 +363,8 @@ const plugin = {
         return;
       }
 
-      let provenance = resolveConfiguredAcpProvenance(api.config, ctx.sessionKey, { accountId, channel });
-      let provenanceSource = provenance ? "configured_acp_route" : "live_session_events";
-      if (!provenance) provenance = ctx.sessionKey ? bySession.get(ctx.sessionKey) : undefined;
+      let provenance = ctx.sessionKey ? bySession.get(ctx.sessionKey) : undefined;
+      let provenanceSource = "live_session_events";
       if (!provenance && ctx.sessionKey) {
         try {
           provenance = await loadSessionProvenance(api.config, ctx.sessionKey);
