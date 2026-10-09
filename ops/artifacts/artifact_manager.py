@@ -404,6 +404,9 @@ def add_version(registry: dict, project_id: str, project_name: str, session: str
             project = {"id": project_id, "name": project_name, "artifacts": []}
             updated["projects"].insert(0, project)
         number = max((item["number"] for item in project["artifacts"]), default=0) + 1
+        project_ids = [project["id"], *project.get("aliases", [])]
+        while any(f"{candidate}/{number}" in updated.get("redirects", {}) for candidate in project_ids):
+            number += 1
         artifact = {"number": number, "session": session, "current_version": 0, "versions": []}
         project["artifacts"].append(artifact)
     k = len(artifact["versions"]) + 1
