@@ -7,6 +7,5 @@
       "max": {"name": "max", "workspace": "__DATA_ROOT__/working/agents/max", "agentDir": "__DATA_ROOT__/operations/openclaw/agents/max"}
     }
   },
-  "channels": {"slack": {"enabled": false, "accounts": {"liv": {}, "max": {}}}},
-  "gateway": {"mode": "local", "bind": "loopback"}
+  "channels": {"slack": {"enabled": false, "accounts": {"liv": {}, "max": {}}}}
 }

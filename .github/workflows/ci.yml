@@ -49,6 +49,6 @@ jobs:
       - name: Validate JSON
         run: |
           set -euo pipefail
-          for json_file in schemas/*.json templates/data/manifests/*.json templates/instance/runtime/*.json; do
+          for json_file in schemas/*.json runtime/*.json templates/data/manifests/*.json templates/instance/runtime/*.json; do
             jq -e . "$json_file" >/dev/null
           done

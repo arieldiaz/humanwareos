@@ -2,7 +2,16 @@
 
 import {readFileSync, realpathSync, writeFileSync} from "node:fs";
 import {fileURLToPath} from "node:url";
-import {applyRuntimeProfiles, canonicalRuntimeRoot, loadJson5} from "./render-openclaw-runtime-profiles.mjs";
+import {applyRuntimeProfiles, canonicalRuntimeRoot, loadJson5, loadProfilePolicy} from "./render-openclaw-runtime-profiles.mjs";
+
+// Framework defaults for the rendered OpenClaw configuration, kept as strict
+// JSON so no JSON5 parser is needed. The instance overlay is applied over it as
+// a JSON merge patch (RFC 7396): objects merge recursively, every other overlay
+// value replaces the default (arrays included), and null removes a default. The
+// __HUMANWARE_SECRETS_PROVIDER__ entry is bound to the provider named by
+// humanware.instance.json secrets.openclawProvider.
+export const configBasePath = fileURLToPath(new URL("../ops/openclaw/config.base.json", import.meta.url));
+const SECRETS_PROVIDER_KEY = "__HUMANWARE_SECRETS_PROVIDER__";
 
 function fail(message) {
   throw new Error(`openclaw-config: ${message}`);
@@ -11,6 +20,37 @@ function fail(message) {
 function object(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail(`${label} must be an object`);
   return value;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+// JSON merge patch (RFC 7396): the overlay wins, objects merge recursively,
+// arrays and scalars replace, and null removes the key.
+export function mergeConfig(base, overlay) {
+  const merged = structuredClone(object(base, "base config"));
+  for (const [key, value] of Object.entries(object(overlay, "overlay config"))) {
+    if (value === null) delete merged[key];
+    else if (isPlainObject(value) && isPlainObject(merged[key])) merged[key] = mergeConfig(merged[key], value);
+    else merged[key] = structuredClone(value);
+  }
+  return merged;
+}
+
+// The framework base describes the exec secrets provider under a placeholder
+// key; bind it to the provider the instance manifest names, or drop it.
+export function bindSecretsProvider(baseConfig, manifest) {
+  const base = structuredClone(object(baseConfig, "base config"));
+  const providers = base.secrets?.providers;
+  if (!isPlainObject(providers) || !(SECRETS_PROVIDER_KEY in providers)) return base;
+  const {[SECRETS_PROVIDER_KEY]: template, ...named} = providers;
+  const provider = String(manifest?.secrets?.openclawProvider ?? "").trim();
+  if (provider) named[provider] = template;
+  if (Object.keys(named).length > 0) base.secrets.providers = named;
+  else delete base.secrets.providers;
+  if (Object.keys(base.secrets).length === 0) delete base.secrets;
+  return base;
 }
 
 export function applySlackChannel(sourceConfig, channelConfig, manifest) {
@@ -49,8 +89,9 @@ export function applySlackChannel(sourceConfig, channelConfig, manifest) {
   return source;
 }
 
-export function renderOpenClawConfig({source, profiles, slack, manifest, runtimeRoot}) {
-  const configured = applySlackChannel(source, slack, manifest);
+export function renderOpenClawConfig({base = {}, source, profiles, slack, manifest, runtimeRoot}) {
+  const merged = mergeConfig(bindSecretsProvider(base, manifest), source);
+  const configured = applySlackChannel(merged, slack, manifest);
   const rendered = applyRuntimeProfiles(configured, profiles);
   let serialized = JSON.stringify(rendered, null, 2);
   if (serialized.includes("__HUMANWARE_RUNTIME_ROOT__")) {
@@ -68,8 +109,9 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToP
   }
   try {
     const rendered = renderOpenClawConfig({
+      base: loadJson5(configBasePath),
       source: loadJson5(sourcePath),
-      profiles: JSON.parse(readFileSync(profilesPath, "utf8")),
+      profiles: loadProfilePolicy(profilesPath),
       slack: JSON.parse(readFileSync(slackPath, "utf8")),
       manifest: JSON.parse(readFileSync(manifestPath, "utf8")),
       runtimeRoot,

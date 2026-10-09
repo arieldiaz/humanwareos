@@ -1,0 +1,122 @@
+{
+  "secrets": {
+    "providers": {
+      "__HUMANWARE_SECRETS_PROVIDER__": {
+        "source": "exec",
+        "command": "__HUMANWARE_RUNTIME_ROOT__/framework/ops/openclaw/runtime/secret-exec.sh",
+        "timeoutMs": 30000,
+        "jsonOnly": true,
+        "passEnv": [],
+        "env": {
+          "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        },
+        "trustedDirs": [
+          "__HUMANWARE_RUNTIME_ROOT__/framework/ops/openclaw/runtime"
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "silentReply": {
+        "group": "allow"
+      },
+      "typingMode": "instant",
+      "compaction": {
+        "mode": "safeguard",
+        "timeoutSeconds": 120,
+        "keepRecentTokens": 24000,
+        "recentTurnsPreserve": 4,
+        "midTurnPrecheck": {
+          "enabled": true
+        },
+        "postIndexSync": "async",
+        "maxActiveTranscriptBytes": "20mb",
+        "notifyUser": false,
+        "memoryFlush": {
+          "enabled": false
+        }
+      },
+      "heartbeat": {
+        "target": "none",
+        "directPolicy": "block"
+      }
+    }
+  },
+  "memory": {
+    "search": {
+      "enabled": false
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "bind": "loopback",
+    "trustedProxies": [
+      "127.0.0.1",
+      "::1"
+    ],
+    "nodes": {
+      "commands": {
+        "deny": [
+          "camera.snap",
+          "camera.clip",
+          "screen.record",
+          "contacts.add",
+          "calendar.add",
+          "reminders.add",
+          "sms.send",
+          "sms.search"
+        ]
+      }
+    }
+  },
+  "session": {
+    "maintenance": {
+      "maxEntries": 2000
+    }
+  },
+  "messages": {
+    "ackReaction": "",
+    "statusReactions": {
+      "enabled": false
+    },
+    "inbound": {
+      "byChannel": {
+        "slack": 0
+      }
+    },
+    "queue": {
+      "debounceMsByChannel": {
+        "slack": 0
+      }
+    },
+    "groupChat": {
+      "visibleReplies": "automatic"
+    }
+  },
+  "plugins": {
+    "load": {
+      "paths": [
+        "__HUMANWARE_RUNTIME_ROOT__/framework/ops/openclaw/plugins/cursor-cli",
+        "__HUMANWARE_RUNTIME_ROOT__/framework/ops/openclaw/plugins/run-signature"
+      ]
+    },
+    "entries": {
+      "run-signature": {
+        "enabled": true,
+        "hooks": {
+          "allowConversationAccess": true
+        }
+      },
+      "cursor-cli": {
+        "enabled": true,
+        "config": {
+          "command": "__HUMANWARE_RUNTIME_ROOT__/framework/ops/openclaw/runtime/cursor-agent-launch.sh"
+        }
+      },
+      "codex": {
+        "enabled": true
+      }
+    }
+  }
+}
