@@ -24,15 +24,16 @@ export function resolveSlackChannel({channel, sessionKey, origin} = {}) {
   }
 }
 
-export function conversationFenceRoute({ channel, threadId, sessionKey, origin } = {}) {
+// The Slack thread a session or delivery context belongs to: channel plus root ts.
+export function slackRoute({channel, threadId, sessionKey, origin} = {}) {
   const sessionRoute = slackRouteFromSessionKey(sessionKey);
   const resolvedChannel = resolveSlackChannel({channel, sessionKey, origin});
   const resolvedThread = normalizeThread(threadId ?? origin?.threadId ?? origin?.replyToId ?? sessionRoute?.rootTs);
   if (!resolvedChannel || !resolvedThread) return;
-  return { channel: resolvedChannel, threadId: resolvedThread };
+  return {channel: resolvedChannel, threadId: resolvedThread};
 }
 
-export function conversationFenceKey(route) {
-  const resolved = conversationFenceRoute(route);
+export function slackRouteKey(route) {
+  const resolved = slackRoute(route);
   return resolved ? `slack:${resolved.channel}:${resolved.threadId}` : undefined;
 }

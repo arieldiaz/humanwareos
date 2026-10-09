@@ -67,7 +67,7 @@ test("registers one atomic Slack work-thread tool with the normal high-reasoning
       tools.push({ factory, options });
     },
   });
-  assert.deepEqual(tools.map(tool => tool.options.name), ["start_work_thread", "close_thread"]);
+  assert.deepEqual(tools.map(tool => tool.options.name), ["start_work_thread", "close_thread", "switch_model"]);
   const manifest = JSON.parse(readFileSync(new URL("./openclaw.plugin.json", import.meta.url), "utf8"));
   assert.deepEqual(manifest.contracts.tools, tools.map(tool => tool.options.name));
   assert.equal(tools[0].factory.contextVersion, 2);
@@ -597,16 +597,4 @@ test('agent reaction calls cannot add, remove, or clear lifecycle tiles', () => 
   for (const emoji of ['calendar', ':hand:', '✅', ''])
     assert.equal(guard({toolName: 'message', params: {action: 'react', emoji}}, {}).block, true);
   assert.equal(guard({toolName: 'message', params: {action: 'react', emoji: 'thumbsup'}}, {}), undefined);
-});
-
-test('host thread messages use the supported durable sender with stable queue custody', async () => {
-  const {sendThreadMessage} = await import('./index.js');
-  const calls = [];
-  const turn = {key: 'conversation:run', accountId: 'max', sessionKey: 'session', route: {channel: 'C123', threadId: 'root'}, text: 'Unchanged.'};
-  const sdk = {buildOutboundSessionContext: params => params, sendDurableMessageBatch: async params => {calls.push(params); return {status: 'sent', results: [{messageId: 'receipt'}]};}};
-  await sendThreadMessage({}, turn, sdk);
-  assert.equal(calls[0].deliveryIntentId, 'humanware-final:conversation:run');
-  assert.equal(calls[0].durability, 'required');
-  assert.equal(calls[0].requireUnknownSendReconciliation, true);
-  assert.equal(calls[0].payloads[0].text, 'Unchanged.');
 });

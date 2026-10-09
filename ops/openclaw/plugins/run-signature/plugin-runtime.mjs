@@ -10,13 +10,16 @@ import {
   normalizeThinkingLevel,
 } from "./strip-core.mjs";
 import {registerWorkThreadTool} from "./work-thread-tool.mjs";
-import {isCloseTransport, registerHostClose} from "./host-close.mjs";
+import {registerHostClose} from "./host-close.mjs";
+import {registerThreadLead} from "./thread-lead.mjs";
+import {registerSwitchModelTool} from "./switch-model-tool.mjs";
 import {createStatusProjector} from "./status-projector.mjs";
-import {resolveSlackChannel, slackRouteFromSessionKey} from "./conversation-fence.mjs";
+import {resolveSlackChannel, slackRouteFromSessionKey} from "./slack-route.mjs";
 
 export {slackRouteFromSessionKey};
 
-export {closeThreadTool, sendThreadMessage, shouldClaimClosedBotInbound} from "./host-close.mjs";
+export {closeThreadTool} from "./host-close.mjs";
+export {allowedModels, applySessionSelection, resolveRequestedModel, switchModelTool} from "./switch-model-tool.mjs";
 
 export {
   normalizeReactions,
@@ -66,8 +69,7 @@ async function recordOutboundStatus({ dataRoot, channel, threadId, status, agent
   await mkdir(dirname(path), { recursive: true });
   let prior = '';
   try { prior = await readFile(path, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  if (!prior.split('\n').some(line => line && JSON.parse(line).id === event.id))
-    await appendFile(path, `${JSON.stringify(event)}\n`, {mode: 0o600});
+  if (!prior.includes(`"id":${JSON.stringify(event.id)}`)) await appendFile(path, `${JSON.stringify(event)}\n`, {mode: 0o600});
 }
 
 async function appendFaultJournal(entry) {
@@ -361,16 +363,16 @@ export function resolveConfiguredAcpProvenance(config, sessionKey, route = {}) {
 
 // The harness is a property of the execution profile the host selected for
 // the turn, never of model output: the session's recorded harness, else the
-// runtime the profile catalog binds to its selected model (or the agent's ACP
-// runtime).
+// runtime the profile catalog binds to the session's selected model (a switch
+// in the thread, then the agent's default, or the agent's ACP runtime).
 export function resolveSelectedHarness(config, agentId, session = {}) {
   if (session.agentHarnessId) return session.agentHarnessId;
   const agent = configuredAgent(config, agentId);
   if (agent?.runtime?.type === "acp") return agent.runtime.acp?.agent;
-  const ref = typeof agent?.model === "string"
-    ? agent.model
-    : agent?.model?.primary ?? config?.agents?.defaults?.model?.primary;
-  return config?.agents?.defaults?.models?.[ref]?.agentRuntime?.id;
+  const selected = session.modelOverride ? `${session.providerOverride ?? session.modelProvider ?? ""}/${session.modelOverride}`
+    : session.model && session.modelProvider ? `${session.modelProvider}/${session.model}` : undefined;
+  const ref = selected ?? (typeof agent?.model === "string" ? agent.model : agent?.model?.primary ?? config?.agents?.defaults?.model?.primary);
+  return (agent?.models?.[ref] ?? config?.agents?.defaults?.models?.[ref])?.agentRuntime?.id;
 }
 
 async function loadSessionThinking(sessionKey) {
@@ -441,10 +443,19 @@ const plugin = {
       resolveBotUserId, resolveSlackRuntimeModule, retrySlackRateLimit, serialize: serializeRunStrip});
 
     const workThreadPosts = new Set();
+    const slackBotUserIds = async () => {
+      const accounts = await import(resolveSlackRuntimeModule("accounts"));
+      const ids = new Set();
+      for (const accountId of Object.keys(api.config?.channels?.slack?.accounts ?? {})) {
+        const id = await resolveBotUserId(accounts.resolveSlackAccount({cfg: api.config, accountId})?.botToken, botIdCache);
+        if (id) ids.add(id);
+      }
+      return ids;
+    };
     registerWorkThreadTool(api, {resolveSlackRuntimeModule, retrySlackRateLimit, maintainStatusTile, workThreadPosts});
-    registerHostClose(api, {isExcludedChannel, maintainStatusTile,
-      recordOutboundStatus, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule,
-      resolveBotUserId, slackApi, botIdCache});
+    registerHostClose(api, {isExcludedChannel, maintainStatusTile, recordOutboundStatus, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi});
+    registerSwitchModelTool(api);
+    registerThreadLead(api, {isExcludedChannel, botUserIds: slackBotUserIds});
 
     // Seed the last-resort fallback from the previous process's snapshot, so
     // the first reply after a restart still carries tiles. Live events win.
@@ -501,7 +512,6 @@ const plugin = {
     });
 
     async function reactToSentMessage(event, ctx) {
-      if (isCloseTransport()) return;
       if (ctx.channelId !== "slack" || !event.success || !event.messageId) return;
       // Work-thread scaffolding (title root and brief) is posted by the tool, not a model turn: no signature.
       if (workThreadPosts.delete(String(event.content ?? "").trim())) return;
