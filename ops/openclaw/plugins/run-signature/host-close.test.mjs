@@ -24,8 +24,9 @@ function fixture() {
     project: async status => {order.push(status); root.splice(0, root.length, {name: {working: 'arrows_counterclockwise', act: 'raised_hand', closed: 'white_check_mark'}[status], users: ['UMAX']});}};
   return {options, root, receipts, completed, files, order, runtime: new ThreadLifecycle(options)};
 }
-test('plugin schema accepts the owner principal required by host closure', () => {
-  assert.deepEqual(manifest.configSchema.properties.ownerUserId, {type: 'string', pattern: '^U[A-Z0-9]+$'});
+test('plugin schema rejects retired owner closure keys', () => {
+  assert.equal(manifest.configSchema.properties.ownerUserId, undefined);
+  assert.equal(manifest.configSchema.properties.ownerLabel, undefined);
 });
 test('large thread snapshots use bounded cursor pages and preserve every reply', async () => {
   const calls = [];
