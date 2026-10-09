@@ -6,16 +6,17 @@
   "type": "object",
   "required": ["schemaVersion", "projects"],
   "properties": {
-    "schemaVersion": {"const": 3},
+    "schemaVersion": {"const": 4},
     "projects": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "name", "artifacts"],
+        "required": ["id", "name", "nextNumber", "artifacts"],
         "properties": {
           "id": {"$ref": "versioned-item.schema.json#/$defs/slug"},
           "name": {"type": "string", "minLength": 1},
           "aliases": {"type": "array", "items": {"$ref": "versioned-item.schema.json#/$defs/slug"}},
+          "nextNumber": {"type": "integer", "minimum": 1, "description": "The number the next new artifact takes; always N+1."},
           "artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}}
         },
         "additionalProperties": false
@@ -23,7 +24,7 @@
     },
     "redirects": {
       "type": "object",
-      "description": "Retired addresses from grouping, relative to /artifacts/: <project>[/<n>[/versions/<k>]] or <project>/<legacy> -> a live <project>[/<n>[/versions/<k>]].",
+      "description": "Retired addresses from grouping and renumbering that no live address occupies, relative to /artifacts/: <project>[/<n>[/versions/<k>]] or <project>/<legacy> -> a live <project>[/<n>[/versions/<k>]].",
       "additionalProperties": {"type": "string", "minLength": 1}
     }
   },
@@ -34,7 +35,7 @@
       "type": "object",
       "required": ["number", "current_version", "versions"],
       "properties": {
-        "number": {"type": "integer", "minimum": 1, "description": "Per-project artifact number, assigned once and never reused."},
+        "number": {"type": "integer", "minimum": 1, "description": "Per-project artifact number, dense 1..N in order of first version date; regrouping renumbers."},
         "session": {"type": "string", "minLength": 1, "description": "The one working session that made this artifact."},
         "folded_sessions": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Sessions of artifacts folded into this one by grouping; their promotions continue it."},
         "title": {"type": "string", "minLength": 1, "description": "Artifact title set by grouping; otherwise the current version's title."},

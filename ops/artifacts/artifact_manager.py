@@ -33,7 +33,7 @@ REVIEW_ROOT = Path(DATA_ROOT) / "generated" / "review-projections" if DATA_ROOT 
 BRAND = INSTANCE.get("name", "Humanware OS")
 VERSIONING = (Path(os.environ["HUMANWARE_FRAMEWORK_ROOT"]) / "surfaces" / "domain" / "versioning"
               if os.environ.get("HUMANWARE_FRAMEWORK_ROOT") else RUNTIME / "surface" / "versioning") / "versioning.mjs"
-SCHEMA = 3
+SCHEMA = 4
 SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REQUIRED_META = ("artifact-title", "artifact-project", "artifact-created", "artifact-updated")
 SHELL_SCRIPT = '<script src="/artifacts/artifact-shell.js"></script>'
@@ -46,7 +46,7 @@ MEDIA_ROOTS = [Path(DATA_ROOT) / "generated" / "media"] if DATA_ROOT else []
 MEDIA_ROOTS.append(Path(os.environ.get("OPENCLAW_STATE_DIR") or Path.home() / ".openclaw") / "media")
 
 
-# Registry: projects own artifacts numbered 1..N; artifacts own versions numbered 1..N.
+# Registry: projects own artifacts numbered 1..N and the next number to assign; artifacts own versions numbered 1..N.
 
 def registry_path(root: Path) -> Path:
     return root / "manifests" / "registry.json"
@@ -94,6 +94,25 @@ def version_url(project_id: str, number: int, version: int) -> str:
     return f"{artifact_url(project_id, number)}{VERSIONS}/{version}/"
 
 
+def breadcrumbs(project: dict, artifact: dict | None = None, version: int = 0, view: str = "") -> str:
+    """The one artifact trail: home / Artifacts / project / artifact / Versions / n, plus History or Diff."""
+    trail = [("/", BRAND), ("/artifacts/", "Artifacts"), (address_url(project["id"]), project["name"])]
+    if artifact:
+        url = artifact_url(project["id"], artifact["number"])
+        trail.append((url, artifact_title(artifact)))
+        if version or view:
+            trail.append((f"{url}{VERSIONS}/", "Versions"))
+        if view == "history":
+            trail.append((f"{url}{VERSIONS}/history/", "History"))
+        if version:
+            trail.append((version_url(project["id"], artifact["number"], version), str(version)))
+        if view == DIFF:
+            trail.append((f"{version_url(project['id'], artifact['number'], version)}{DIFF}/", "Diff"))
+    links = [f'<a href="{html.escape(url)}">{html.escape(label)}</a>' for url, label in trail[:-1]]
+    links.append(f'<span class="current">{html.escape(trail[-1][1])}</span>')
+    return '<nav class="os-breadcrumbs" aria-label="Breadcrumb">' + '<span class="sep">/</span>'.join(links) + '</nav>'
+
+
 def iso_date(*labels: str) -> str:
     for label in labels:
         for fmt in DATE_FORMATS:
@@ -135,11 +154,11 @@ def versioned_item(project_id: str, artifact: dict) -> dict:
             "versions": versions}
 
 
-def page(title: str, body: str, scripts: str = "", footer: str = "") -> str:
+def page(title: str, crumbs: str, body: str, scripts: str = "", footer: str = "") -> str:
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)} · Artifacts · {html.escape(BRAND)}</title><link rel="stylesheet" href="/os-shell.css"><link rel="stylesheet" href="/os-footer.css"><link rel="stylesheet" href="/artifacts/artifacts.css"><link rel="stylesheet" href="/artifacts/theme.css"><link rel="stylesheet" href="/versioning/versioning.css"></head>
-<body><main class="shell">{body}</main>{f'<footer class="os-shell-footer">{footer}</footer>' if footer else ""}{scripts}<script src="/os-shell.js"></script></body></html>'''
+<body><header class="os-shell-header">{crumbs}</header><main class="shell">{body}</main>{f'<footer class="os-shell-footer">{footer}</footer>' if footer else ""}{scripts}<script src="/os-shell.js"></script></body></html>'''
 
 
 def card(url: str, title: str, date_label: str, label: str, links: str = "") -> str:
@@ -151,8 +170,8 @@ def card(url: str, title: str, date_label: str, label: str, links: str = "") -> 
             f'<span>{html.escape(label)}</span></span></a>{footer}</article>')
 
 
-def card_page(title: str, intro: str, cards: list[str], footer: str = "") -> str:
-    return page(title, f'<p class="count">{intro}</p><div class="grid artifact-grid">{"".join(cards)}</div>',
+def card_page(title: str, crumbs: str, intro: str, cards: list[str], footer: str = "") -> str:
+    return page(title, crumbs, f'<p class="count">{intro}</p><div class="grid artifact-grid">{"".join(cards)}</div>',
                 '<script src="/artifacts/preview.js"></script>', footer)
 
 
@@ -163,12 +182,12 @@ def project_page(project: dict) -> str:
         url = artifact_url(project["id"], number)
         links = f'<a href="{url}{VERSIONS}/">{count} versions</a>' if count > 1 else ""
         cards.append(card(url, f'{number} · {artifact_title(artifact)}', shown["date_label"], f"#{number}", links))
-    return card_page(project["name"], f'{len(project["artifacts"])} artifacts', cards)
+    return card_page(project["name"], breadcrumbs(project), f'{len(project["artifacts"])} artifacts', cards)
 
 
-def versions_page(project_id: str, artifact: dict, footer: str) -> str:
+def versions_page(project: dict, artifact: dict, footer: str) -> str:
     """Every version as a rendered card, newest first, linking its diff and the history list."""
-    number, count = artifact["number"], len(artifact["versions"])
+    project_id, number, count = project["id"], artifact["number"], len(artifact["versions"])
     cards = [card(version_url(project_id, number, version["number"]), version["title"], version["date_label"],
                   f'Version {version["number"]}',
                   f'<a href="{version_url(project_id, number, version["number"])}{DIFF}/">Diff from {version["number"] - 1}</a>'
@@ -177,7 +196,7 @@ def versions_page(project_id: str, artifact: dict, footer: str) -> str:
     url = artifact_url(project_id, number)
     intro = (f'<a href="{url}">{number} · {html.escape(artifact_title(artifact))}</a> · {count} '
              f'{"version" if count == 1 else "versions"} · <a href="{url}{VERSIONS}/history/">History list</a>')
-    return card_page(artifact_title(artifact), intro, cards, footer)
+    return card_page(artifact_title(artifact), breadcrumbs(project, artifact, view=VERSIONS), intro, cards, footer)
 
 
 def redirect_page(target: str) -> str:
@@ -215,6 +234,11 @@ def verify_store(root: Path, registry: dict, strict_shell: bool = True, planned:
                 errors.append(f"invalid or duplicate project address: {name}")
             claimed.add(name)
         addresses: set[str] = set()
+        numbers = sorted(artifact.get("number") for artifact in project["artifacts"] if isinstance(artifact.get("number"), int))
+        if numbers != list(range(1, len(project["artifacts"]) + 1)):
+            errors.append(f"artifact numbers are not dense 1..N: {project_id}")
+        if project.get("nextNumber") != len(project["artifacts"]) + 1:
+            errors.append(f"nextNumber is not N+1: {project_id}")
         for artifact in project["artifacts"]:
             number = artifact.get("number")
             label = f"{project_id}/{number}"
@@ -244,12 +268,8 @@ def verify_store(root: Path, registry: dict, strict_shell: bool = True, planned:
                 if not SLUG.fullmatch(legacy) or legacy.isdigit() or legacy in addresses:
                     errors.append(f"invalid or duplicate legacy address: {project_id}/{legacy}")
                 addresses.add(legacy)
-    live = {project["id"]: {str(a["number"]) for a in project["artifacts"]} | {l for a in project["artifacts"] for l in a.get("legacy", {})}
-            for project in registry.get("projects", [])}
     for old, new in registry.get("redirects", {}).items():
-        parts = old.split("/")
-        if not all(SLUG.fullmatch(part) for part in parts) or parts[0] in claimed - set(live) or (
-                parts[0] in live and (len(parts) == 1 or parts[1] in live[parts[0]])):
+        if not all(SLUG.fullmatch(part) for part in old.split("/")) or shadows(registry, old):
             errors.append(f"redirect shadows a live address: {old}")
         try:
             if "/" in new and resolve(registry, new) or find_project(registry, new):
@@ -258,6 +278,16 @@ def verify_store(root: Path, registry: dict, strict_shell: bool = True, planned:
         except LookupError:
             errors.append(f"redirect target is not live: {old} -> {new}")
     return errors
+
+
+def shadows(registry: dict, address: str) -> bool:
+    """True when a redirect at this address would sit on or under a live project or artifact address."""
+    parts = address.split("/")
+    project = find_project(registry, parts[0])
+    if project is None:
+        return False
+    live = {str(a["number"]) for a in project["artifacts"]} | {name for a in project["artifacts"] for name in a.get("legacy", {})}
+    return parts[0] != project["id"] or len(parts) == 1 or parts[1] in live
 
 
 # Projection: a generated tree Caddy serves; revisions are never copied or rewritten.
@@ -278,26 +308,30 @@ def version_diff(root: Path, project_id: str, previous: str, revision: str) -> s
                                           "current/index.html", lineterm="")) + "\n"
 
 
-def project_artifact(root: Path, project_dir: Path, project_id: str, artifact: dict) -> None:
-    number, versions = artifact["number"], artifact["versions"]
+def project_artifact(root: Path, project_dir: Path, project: dict, artifact: dict) -> None:
+    project_id, number, versions = project["id"], artifact["number"], artifact["versions"]
     model = versioned_item(project_id, artifact)
     live = project_dir / str(number)
     link_entries(live, revisions_root(root) / project_id / current(artifact)["revision"])
     footer = render_version(model, "footer", model["current_version"])
     (project_dir / f"{number}.footer.html").write_text(footer)
+    (project_dir / f"{number}.crumbs.html").write_text(breadcrumbs(project, artifact))
     history = live / VERSIONS
     (history / "history").mkdir(parents=True)
     # Versions, history, and diff pages carry the artifact's own footer, not the host's.
-    (history / "index.html").write_text(versions_page(project_id, artifact, footer))
-    (history / "history" / "index.html").write_text(page(model["title"], render_version(model, "history"), footer=footer))
+    (history / "index.html").write_text(versions_page(project, artifact, footer))
+    (history / "history" / "index.html").write_text(page(model["title"], breadcrumbs(project, artifact, view="history"),
+                                                         render_version(model, "history"), footer=footer))
     for version in versions:
         k = version["number"]
         link_entries(history / str(k), revisions_root(root) / project_id / version["revision"])
         (history / f"{k}.footer.html").write_text(render_version(model, "footer", f"v{k}"))
+        (history / f"{k}.crumbs.html").write_text(breadcrumbs(project, artifact, k))
         if k > 1:
             diff = version_diff(root, project_id, versions[k - 2]["revision"], version["revision"])
             (history / str(k) / DIFF).mkdir()
-            (history / str(k) / DIFF / "index.html").write_text(page(version["title"], render_version(model, "diff", f"v{k}", diff), footer=footer))
+            (history / str(k) / DIFF / "index.html").write_text(page(version["title"], breadcrumbs(project, artifact, k, DIFF),
+                                                                          render_version(model, "diff", f"v{k}", diff), footer=footer))
     for legacy, k in artifact.get("legacy", {}).items():
         (project_dir / legacy).mkdir()
         target = version_url(project_id, number, k) if k else artifact_url(project_id, number)
@@ -313,7 +347,7 @@ def build_projection(root: Path, registry: dict, destination: Path) -> None:
         project_dir.mkdir()
         (project_dir / "index.html").write_text(project_page(project))
         for artifact in project["artifacts"]:
-            project_artifact(root, project_dir, project["id"], artifact)
+            project_artifact(root, project_dir, project, artifact)
         for alias in project.get("aliases", []):
             (destination / alias).symlink_to(project["id"], target_is_directory=True)
     for old, new in registry.get("redirects", {}).items():
@@ -324,7 +358,8 @@ def build_projection(root: Path, registry: dict, destination: Path) -> None:
 def expected_entries(project: dict, redirects: dict) -> set[str]:
     entries = {"index.html"} | {old.split("/")[1] for old in redirects if old.startswith(f"{project['id']}/")}
     for artifact in project["artifacts"]:
-        entries |= {str(artifact["number"]), f"{artifact['number']}.footer.html", *artifact.get("legacy", {})}
+        entries |= {str(artifact["number"]), f"{artifact['number']}.footer.html", f"{artifact['number']}.crumbs.html",
+                    *artifact.get("legacy", {})}
     return entries
 
 
@@ -357,8 +392,9 @@ def verify_projection(root: Path, review_root: Path, registry: dict) -> list[str
             if not live.is_symlink() or live.resolve() != revision.resolve():
                 errors.append(f"wrong live version: {label}")
             for version in artifact["versions"]:
-                if not (project_dir / str(artifact["number"]) / VERSIONS / f"{version['number']}.footer.html").is_file():
-                    errors.append(f"missing version footer: {label}/v{version['number']}")
+                for kind in ("footer", "crumbs"):
+                    if not (project_dir / str(artifact["number"]) / VERSIONS / f"{version['number']}.{kind}.html").is_file():
+                        errors.append(f"missing version {kind}: {label}/v{version['number']}")
     return errors
 
 
@@ -390,7 +426,20 @@ def materialize(root: Path, review_root: Path, registry: dict) -> None:
 
 # Creation: one session makes one artifact; every later promotion in it is that artifact's next version.
 
-def add_version(registry: dict, project_id: str, project_name: str, session: str, title: str, date_label: str) -> tuple[dict, dict, dict]:
+def allocate(registry: dict, project: dict) -> int:
+    """Assign the project's next artifact number; a redirect left at that address yields to the new artifact."""
+    if "nextNumber" not in project:
+        raise ValueError(f"project {project['id']} has no nextNumber: run artifact_manager.py renumber --apply")
+    number = project["nextNumber"]
+    project["nextNumber"] = number + 1
+    redirects = registry.get("redirects", {})
+    for old in [old for old in redirects if f"{old}/".startswith(f"{project['id']}/{number}/")]:
+        del redirects[old]
+    return number
+
+
+def add_version(registry: dict, project_id: str, project_name: str, session: str, title: str, date_label: str,
+                taken: frozenset = frozenset()) -> tuple[dict, dict, dict]:
     updated = json.loads(json.dumps(registry))
     owner = next(((project, artifact) for project in updated["projects"] for artifact in project["artifacts"]
                   if session in artifact_sessions(artifact)), None)
@@ -401,13 +450,16 @@ def add_version(registry: dict, project_id: str, project_name: str, session: str
     else:
         project = find_project(updated, project_id)
         if project is None:
-            project = {"id": project_id, "name": project_name, "artifacts": []}
+            project = {"id": project_id, "name": project_name, "nextNumber": 1, "artifacts": []}
             updated["projects"].insert(0, project)
-        number = max((item["number"] for item in project["artifacts"]), default=0) + 1
-        artifact = {"number": number, "session": session, "current_version": 0, "versions": []}
+        artifact = {"number": allocate(updated, project), "session": session, "current_version": 0, "versions": []}
         project["artifacts"].append(artifact)
     k = len(artifact["versions"]) + 1
-    version = {"number": k, "revision": f"{artifact['number']}-v{k}", "title": title, "date_label": date_label}
+    # Renumbering never renames revisions, so an earlier artifact may already own this number's revision names.
+    taken = taken | {v["revision"] for a in project["artifacts"] for v in a["versions"]}
+    revision = next(name for name in (f"{artifact['number']}-v{k}" + (f"-{i}" if i > 1 else "") for i in range(1, len(taken) + 2))
+                    if name not in taken)
+    version = {"number": k, "revision": revision, "title": title, "date_label": date_label}
     if iso := iso_date(date_label):
         version["date"] = iso
     artifact["versions"].append(version)
@@ -420,7 +472,10 @@ def create(args: argparse.Namespace) -> None:
     if not SLUG.fullmatch(args.project):
         raise ValueError("project must be a lowercase URL slug")
     original = load_registry(args.root)
-    registry, project, artifact = add_version(original, args.project, args.project_name, args.session, args.title, args.date)
+    existing = find_project(original, args.project)
+    on_disk = revisions_root(args.root) / (existing["id"] if existing else args.project)
+    registry, project, artifact = add_version(original, args.project, args.project_name, args.session, args.title, args.date,
+                                              frozenset(entry.name for entry in on_disk.iterdir()) if on_disk.is_dir() else frozenset())
     source = Path(args.source).resolve()
     errors = (validate_document(source / "index.html", [project["id"], *project.get("aliases", [])])
               if (source / "index.html").is_file() else ["missing index.html"])
@@ -522,7 +577,7 @@ def plan_grouping(registry: dict, plan: dict) -> tuple[dict, dict[str, str], lis
     for spec in plan.get("projects", []):
         target = next((p for p in updated["projects"] if p["id"] == spec["id"]), None)
         if target is None:
-            target = {"id": spec["id"], "name": spec.get("name", spec["id"]), "artifacts": []}
+            target = {"id": spec["id"], "name": spec.get("name", spec["id"]), "nextNumber": 1, "artifacts": []}
             updated["projects"].append(target)
         target["name"] = spec.get("name", target["name"])
         for source_id in spec.get("merge", []):
@@ -534,7 +589,7 @@ def plan_grouping(registry: dict, plan: dict) -> tuple[dict, dict[str, str], lis
             moves = {source_id: spec["id"], **{alias: spec["id"] for alias in source.get("aliases", [])}}
             taken = {v["revision"] for a in target["artifacts"] for v in a["versions"]}
             for artifact in sorted(source["artifacts"], key=lambda item: item["number"]):
-                number = max((a["number"] for a in target["artifacts"]), default=0) + 1
+                number = allocate(updated, target)
                 old = f"{source_id}/{artifact['number']}"
                 moves[old] = f"{spec['id']}/{number}"
                 for version in artifact["versions"]:
@@ -602,12 +657,84 @@ def plan_grouping(registry: dict, plan: dict) -> tuple[dict, dict[str, str], lis
             keeper["legacy"] = legacy
         live = {f"{prefix}{keeper['number']}/{VERSIONS}/{k}" for k in range(1, len(ordered) + 1)}
         move(moves, live)
+    moves, dropped = densify(updated)
+
+    def existed(address: str) -> bool:
+        """Intermediate numbers assigned and renumbered within this plan were never served."""
+        try:
+            return not ARTIFACT_ADDRESS.fullmatch(address) or bool(resolve(registry, address))
+        except LookupError:
+            return False
+
+    mapping = {old: new for old, new in ({old: moves.get(new, new) for old, new in mapping.items()} | moves).items()
+               if existed(old)}
+    warnings += [f"dropped redirect shadowing a live address: {old} -> {new}" for old, new in dropped if existed(old)]
+    if updated.get("redirects"):
+        updated["redirects"] = {old: new for old, new in updated["redirects"].items() if existed(old)}
+        if not updated["redirects"]:
+            updated.pop("redirects")
     grouped = {group["project"] for group in plan.get("groups", [])}
     warnings += [f"artifact in no group: {project['id']}/{artifact['number']}" for project in updated["projects"]
                  if project["id"] in grouped for artifact in project["artifacts"] if id(artifact) not in claimed]
-    if not redirects:
-        updated.pop("redirects")
     return updated, mapping, links, warnings
+
+
+# Renumbering: artifact numbers stay dense, 1..N per project in order of each artifact's first version.
+
+def densify(registry: dict) -> tuple[dict[str, str], list[tuple[str, str]]]:
+    """Renumber every project's artifacts densely in place and set nextNumber.
+
+    Returns the old -> new address of every artifact and version that moved, and the redirects dropped because their
+    address is now live. Retired addresses and existing redirect targets follow the moves; an old address that a
+    new live artifact now occupies is dropped, so it lands on that artifact."""
+    moves: dict[str, str] = {}
+    for project in registry["projects"]:
+        ordered = sorted(project["artifacts"], key=lambda a: (min(version_key(v) for v in a["versions"]), a["number"]))
+        for number, artifact in enumerate(ordered, start=1):
+            if artifact["number"] != number:
+                old, new = f"{project['id']}/{artifact['number']}", f"{project['id']}/{number}"
+                moves[old] = new
+                moves |= {f"{old}/{VERSIONS}/{k}": f"{new}/{VERSIONS}/{k}" for k in range(1, len(artifact["versions"]) + 1)}
+            artifact["number"] = number
+        project["artifacts"] = ordered
+        project["nextNumber"] = len(ordered) + 1
+    redirects = registry.setdefault("redirects", {})
+    combined = {old: moves.get(new, new) for old, new in redirects.items()} | moves
+    dropped = sorted((old, new) for old, new in combined.items() if shadows(registry, old))
+    registry["redirects"] = {old: new for old, new in combined.items() if not shadows(registry, old)}
+    if not registry["redirects"]:
+        registry.pop("redirects")
+    return moves, dropped
+
+
+def renumber(root: Path, review_root: Path, apply: bool) -> str:
+    """Densify a registry, snapshotting it under archives/ first; prints the old -> new table and dropped redirects."""
+    registry = load_registry(root)
+    updated = json.loads(json.dumps(registry)) | {"schemaVersion": SCHEMA}
+    moves, dropped = densify(updated)
+    lines = [f"artifacts renumbered: {sum(1 for old in moves if VERSIONS not in old)}"]
+    for project in updated["projects"]:
+        rows = [(old, new) for old, new in moves.items() if VERSIONS not in old and old.startswith(f"{project['id']}/")]
+        lines += [f"{project['id']} · nextNumber {project['nextNumber']}"] + [f"  {old} -> {new}" for old, new in rows]
+    lines += ["", f"dropped redirects: {len(dropped)}", *(f"  {old} -> {new}" for old, new in dropped)]
+    untitled = [f"{p['id']}/{a['number']} (version title: {current(a)['title']})" for p in updated["projects"]
+                for a in p["artifacts"] if not a.get("title")]
+    lines += ["", f"untitled artifacts: {len(untitled)}", *(f"  {item}" for item in untitled)]
+    errors = verify_store(root, updated, strict_shell=False)
+    lines += ["", f"errors: {len(errors)}", *(f"  {error}" for error in errors)]
+    if apply and not errors and updated != registry:
+        snapshot = root / "archives" / f"registry-{datetime.now().strftime('%Y%m%dT%H%M%S')}.json"
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(registry_path(root), snapshot)
+        write_registry(root, updated)
+        try:
+            materialize(root, review_root, updated)
+        except Exception:
+            write_registry(root, registry)
+            raise
+        errors = verify_projection(root, review_root, updated)
+        lines += [f"snapshot: {snapshot}", f"projection errors: {len(errors)}", *(f"  {error}" for error in errors)]
+    return "\n".join(lines)
 
 
 def grouping_layout(before: dict, after: dict, mapping: dict, warnings: list[str]) -> str:
@@ -706,7 +833,8 @@ def plan_migration(root: Path, registry: dict, sessions: dict[str, str | None]) 
             artifact = {"number": number, **({"session": key} if not key.startswith("revision:") else {}),
                         "current_version": len(versions), "versions": versions, "legacy": legacy}
             artifacts.append(artifact)
-        migrated["projects"].append({key: project[key] for key in ("id", "name", "aliases") if key in project} | {"artifacts": artifacts})
+        migrated["projects"].append({key: project[key] for key in ("id", "name", "aliases") if key in project}
+                                    | {"nextNumber": len(artifacts) + 1, "artifacts": artifacts})
     return migrated
 
 
@@ -734,6 +862,8 @@ def main() -> None:
     group_parser.add_argument("--plan", type=Path, required=True,
                               help='JSON {"projects": [{"id", "name", "merge": [<project>]}], "groups": [{"project", "title", "artifacts": [<n>|"<project>/<n>"]}]}')
     group_parser.add_argument("--write", action="store_true")
+    renumber_parser = sub.add_parser("renumber", help="number artifacts densely by first version date; --apply snapshots and writes")
+    renumber_parser.add_argument("--apply", action="store_true")
     locate_parser = sub.add_parser("locate", help="print the exact path of an artifact revision or generated media file")
     locate_parser.add_argument("kind", choices=("artifact", "media"))
     locate_parser.add_argument("target", help="<project>/<n>[/versions/<k>] or artifact URL; media filename")
@@ -757,6 +887,9 @@ def main() -> None:
         return
     if args.command == "group":
         print(group(args.root, args.review_root, json.loads(args.plan.read_text()), args.write))
+        return
+    if args.command == "renumber":
+        print(renumber(args.root, args.review_root, args.apply))
         return
     registry = load_registry(args.root)
     if args.command == "migrate":

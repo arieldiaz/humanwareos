@@ -178,7 +178,7 @@ class ArtifactManagerTests(unittest.TestCase):
         self.assertFalse((self.root / "revisions/humanware/humanware-os-1-v1").exists())
         self.assertIn("before: 2 projects, 4 artifacts, 5 versions", report)
         self.assertIn("after:  1 projects, 3 artifacts, 5 versions", report)
-        self.assertIn("    2 · Menu bar app · 3 versions", report)
+        self.assertIn("    2 · Records · 1 versions\n    3 · Menu bar app · 3 versions", report)
         self.assertIn("unknown artifact in group 'Records': humanware-os/9", report)
         self.assertIn("errors: 0", report)
         plan["groups"].pop(0)
@@ -191,8 +191,8 @@ class ArtifactManagerTests(unittest.TestCase):
         registry = am.load_registry(self.root)
         self.assertEqual([p["id"] for p in registry["projects"]], ["humanware"])
         artifacts = registry["projects"][0]["artifacts"]
-        self.assertEqual([(a["number"], a["title"]) for a in artifacts], [(1, "Mac operator IA"), (2, "Menu bar app"), (3, "Records")])
-        menu = artifacts[1]
+        self.assertEqual([(a["number"], a["title"]) for a in artifacts], [(1, "Mac operator IA"), (2, "Records"), (3, "Menu bar app")])
+        menu = artifacts[2]
         self.assertEqual([(v["number"], v["revision"]) for v in menu["versions"]],
                          [(1, "humanware-os-1-v1"), (2, "humanware-os-3-v1"), (3, "humanware-os-1-v2")])
         self.assertEqual((menu["current_version"], menu["session"], menu["folded_sessions"]), (3, "s:menu", ["s:menu-b"]))
@@ -201,16 +201,16 @@ class ArtifactManagerTests(unittest.TestCase):
         self.assertEqual(am.locate_artifact(self.root, "humanware-os/3").name, "humanware-os-1-v2")
         self.assertEqual(am.locate_artifact(self.root, "humanware-os/3/versions/1").name, "humanware-os-3-v1")
         self.assertEqual(am.locate_artifact(self.root, "humanware-os/2"), self.root / "revisions/humanware/humanware-os-2-v1")
-        self.assertEqual(registry["redirects"]["humanware-os/old-menu"], "humanware/2")
+        self.assertEqual(registry["redirects"]["humanware-os/old-menu"], "humanware/3")
         self.assertEqual(am.verify_store(self.root, registry, strict_shell=False), [])
         self.assertEqual(am.verify_projection(self.root, self.review, registry), [])
-        self.assertIn('"/artifacts/humanware/2/versions/2/"', (self.review / "humanware-os/3/versions/1/index.html").read_text())
+        self.assertIn('"/artifacts/humanware/3/versions/2/"', (self.review / "humanware-os/3/versions/1/index.html").read_text())
         self.assertIn('"/artifacts/humanware/"', (self.review / "humanware-os/index.html").read_text())
         self.assertIn("Menu bar app", (self.review / "humanware/index.html").read_text())
         record = json.loads(next((self.root / "manifests/groupings").iterdir()).read_text())
-        self.assertEqual(record["mapping"]["humanware-os/1/versions/2"], "humanware/2/versions/3")
+        self.assertEqual(record["mapping"]["humanware-os/1/versions/2"], "humanware/3/versions/3")
         self.promote("s:menu-b", "Menu bar C", "humanware", body="<p>c</p>", day="06 Sep 2026")
-        self.assertEqual(len(am.load_registry(self.root)["projects"][0]["artifacts"][1]["versions"]), 4)
+        self.assertEqual(len(am.load_registry(self.root)["projects"][0]["artifacts"][2]["versions"]), 4)
 
     def test_group_is_idempotent_and_rebuild_reflects_it(self) -> None:
         plan = self.grouping_fixture()
@@ -223,6 +223,93 @@ class ArtifactManagerTests(unittest.TestCase):
         registry = am.load_registry(self.root)
         am.materialize(self.root, self.review, registry)
         self.assertEqual(am.verify_projection(self.root, self.review, registry), [])
+
+    def test_allocator_uses_next_number_yields_redirects_and_never_reuses_a_revision_name(self) -> None:
+        self.promote("s:a", "A")
+        registry = am.load_registry(self.root)
+        self.assertEqual(registry["projects"][0]["nextNumber"], 2)
+        (self.root / "revisions/learning/2-v1").mkdir()
+        registry["redirects"] = {"learning/2": "learning/1", "learning/2/versions/1": "learning/1/versions/1", "learning/20": "learning/1"}
+        am.write_registry(self.root, registry)
+        self.promote("s:b", "B")
+        registry = am.load_registry(self.root)
+        artifact = registry["projects"][0]["artifacts"][1]
+        self.assertEqual((artifact["number"], artifact["versions"][0]["revision"], registry["projects"][0]["nextNumber"]), (2, "2-v1-2", 3))
+        self.assertEqual(registry["redirects"], {"learning/20": "learning/1"})
+        self.assertEqual(am.verify_store(self.root, registry), [])
+        del registry["projects"][0]["nextNumber"]
+        with self.assertRaisesRegex(ValueError, "no nextNumber: run artifact_manager.py renumber"):
+            am.add_version(registry, "learning", "Learning", "s:c", "C", "22 Aug 2026")
+
+    def sparse_fixture(self) -> dict:
+        for session, day in (("s:a", "03 Sep 2026"), ("s:b", "01 Sep 2026"), ("s:c", "02 Sep 2026")):
+            self.promote(session, session, day=day)
+        registry = am.load_registry(self.root)
+        artifacts = registry["projects"][0]["artifacts"]
+        for artifact, number in zip(artifacts, (4, 7, 9)):
+            artifact["number"] = number
+        registry["schemaVersion"] = 3
+        registry["projects"][0].pop("nextNumber")
+        registry["redirects"] = {"learning/1": "learning/7", "learning/3/versions/2": "learning/9", "learning/12": "learning/9/versions/1"}
+        am.write_registry(self.root, registry)
+        return registry
+
+    def test_renumber_densifies_by_first_version_date_and_drops_colliding_redirects(self) -> None:
+        before = self.sparse_fixture()
+        report = am.renumber(self.root, self.review, apply=False)
+        self.assertEqual(am.load_registry(self.root), before)
+        self.assertIn("learning/7 -> learning/1\n  learning/9 -> learning/2\n  learning/4 -> learning/3", report)
+        self.assertIn("dropped redirects: 2\n  learning/1 -> learning/1\n  learning/3/versions/2 -> learning/2", report)
+        self.assertIn("untitled artifacts: 3\n  learning/1 (version title: s:b)", report)
+        report = am.renumber(self.root, self.review, apply=True)
+        self.assertIn("errors: 0", report)
+        self.assertIn("projection errors: 0", report)
+        registry = am.load_registry(self.root)
+        project = registry["projects"][0]
+        self.assertEqual(([a["number"] for a in project["artifacts"]], [a["session"] for a in project["artifacts"]], project["nextNumber"]),
+                         ([1, 2, 3], ["s:b", "s:c", "s:a"], 4))
+        self.assertEqual(registry["redirects"], {"learning/12": "learning/2/versions/1", "learning/4": "learning/3",
+                                                 "learning/4/versions/1": "learning/3/versions/1",
+                                                 "learning/7": "learning/1", "learning/7/versions/1": "learning/1/versions/1",
+                                                 "learning/9": "learning/2", "learning/9/versions/1": "learning/2/versions/1"})
+        self.assertEqual(json.loads(next((self.root / "archives").iterdir()).read_text()), before)
+        self.assertEqual(am.verify_store(self.root, registry), [])
+        self.assertEqual(am.locate_artifact(self.root, "learning/9").name, "3-v1")
+        self.assertIn("errors: 0\n", am.renumber(self.root, self.review, apply=True) + "\n")
+        self.assertEqual(len(list((self.root / "archives").iterdir())), 1)
+
+    def test_contract_requires_dense_numbers_next_number_and_unshadowed_redirects(self) -> None:
+        self.promote("s:a")
+        self.promote("s:b")
+        registry = am.load_registry(self.root)
+        registry["projects"][0]["artifacts"][1]["number"] = 3
+        registry["redirects"] = {"learning/1/versions/9": "learning/1"}
+        errors = am.verify_store(self.root, registry)
+        self.assertIn("artifact numbers are not dense 1..N: learning", errors)
+        self.assertIn("redirect shadows a live address: learning/1/versions/9", errors)
+        registry["projects"][0]["nextNumber"] = 5
+        self.assertIn("nextNumber is not N+1: learning", am.verify_store(self.root, registry))
+
+    def test_every_artifact_page_carries_the_one_server_side_breadcrumb_trail(self) -> None:
+        self.promote("s:a", "Draft")
+        self.promote("s:a", "Final", body="<p>final</p>")
+        live, home = self.review / "learning", '<a href="/">Humanware OS</a><span class="sep">/</span><a href="/artifacts/">Artifacts</a>'
+        project = f'{home}<span class="sep">/</span><a href="/artifacts/learning/">Learning</a>'
+        artifact = f'{project}<span class="sep">/</span><a href="/artifacts/learning/1/">Final</a><span class="sep">/</span>'
+        versions = f'{artifact}<a href="/artifacts/learning/1/versions/">Versions</a><span class="sep">/</span>'
+        with patch.object(am, "BRAND", "Humanware OS"):
+            am.materialize(self.root, self.review, am.load_registry(self.root))
+        pages = {"index.html": f'{home}<span class="sep">/</span><span class="current">Learning</span>',
+                 "1.crumbs.html": f'{project}<span class="sep">/</span><span class="current">Final</span>',
+                 "1/versions/index.html": f'{artifact}<span class="current">Versions</span>',
+                 "1/versions/history/index.html": f'{versions}<span class="current">History</span>',
+                 "1/versions/1.crumbs.html": f'{versions}<span class="current">1</span>',
+                 "1/versions/2/diff/index.html": f'{versions}<a href="/artifacts/learning/1/versions/2/">2</a><span class="sep">/</span><span class="current">Diff</span>'}
+        for name, trail in pages.items():
+            self.assertIn(f'<nav class="os-breadcrumbs" aria-label="Breadcrumb">{trail}</nav>', (live / name).read_text(), name)
+        self.assertIn('<header class="os-shell-header"><nav', (live / "index.html").read_text())
+        (live / "1/versions/1.crumbs.html").unlink()
+        self.assertIn("missing version crumbs: learning/1/v1", am.verify_projection(self.root, self.review, am.load_registry(self.root)))
 
 
 if __name__ == "__main__":
