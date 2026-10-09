@@ -20,13 +20,7 @@ Patches are applied by `scripts/openclaw-cutover.sh activate`, after the staged 
 
 `patch-2026.9.8-cli-commentary-projection.mjs` keeps CLI pre-tool narration out of the final channel reply when the surface has no live-commentary listener. Stock classifies text before a tool call as commentary only when a listener exists; on Slack it therefore concatenates commentary and the terminal answer, including malformed boundaries such as `context.## TLDR`. The patch makes classification independent of observation: a listener receives commentary when present, otherwise it is discarded.
 
-`patch-2026.9.8-prompt-annotation-race.mjs` allows the native prompt mirror to preserve compatible `__openclaw` metadata added after the user admission was recorded. It still rejects content changes, non-metadata changes, terminal evidence, and conflicting provenance.
-
 `patch-2026.9.8-slack-response-reliability.mjs` makes a terminal event from the session's current writer authoritative when restart bookkeeping still names an older recovery run, preventing a successful Slack turn from remaining falsely `running`. Session-start conflicts remain retryable until the ordinary age floor rather than being dead-lettered after eight quick attempts, and persisted or inspected ingress payloads redact credential-shaped fields.
-
-`patch-2026.9.8-current-thread-root-edit.mjs` lets a delegated Slack agent edit the root message of its current thread when the caller omitted the canonical target. It infers only the trusted current channel when the requested message ID exactly matches the trusted thread root and the provider and account match; the stock conversation gate and Slack message ownership check still run afterward.
-
-`patch-2026.9.8-slack-session-status-keepalive.mjs` refreshes Slack's working status throughout a long turn instead of setting it only once and letting it expire. The ordinary typing-reaction fallback remains single-shot.
 
 `../slack-spin-out.mjs` posts the brief as one ordinary top-level message through stock send, then owns scaffold cleanup, status and durable session creation with high reasoning set before the initial run; the session replies in that message's thread.
 
