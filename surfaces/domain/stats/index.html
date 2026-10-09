@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Stats · Humanware OS</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0d10;--panel:#14171c;--panel-2:#1b1f26;--line:#262b33;
+    --ink:#e8ecf1;--muted:#8a93a0;--faint:#5b6473;
+    --claude:#d97757;--codex:#10a37f;--other:#8b7bd8;--pace:#6b7686;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font)}
+  body{max-width:1320px;margin:0 auto;padding:26px 20px 60px;-webkit-font-smoothing:antialiased}
+  .topbar{position:sticky;top:0;z-index:20;margin:-12px 0 20px;padding:12px 0;background:rgba(11,13,16,.92);border-bottom:1px solid rgba(38,43,51,.9);backdrop-filter:blur(14px)}
+  header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px}
+  .headcontrols{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+  .tabs{display:flex;gap:4px;padding:3px;width:max-content;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .tabs button{appearance:none;border:0;background:transparent;color:var(--muted);padding:7px 14px;border-radius:7px;font:inherit;font-size:12px;cursor:pointer}
+  .tabs button.active{background:var(--panel-2);color:var(--ink)}
+  .view[hidden]{display:none}
+  h1{font-size:20px;font-weight:650;letter-spacing:-.01em;margin:0}
+  .sub{color:var(--muted);font-size:12.5px}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .period{display:inline-flex;align-items:center;gap:4px}
+  .period button{appearance:none;width:30px;height:30px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;cursor:pointer;font-size:15px;line-height:1}
+  .period button:disabled{opacity:.3;cursor:default}
+  .period .label{min-width:150px;text-align:center;font-size:13px;font-weight:550}
+  .cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:start}
+  .overviewgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .overviewcard{min-height:145px}
+  .overviewlist{display:flex;flex-direction:column;gap:9px;margin-top:12px}
+  .overviewrow{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px}
+  .overviewrow strong{color:var(--ink);font-weight:620;font-variant-numeric:tabular-nums}
+  .jubilee{border-color:#6e5a27;background:linear-gradient(135deg,#191a18,var(--panel))}
+  .token-cols>.col{display:grid;grid-template-rows:auto 164px 84px 84px 84px auto;gap:12px}
+  .alignspacer{visibility:hidden}
+  @media (max-width:1000px){.cols{grid-template-columns:1fr 1fr}}
+  @media (max-width:1000px){.overviewgrid{grid-template-columns:1fr 1fr}.token-cols>.col{display:flex}}
+  @media (max-width:760px){header{grid-template-columns:1fr auto}.headcontrols{grid-column:1/3;justify-content:space-between}.cols,.overviewgrid{grid-template-columns:1fr}}
+  .col{display:flex;flex-direction:column;gap:12px;min-width:0}
+  .colhead{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:640;padding:2px}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:14px}
+  .card .lbl{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+  .pct{font-size:26px;font-weight:670;font-variant-numeric:tabular-nums;line-height:1}
+  .track{position:relative;height:8px;border-radius:5px;background:var(--panel-2);margin:9px 0 7px}
+  .track>i{display:block;height:100%;border-radius:5px;background:#478fe8}
+  .track>b{position:absolute;top:-3px;width:2px;height:14px;border-radius:2px;background:#d8dee8;opacity:.75}
+  .limit-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .limit-name{font-size:14px;color:var(--ink)}
+  .limit-meta{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+  .limit-foot{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .rs{font-size:11px;color:var(--faint)}
+  .mini{display:flex;gap:16px;margin-top:9px}
+  .mini .v{font-size:15px;font-weight:620;font-variant-numeric:tabular-nums}
+  .mini .k{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+  .stat-row{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px}
+  .stat{display:flex;flex-direction:column}
+  .mini>div{display:flex;flex-direction:column}
+  .stat .v{font-size:16px;font-weight:640;font-variant-numeric:tabular-nums}
+  .stat .k{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-top:1px}
+  .pacebadge{font-size:11.5px;font-weight:600}
+  .pacebadge.under{color:#55c08a}.pacebadge.over{color:#e0705f}
+  .pacebadge.watch{color:#e0a35f}.pacebadge.danger{color:#e0705f}
+  .track>i.watch{background:#e0a35f}.track>i.danger{background:#e0705f}
+  .chartwrap{position:relative;height:180px;margin:4px 0}
+  .models{margin-top:10px;border-top:1px solid var(--line);padding-top:9px;display:flex;flex-direction:column;gap:6px}
+  .mrow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;font-size:11.5px}
+  .mrow .nm{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mbar{height:5px;border-radius:3px;background:var(--panel-2);overflow:hidden;grid-column:1/3}
+  .mbar>i{display:block;height:100%;border-radius:3px}
+  .mrow .amt{font-variant-numeric:tabular-nums;color:var(--ink)}
+  .local .nm,.local .amt{color:var(--faint)}
+  .empty{color:var(--faint);font-size:12px;line-height:1.45}
+  .tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;border:1px solid var(--line);color:var(--faint)}
+  footer{color:var(--faint);font-size:11.5px;margin-top:26px;text-align:center}
+  .warn{color:#e0a35f;font-size:12px;margin-top:12px}
+  .section{margin-top:30px;padding-top:24px;border-top:1px solid var(--line)}
+  .sectionhead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+  .sectiontitle{font-size:17px;font-weight:650;margin-bottom:3px}
+  .seg{display:inline-flex;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:9px}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--muted);padding:6px 10px;border-radius:6px;font:inherit;font-size:11.5px;cursor:pointer}
+  .seg button.active{background:var(--panel-2);color:var(--ink)}
+  .hero{font-size:25px;font-weight:670;font-variant-numeric:tabular-nums}
+  .split{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;color:var(--muted);font-size:11.5px}
+  .split b{color:var(--ink);font-weight:620}
+  .widecard{margin-top:12px}
+  .chartmedium{height:220px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+  .legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+  .stackcards{display:flex;flex-direction:column;gap:10px}
+  .tablewrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:11.5px;white-space:nowrap}
+  th{text-align:left;color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:600;padding:7px 8px;border-bottom:1px solid var(--line)}
+  td{padding:9px 8px;border-bottom:1px solid var(--line);color:var(--muted);font-variant-numeric:tabular-nums}
+  td strong{color:var(--ink);font-weight:600} td a{color:#73a8e8;text-decoration:none}
+  .modelpill{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
+  details.card{padding:0} details>summary{cursor:pointer;list-style:none;padding:14px;display:flex;gap:10px;align-items:center;color:var(--ink);font-size:12px;font-weight:600}
+  details>summary::-webkit-details-marker{display:none} details>summary:before{content:"▶";color:var(--faint);font-size:9px;transition:transform .15s}
+  details[open]>summary:before{transform:rotate(90deg)} details .detailbody{padding:0 14px 14px;border-top:1px solid var(--line)}
+  details.card>summary span:nth-child(2){margin-left:auto}
+  .statusline{display:flex;align-items:center;justify-content:space-between;padding:5px 0;color:var(--muted);font-size:12px}
+  .statusline strong{font-variant-numeric:tabular-nums;color:var(--ink);font-size:14px}
+  .statusdetails{border-top:1px solid var(--line)} .statusdetails>summary{padding:9px 0;font-weight:500;color:var(--muted)}
+  .statusitems{display:flex;flex-direction:column;padding:0 0 8px 18px}
+  .statusitem{padding:7px 0;border-top:1px solid var(--line);line-height:1.35}
+  .statusitem a{color:#73a8e8;text-decoration:none;font-size:11.5px;font-weight:600}
+  .statusitem p{margin:2px 0 0;color:var(--muted);font-size:11px;white-space:normal}
+  .opensection{margin-top:12px}
+  .opentable{table-layout:auto}
+  .opentable .channelrow td{padding:11px 8px;background:var(--panel);border-top:1px solid var(--line);color:var(--ink)}
+  .channelbutton{appearance:none;border:0;background:transparent;color:var(--ink);padding:0;display:flex;align-items:center;gap:8px;font:inherit;font-size:12px;font-weight:650;cursor:pointer;text-align:left;white-space:nowrap}
+  .channelbutton .caret{color:var(--faint);font-size:9px;width:10px;transition:transform .15s}
+  .channelbutton[aria-expanded=true] .caret{transform:rotate(90deg)}
+  .opentable .threadcell{white-space:normal;min-width:320px;max-width:560px;line-height:1.4}
+  .opentable .threadcell a{font-weight:600}
+  .opentable .openedcell{line-height:1.45}
+  .opentable .openedcell span{display:block;color:var(--faint);font-size:10.5px}
+  .opentable .aggregate{font-weight:650;color:var(--ink)}
+  .opentable .mix{white-space:normal;min-width:110px;line-height:1.4;color:var(--muted)}
+  .opentable .modelmix{min-width:155px}
+  .opentable tr[hidden]{display:none}
+  .detailfilters{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 0}
+  .detailfilters label{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+  .detailfilters select{appearance:none;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:7px 28px 7px 9px;font:inherit;font-size:11.5px}
+  .channelstats tbody tr{cursor:pointer}
+  .channelstats tbody tr:hover td{background:var(--panel-2)}
+  .sessiongroup td{background:var(--panel-2);color:var(--ink);font-weight:650;padding:9px 8px}
+  .sessiongroup span{color:var(--faint);font-weight:500;margin-left:8px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted)}
+</style>
+<link rel="stylesheet" href="/os-shell.css">
+</head>
+<body>
+<div class="topbar">
+  <header>
+    <div><h1>Stats</h1><div class="sub" id="sub">loading…</div></div>
+    <nav class="tabs" id="tabs" aria-label="Stats views">
+      <button class="active" data-view="overview">Overview</button>
+      <button data-view="tokens">Tokens</button>
+      <button data-view="slack">Slack</button>
+      <button data-view="buzz">Buzz</button>
+    </nav>
+    <div class="headcontrols">
+      <span class="sub">Monthly view · billing cycle</span>
+      <div class="controls">
+        <div class="period" id="period">
+          <button id="prev">‹</button><span class="label" id="periodLabel">—</span><button id="next">›</button>
+        </div>
+      </div>
+    </div>
+  </header>
+</div>
+
+<section class="view" id="view-overview">
+  <div class="overviewgrid" id="overview"></div>
+</section>
+
+<section class="section view" id="view-buzz" hidden>
+  <div class="sectionhead">
+    <div><div class="sectiontitle">Buzz ramp</div><div class="sub" id="buzzSub">Native activity after the Slack seed</div></div>
+    <div class="seg" id="buzzRange"></div>
+  </div>
+  <div class="overviewgrid" id="buzzCards"></div>
+  <div class="cols" style="margin-top:12px">
+    <div class="card">
+      <div class="lbl"><span>Messages · daily</span><span class="legend" id="buzzMessageLegend"></span></div>
+      <div class="chartwrap chartmedium"><canvas id="c-buzz-messages"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="lbl"><span>Daily reach</span><span class="legend" id="buzzReachLegend"></span></div>
+      <div class="chartwrap chartmedium"><canvas id="c-buzz-reach"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="lbl"><span>Reactions · daily</span></div>
+      <div class="chartwrap chartmedium"><canvas id="c-buzz-reactions"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section class="view" id="view-tokens" hidden>
+  <div class="cols token-cols" id="cols"></div>
+</section>
+
+<section class="section view" id="view-slack" hidden>
+  <div class="sectionhead">
+    <div><div class="sectiontitle">Slack activity</div><div class="sub" id="slackSub">OpenClaw conversations</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="seg" id="slackRange"></div>
+    </div>
+  </div>
+  <div class="cols">
+    <div class="col" id="slackCards"></div>
+    <div class="col"><div class="card">
+      <div class="lbl"><span id="slackWordsTitle">Words</span><span class="legend" id="slackWordsLegend"></span></div>
+      <div class="chartwrap chartmedium"><canvas id="c-slack-words"></canvas></div>
+    </div></div>
+    <div class="col"><div class="card">
+      <div class="lbl"><span id="slackSessionsTitle">Sessions</span><span class="legend" id="slackSessionsLegend"></span></div>
+      <div class="chartwrap chartmedium"><canvas id="c-slack-sessions"></canvas></div>
+    </div></div>
+  </div>
+  <div class="widecard" id="statusSummary"></div>
+  <div class="card widecard">
+    <div class="lbl"><span>Session lifecycle · by day</span><span class="legend" id="slackLifecycleLegend"></span></div>
+    <div class="chartwrap chartmedium"><canvas id="c-slack-lifecycle"></canvas></div>
+  </div>
+  <div class="card widecard" id="channelStats"></div>
+  <details class="card widecard" id="sessionDetails">
+    <summary><span>Thread / session details</span><span id="sessionCount">—</span></summary>
+    <div class="detailbody">
+      <div class="detailfilters">
+        <label for="sessionChannelFilter">Channel</label><select id="sessionChannelFilter"></select>
+        <label>State</label><div class="seg" id="sessionStateFilter"></div>
+      </div>
+      <div class="tablewrap"><table>
+      <thead><tr><th>Thread</th><th>Status</th><th>Started</th><th>Agent</th><th>Model</th><th>Input</th><th>Output</th><th>Tools</th><th>Words</th><th>Replies</th><th>Links</th><th>Artifacts</th></tr></thead>
+      <tbody id="sessionRows"></tbody>
+    </table></div></div>
+  </details>
+</section>
+
+<div class="warn" id="warn"></div>
+<footer id="foot"></footer>
+
+<script>
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const ACCENT={claude:"#d97757",codex:"#10a37f"};
+let DATA=null,offset=0,slackRange=30,buzzRange=30,sessionChannelFilter="all",sessionStatusFilter="all";
+const charts={};
+// Instance values from /surface.json (routes[id=stats]): people keyed as in
+// data.json (the human first, then each agent) and session groups (agents plus shared).
+let PEOPLE={},SESSION_GROUPS={};
+const zeros=keys=>Object.fromEntries(keys.map(k=>[k,0]));
+// Lifecycle per docs/status-framework.md. Generic "blocked" retired 2026-07-26,
+// split into clarify/approve/act; the blocked entry stays for historical threads.
+const STATUS={
+  in_process:{name:"In process",emoji:"🔄",color:"#478fe8"},
+  clarify:{name:"Clarify",emoji:"❓",color:"#e0705f"},
+  approve:{name:"Approve",emoji:"▶️",color:"#8b94a3"},
+  act:{name:"Act",emoji:"✋",color:"#e0a33f"},
+  scheduled:{name:"Scheduled",emoji:"🗓️",color:"#a98de3"},
+  blocked:{name:"Blocked (legacy)",emoji:"🚫",color:"#a35a4f"},
+  done:{name:"Done",emoji:"✅",color:"#55c08a"},
+  unknown:{name:"Untracked",emoji:"—",color:"#5b6473"}
+};
+// The states where the ball is in the human's court. Rolled up as one column in the
+// dense tables; broken out individually in the state filter.
+const WAITING=["clarify","approve","act","blocked"];
+Chart.register({
+  id:"jubileeMarkers",
+  afterDraw(chart,args,opts){
+    const indexes=opts?.indexes||[];
+    if(!indexes.length)return;
+    const {ctx,chartArea:{top,bottom},scales:{x}}=chart;
+    ctx.save();ctx.strokeStyle="#e0b35f";ctx.fillStyle="#e0b35f";ctx.setLineDash([3,3]);ctx.lineWidth=1;
+    indexes.forEach(index=>{
+      const px=x.getPixelForValue(index);
+      ctx.beginPath();ctx.moveTo(px,top);ctx.lineTo(px,bottom);ctx.stroke();
+      ctx.font="9px -apple-system";ctx.fillText("reset",Math.min(px+4,chart.width-34),top+10);
+    });
+    ctx.restore();
+  }
+});
+
+const fmtTok=n=>n>=1e9?(n/1e9).toFixed(2)+"B":n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"K":String(Math.round(n));
+const fmtUsd=n=>"$"+(n>=1000?(n/1000).toFixed(1)+"k":n.toFixed(n<10?2:0));
+const fmt=fmtTok;
+const val=d=>d?.total||0;
+const mval=m=>m?.tokens||0;
+const ymd=dt=>dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+const mondayOf=dt=>{const x=new Date(dt);x.setDate(x.getDate()-((x.getDay()+6)%7));x.setHours(0,0,0,0);return x;};
+
+function anchorDay(sub){const a=((DATA.budgets||{})[sub]||{}).cycleAnchorDay||1;return Math.min(28,Math.max(1,a));}
+// billing cycle containing (today shifted by `offset` cycles) for a sub
+function cycleInfo(sub){
+  const now=new Date();now.setHours(0,0,0,0);
+  const a=anchorDay(sub);
+  let start=new Date(now.getFullYear(),now.getMonth(),a);
+  if(start>now) start=new Date(now.getFullYear(),now.getMonth()-1,a);
+  start=new Date(start.getFullYear(),start.getMonth()+offset,a);
+  const end=new Date(start.getFullYear(),start.getMonth()+1,a); // exclusive
+  const len=Math.round((end-start)/86400000);
+  const dates=[];for(let i=0;i<len;i++){const d=new Date(start);d.setDate(d.getDate()+i);dates.push(d);}
+  const isCurrent=offset===0;
+  const elapsed=isCurrent?Math.min(len,Math.round((now-start)/86400000)+1):len;
+  return {start,end,len,dates,isCurrent,elapsed};
+}
+
+function windowByMinutes(sub,mins){
+  const w=DATA.windows;const arr=w&&w.providers&&w.providers[sub]&&w.providers[sub].windows||[];
+  return arr.find(x=>x.windowMinutes===mins)||null;
+}
+function extraWindows(sub){
+  const w=DATA.windows;const arr=w&&w.providers&&w.providers[sub]&&w.providers[sub].windows||[];
+  return arr.filter(x=>x.slot==="extra");
+}
+
+function resetText(win){
+  const raw=win&&win.resetsAt;
+  if(raw){
+    let d;
+    if(typeof raw==="number") d=new Date(raw<1e12?raw*1000:raw);
+    else d=new Date(raw);
+    if(!Number.isNaN(d.getTime())) return d.toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",timeZoneName:"short"});
+  }
+  return win&&win.resetDescription||"reset time unavailable";
+}
+
+function paceForWindow(win){
+  const raw=win&&win.resetsAt,mins=win&&win.windowMinutes;
+  if(!raw||!mins)return null;
+  let end=typeof raw==="number"?new Date(raw<1e12?raw*1000:raw):new Date(raw);
+  if(Number.isNaN(end.getTime()))return null;
+  const start=end.getTime()-mins*60000;
+  return Math.max(0,Math.min(100,(Date.now()-start)/(mins*60000)*100));
+}
+
+function projectedLimit(win){
+  const raw=win&&win.resetsAt,mins=win&&win.windowMinutes;
+  if(!raw||!mins||!(win.usedPercent>0))return "";
+  const end=typeof raw==="number"?new Date(raw<1e12?raw*1000:raw):new Date(raw);
+  if(Number.isNaN(end.getTime()))return "";
+  const start=end.getTime()-mins*60000,elapsed=Date.now()-start;
+  if(elapsed<=0)return "";
+  const limitAt=new Date(start+elapsed/(win.usedPercent/100));
+  if(limitAt>=end)return "";
+  return `limit ${limitAt.toLocaleDateString([],{month:"short",day:"numeric"})}`;
+}
+
+function gaugeCard(title,win,detail=""){
+  if(!win) return `<div class="card"><div class="lbl">${title}<span class="tag">awaiting feed</span></div>
+    <div class="empty">Live limit feed unavailable; the scheduled collector will retry.</div></div>`;
+  const p=Math.max(0,Math.min(100,win.usedPercent||0));
+  const pace=paceForWindow(win);
+  const level=p>=90?"danger":p>=75?"watch":"";
+  const projection=projectedLimit(win);
+  return `<div class="card">
+    <div class="limit-head"><span class="limit-name">${title}</span><span class="limit-meta">Resets ${resetText(win)} · ${Math.round(win.usedPercent||0)}%</span></div>
+    <div class="track"><i class="${level}" style="width:${p}%"></i>${pace==null?"":`<b title="Expected pace" style="left:${pace}%"></b>`}</div>
+    <div class="limit-foot"><span>${Math.round(100-p)}% remaining</span><span class="${level?`pacebadge ${level}`:""}">${projection||(pace==null?"":`pace ${Math.round(pace)}%`)}</span></div>
+    ${detail?`<div class="rs" style="margin-top:7px">${detail}</div>`:""}
+  </div>`;
+}
+
+function cycleTotals(sub){
+  const days=DATA.providers[sub].days;const ci=cycleInfo(sub);
+  let tokens=0,input=0,output=0,cacheRead=0,cacheCreation=0,apiCost=0;
+  ci.dates.slice(0,ci.elapsed).forEach(d=>{const r=days[ymd(d)];if(r){const out=r.output||0;tokens+=r.total||0;input+=Math.max(0,(r.total||0)-out);output+=out;cacheRead+=r.cacheRead||0;cacheCreation+=r.cacheCreation||0;apiCost+=r.cost||0;}});
+  return {tokens,input,output,cacheRead,cacheCreation,apiCost,elapsed:ci.elapsed,len:ci.len,isCurrent:ci.isCurrent};
+}
+
+function jubileesFor(sub,dates){
+  const dateKeys=new Set(dates.map(ymd));
+  return (DATA.windows?.jubilees||[])
+    .filter(j=>j.provider===sub)
+    .map(j=>ymd(new Date(j.detectedAt)))
+    .filter(k=>dateKeys.has(k));
+}
+
+function effCard(sub){
+  const t=cycleTotals(sub);
+  const projected=t.isCurrent&&t.elapsed?t.apiCost/t.elapsed*t.len:null;
+  const cachePct=t.input?t.cacheRead/t.input*100:0;
+  // Current Codex traffic is gpt-5.6-sol / gpt-5.5 standard short-context.
+  // Both are $5/M fresh input, $0.50/M cached input, and $30/M output.
+  const uncached=sub==="codex"?t.apiCost+(t.cacheRead*(5-.5)/1e6):null;
+  return `<div class="card"><div class="lbl">API list-price equivalent<span class="rs">selected billing cycle</span></div>
+    <div class="pct">${fmtUsd(t.apiCost)}</div>
+    <div class="rs" style="margin:3px 0 8px">cache-adjusted cost from observed input, output, and cache usage</div>
+    <div class="mini">
+      ${uncached!=null?`<div><div class="v">${fmtUsd(uncached)}</div><div class="k">without cache reuse</div></div>`:`<div><div class="v">${fmtTok(t.tokens)}</div><div class="k">tokens used</div></div>`}
+      ${sub==="codex"?`<div><div class="v">${cachePct.toFixed(1)}%</div><div class="k">input cache hit</div></div>`:(projected!=null?`<div><div class="v">${fmtUsd(projected)}</div><div class="k">projected full cycle</div></div>`:"")}
+    </div>${sub==="codex"?`<div class="rs" style="margin-top:8px">Rate basis: $5/M fresh input · $0.50/M cached input · $30/M output · <a href="https://developers.openai.com/api/docs/pricing" target="_blank" rel="noopener">OpenAI pricing</a></div>`:""}</div>`;
+}
+
+function modelsOver(days,keys){
+  const agg={};
+  for(const k of keys){const rec=days[k];if(!rec||!rec.models)continue;
+    for(const[nm,mv]of Object.entries(rec.models)){agg[nm]=agg[nm]||{tokens:0,cost:0};agg[nm].tokens+=mv.tokens||0;agg[nm].cost+=mv.cost||0;}}
+  return Object.entries(agg).map(([nm,v])=>({nm,...v})).sort((a,b)=>mval(b)-mval(a));
+}
+
+function monthlyCard(sub){
+  const info=DATA.providers[sub];const days=info.days;const ci=cycleInfo(sub);
+  let cum=0,mtd=0;const actual=[],keys=[];
+  ci.dates.forEach((d,i)=>{
+    const k=ymd(d);
+    if(days[k]){cum+=val(days[k]);mtd=cum;keys.push(k);}
+    actual.push(ci.isCurrent&&i>=ci.elapsed?null:cum);
+  });
+  const labels=ci.dates.map(d=>d.getDate());
+  const datasets=[{label:"Cumulative tokens",data:actual,borderColor:ACCENT[sub],backgroundColor:ACCENT[sub]+"16",borderWidth:2,fill:true,tension:.25,pointRadius:0,spanGaps:false}];
+  const models=modelsOver(days,keys);
+  const top=models.length?mval(models[0]):0;
+  const mhtml=models.length?models.map(mm=>{const v=mval(mm),w=top?Math.max(3,v/top*100):0;
+    return `<div class="mrow"><span class="nm">${mm.nm}</span><span class="amt">${fmt(v)}</span><span class="mbar"><i style="width:${w}%;background:${ACCENT[sub]}"></i></span></div>`;}).join("")
+    :`<div class="empty">no usage this cycle</div>`;
+  return {html:`<div class="card"><div class="lbl">Cumulative tokens · billing cycle</div>
+    <div class="stat-row">
+      <div class="stat"><span class="v">${fmt(mtd)}</span><span class="k">cycle to date</span></div>
+      <div class="stat"><span class="v">${fmt(cycleTotals(sub).input)}</span><span class="k">input incl. cache</span></div>
+      <div class="stat"><span class="v">${fmt(cycleTotals(sub).output)}</span><span class="k">output generated</span></div>
+    </div>
+    <div class="chartwrap"><canvas id="c-${sub}-m"></canvas></div>
+    <div class="models">${mhtml}</div></div>`, chart:{id:`c-${sub}-m`,labels,datasets,markers:jubileesFor(sub,ci.dates).map(k=>ci.dates.findIndex(d=>ymd(d)===k))}};
+}
+
+function fableWindow(sub){
+  const arr=DATA.windows&&DATA.windows.providers&&DATA.windows.providers[sub]&&DATA.windows.providers[sub].windows||[];
+  return arr.find(x=>/fable/i.test(x.label||""))||null;
+}
+
+function subColumn(sub){
+  const info=DATA.providers[sub];
+  const five=windowByMinutes(sub,300);
+  const week=windowByMinutes(sub,10080);
+  const extras=extraWindows(sub);
+  const fable=fableWindow(sub);
+  const charts=[];
+  let html=`<div class="col"><div class="colhead"><span class="dot" style="background:${ACCENT[sub]}"></span>${info.displayName}</div>`;
+  html+=effCard(sub);
+  html+=sub==="codex"?`<div class="card alignspacer" aria-hidden="true"></div>`:gaugeCard("5-hour block",five);
+  const weeklyDetail=sub==="codex"&&week&&week.usedPercent===0
+    ?`${fmtTok(cycleTotals(sub).tokens)} tokens observed this billing cycle; the Pro endpoint still reports 0% weekly.`
+    :"";
+  html+=gaugeCard("Weekly · all models",week,weeklyDetail);
+  if(sub==="claude"){
+    html+=gaugeCard("Weekly · Fable",fable);
+  }else{
+    html+=`<div class="card alignspacer" aria-hidden="true"></div>`;
+  }
+  // Surface any other provider-specific caps without duplicating Fable.
+  extras.filter(x=>x!==fable).forEach(x=>{html+=gaugeCard(x.label||"Model limit",x);});
+  const mc=monthlyCard(sub);
+  html+=mc.html;charts.push(mc.chart);
+  html+=`</div>`;
+  return {html,charts};
+}
+
+function calendarInfo(){
+  const now=new Date();now.setHours(0,0,0,0);
+  const start=new Date(now.getFullYear(),now.getMonth()+offset,1);
+  const end=new Date(start.getFullYear(),start.getMonth()+1,1);
+  const len=Math.round((end-start)/86400000);
+  const dates=[];for(let i=0;i<len;i++){const d=new Date(start);d.setDate(d.getDate()+i);dates.push(d);}
+  const isCurrent=offset===0;
+  const elapsed=isCurrent?now.getDate():len;
+  return {start,end,len,dates,isCurrent,elapsed};
+}
+
+function localMonthlyCard(lm){
+  const ci=calendarInfo();
+  let cum=0,mtd=0;const actual=[];
+  const byModel=lm.map(m=>({name:m.name,tokens:0}));
+  ci.dates.forEach((d,i)=>{
+    const k=ymd(d);let daily=0;
+    lm.forEach((m,mi)=>{const n=(m.usage&&m.usage.days&&m.usage.days[k])||0;daily+=n;byModel[mi].tokens+=n;});
+    cum+=daily;mtd=cum;
+    actual.push(ci.isCurrent&&i>=ci.elapsed?null:cum);
+  });
+  const proj=ci.elapsed?mtd/ci.elapsed*ci.len:0;
+  const active=byModel.filter(m=>m.tokens>0).length;
+  const top=Math.max(1,...byModel.map(m=>m.tokens));
+  const rows=byModel.sort((a,b)=>b.tokens-a.tokens).map(m=>`<div class="mrow local">
+    <span class="nm">${m.name}</span><span class="amt">${fmtTok(m.tokens)}</span>
+    <span class="mbar"><i style="width:${m.tokens?Math.max(3,m.tokens/top*100):0}%;background:var(--other)"></i></span></div>`).join("");
+  const labels=ci.dates.map(d=>d.getDate());
+  const datasets=[{label:"Local total",data:actual,borderColor:"#8b7bd8",backgroundColor:"#8b7bd822",borderWidth:2,fill:true,tension:.25,pointRadius:0,spanGaps:false}];
+  return {html:`<div class="card"><div class="lbl">Local · calendar month<span class="tag">free</span></div>
+    <div class="stat-row">
+      <div class="stat"><span class="v">${fmtTok(mtd)}</span><span class="k">month to date</span></div>
+      <div class="stat"><span class="v">${fmtTok(proj)}</span><span class="k">projected</span></div>
+      <div class="stat"><span class="v">${active}</span><span class="k">active models</span></div>
+    </div>
+    <div class="chartwrap"><canvas id="c-local-m"></canvas></div>
+    <div class="models">${rows}</div></div>`,
+    chart:{id:"c-local-m",labels,datasets,tokenOnly:true}};
+}
+
+function otherColumn(){
+  const lm=DATA.localModels||[];
+  const metered=DATA.metered||[];
+  const direct=DATA.directApi||{};
+  let html=`<div class="col"><div class="colhead"><span class="dot" style="background:var(--other)"></span>Other &amp; local</div>`;
+  // Direct API (business keys)
+  html+=`<div class="card"><div class="lbl">Direct API spend<span class="tag">${direct.status==="live"?"live":"pending key"}</span></div>`;
+  html+= direct.status==="live"
+    ? `<div class="stat-row"><div class="stat"><span class="v">${fmtUsd(direct.monthCostUSD||0)}</span><span class="k">this month</span></div></div>`
+    : `<div class="empty">Business-project spend on Anthropic + OpenAI keys. Needs admin-scoped keys in Doppler (<code>ANTHROPIC_ADMIN_KEY</code>, <code>OPENAI_ADMIN_KEY</code>) to read org usage.</div>`;
+  html+=`</div>`;
+  // Metered
+  html+=`<div class="card"><div class="lbl">Metered · pay-per-token<span class="tag">soon</span></div>`;
+  html+= metered.length
+    ? metered.map(m=>`<div class="mrow"><span class="nm">${m.name}</span><span class="amt">${fmt(mval(m))}</span></div>`).join("")
+    : `<div class="empty">OpenRouter + opencode-via-OpenRouter land here once wired. Adding a source is a config line.</div>`;
+  html+=`</div>`;
+  html+=`<div class="card alignspacer" aria-hidden="true"></div><div class="card alignspacer" aria-hidden="true"></div>`;
+  const local=localMonthlyCard(lm);
+  html+=local.html;
+  html+=`</div>`;
+  return {html,charts:[local.chart]};
+}
+
+function chartColor(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim();}
+function drawChart(id,labels,datasets,tokenOnly=false,markers=[]){
+  if(charts[id])charts[id].destroy();
+  const el=document.getElementById(id);if(!el)return;
+  charts[id]=new Chart(el,{
+    type:"line",data:{labels,datasets},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:220},
+      interaction:{mode:"index",intersect:false},
+      plugins:{legend:{display:false},jubileeMarkers:{indexes:markers.filter(i=>i>=0)},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${tokenOnly?fmtTok(c.parsed.y):fmt(c.parsed.y)}`}}},
+      scales:{x:{grid:{color:chartColor("--line")},ticks:{color:chartColor("--faint"),font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:10}},
+        y:{grid:{color:chartColor("--line")},ticks:{color:chartColor("--faint"),font:{size:9},callback:v=>tokenOnly?fmtTok(v):fmt(v)},beginAtZero:true}}}
+  });
+}
+
+function slackDate(s){const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d,12);}
+function addMetric(target,source){
+  for(const group of ["sessions","messages","words","toolCalls","tokens","inputTokens","outputTokens"]){
+    target[group]=target[group]||{};
+    for(const [k,v] of Object.entries(source[group]||{}))target[group][k]=(target[group][k]||0)+v;
+  }
+}
+function emptySlack(){
+  const people=Object.keys(PEOPLE),groups=Object.keys(SESSION_GROUPS),agents=groups.filter(k=>k!=="shared");
+  return {
+    sessions:{total:0,...zeros(groups)},
+    messages:zeros(people),
+    words:zeros(people),
+    toolCalls:zeros(agents),
+    tokens:zeros(agents),
+    inputTokens:zeros(agents),
+    outputTokens:zeros(agents)
+  };
+}
+function slackPeriod(){
+  const all=Object.keys(DATA.slack?.days||{}).sort();
+  const today=new Date();today.setHours(12,0,0,0);
+  const coverage=all.length?slackDate(all[0]):today;
+  let start=coverage;
+  if(slackRange!=="all"){const rolling=new Date(today);rolling.setDate(rolling.getDate()-slackRange+1);start=rolling>coverage?rolling:coverage;}
+  return {start,end:today,keys:all.filter(k=>{const d=slackDate(k);return d>=start&&d<=today;})};
+}
+function drawStacked(id,labels,datasets){
+  if(charts[id])charts[id].destroy();
+  const el=document.getElementById(id);if(!el)return;
+  charts[id]=new Chart(el,{type:"bar",data:{labels,datasets},options:{
+    responsive:true,maintainAspectRatio:false,animation:{duration:220},interaction:{mode:"index",intersect:false},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmtTok(c.parsed.y)}`}}},
+    scales:{
+      x:{stacked:true,grid:{color:chartColor("--line")},ticks:{color:chartColor("--faint"),font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8}},
+      y:{stacked:true,grid:{color:chartColor("--line")},ticks:{color:chartColor("--faint"),font:{size:9},callback:fmtTok},beginAtZero:true}
+    }
+  }});
+}
+function dailyPeriod(group,series,period){
+  const days=DATA.slack?.days||{},dates=[];
+  for(let date=new Date(period.start);date<=period.end;date.setDate(date.getDate()+1))dates.push(new Date(date));
+  const values=Object.fromEntries(Object.keys(series).map(k=>[k,[]]));
+  dates.forEach(date=>{
+    const rec=days[ymd(date)]?.[group]||{};
+    Object.keys(series).forEach(k=>values[k].push(rec[k]||0));
+  });
+  return {labels:dates.map(d=>`${MONTHS[d.getMonth()]} ${d.getDate()}`),values};
+}
+function stackedSets(values,series){
+  return Object.entries(series).map(([k,meta])=>({
+    label:meta.name,data:values[k],borderColor:meta.color,backgroundColor:meta.color+"88",
+    borderWidth:1,borderRadius:3,stack:"total"
+  }));
+}
+function drawBar(id,labels,data,colors,{horizontal=false}={}){
+  if(charts[id])charts[id].destroy();
+  const el=document.getElementById(id);if(!el)return;
+  charts[id]=new Chart(el,{type:"bar",data:{labels,datasets:[{
+    data,backgroundColor:colors,borderColor:colors,borderWidth:1,borderRadius:4
+  }]},options:{
+    indexAxis:horizontal?"y":"x",responsive:true,maintainAspectRatio:false,animation:{duration:220},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmtTok(horizontal?c.parsed.x:c.parsed.y)}}},
+    scales:{
+      x:{grid:{color:chartColor("--line")},ticks:{color:chartColor("--faint"),font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8},beginAtZero:true},
+      y:{grid:{color:chartColor("--line")},ticks:{color:chartColor("--faint"),font:{size:9}},beginAtZero:true}
+    }
+  }});
+}
+function drawLifecycle(id,labels,datasets){
+  if(charts[id])charts[id].destroy();
+  const el=document.getElementById(id);if(!el)return;
+  charts[id]=new Chart(el,{type:"bar",data:{labels,datasets},options:{
+    responsive:true,maintainAspectRatio:false,animation:{duration:220},interaction:{mode:"index",intersect:false},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmtTok(c.parsed.y)}`}}},
+    scales:{
+      x:{stacked:true,grid:{color:chartColor("--line")},ticks:{color:chartColor("--faint"),font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:12}},
+      y:{stacked:true,grid:{color:chartColor("--line")},ticks:{color:chartColor("--faint"),font:{size:9},precision:0},beginAtZero:true}
+    }
+  }});
+}
+function esc(v){
+  return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function openedText(iso){
+  const date=new Date(iso),seconds=Math.max(0,(Date.now()-date.getTime())/1000);
+  const ago=seconds<3600?`${Math.max(1,Math.floor(seconds/60))}m ago`
+    :seconds<86400?`${Math.floor(seconds/3600)}h ago`
+    :`${Math.floor(seconds/86400)}d ago`;
+  return {
+    opened:date.toLocaleString([],{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}),
+    ago
+  };
+}
+function toggleOpenChannel(index){
+  const button=document.querySelector(`[data-open-channel="${index}"]`);
+  const expanded=button.getAttribute("aria-expanded")==="true";
+  button.setAttribute("aria-expanded",String(!expanded));
+  document.querySelectorAll(`[data-open-row="${index}"]`).forEach(row=>row.hidden=expanded);
+}
+function countLabels(items,getter,labeler=x=>x){
+  const counts={};
+  items.flatMap(getter).forEach(value=>{if(value)counts[value]=(counts[value]||0)+1;});
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))
+    .map(([value,count])=>`${esc(labeler(value))} ${count}`).join(" · ")||"—";
+}
+function renderSlack(){
+  const days=DATA.slack?.days||{},period=slackPeriod(),total=emptySlack();
+  period.keys.forEach(k=>addMetric(total,days[k]));
+  const messages=Object.values(total.messages).reduce((a,b)=>a+b,0);
+  const totalWords=Object.values(total.words).reduce((a,b)=>a+b,0);
+  const toolCalls=Object.values(total.toolCalls||{}).reduce((a,b)=>a+b,0);
+  const tokens=Object.values(total.tokens||{}).reduce((a,b)=>a+b,0);
+  const inputTokens=Object.values(total.inputTokens||{}).reduce((a,b)=>a+b,0);
+  const outputTokens=Object.values(total.outputTokens||{}).reduce((a,b)=>a+b,0);
+  const perSession=total.sessions.total?Math.round(totalWords/total.sessions.total):0;
+  document.getElementById("slackCards").innerHTML=
+    `<div class="card"><div class="lbl">Slack sessions</div><div class="hero">${fmtTok(total.sessions.total)}</div>
+      <div class="split">${Object.entries(SESSION_GROUPS).map(([k,g])=>`<span><b>${total.sessions[k]||0}</b> ${esc(g.name)}</span>`).join("")}</div></div>
+    <div class="card"><div class="lbl">Conversation</div><div class="hero">${fmtTok(totalWords)} words</div>
+      <div class="split"><span><b>${fmtTok(messages)}</b> messages</span><span><b>${fmtTok(perSession)}</b> words/session</span></div></div>
+    <div class="card"><div class="lbl">Agent execution</div><div class="hero">${fmtTok(toolCalls)} captured tool calls</div>
+      <div class="split"><span><b>${fmtTok(inputTokens)}</b> input</span><span><b>${fmtTok(outputTokens)}</b> output</span><span><b>${fmtTok(tokens)}</b> total</span></div></div>
+    <div class="card"><div class="lbl">Words by person</div>
+      <div class="split">${Object.entries(PEOPLE).map(([p,m])=>`<span><i class="dot" style="background:${m.color};margin-right:5px"></i><b>${fmtTok(total.words[p]||0)}</b> ${m.name}</span>`).join("")}</div></div>`;
+
+  const coverage=DATA.slack?.coverageStart;
+  const startLabel=period.start.toLocaleDateString([],{month:"short",day:"numeric",year:period.start.getFullYear()!==new Date().getFullYear()?"numeric":undefined});
+  document.getElementById("slackSub").textContent=`${startLabel} – today · ${fmtTok(messages)} messages · tracking since ${coverage||"first OpenClaw log"}`;
+
+  const rangeLabel=slackRange==="all"?"full history":`trailing ${slackRange} days`;
+  document.getElementById("slackWordsTitle").textContent=`Words · daily · ${rangeLabel}`;
+  document.getElementById("slackSessionsTitle").textContent=`Sessions · daily · ${rangeLabel}`;
+  const words=dailyPeriod("words",PEOPLE,period),sessions=dailyPeriod("sessions",SESSION_GROUPS,period);
+  drawStacked("c-slack-words",words.labels,stackedSets(words.values,PEOPLE));
+  drawStacked("c-slack-sessions",sessions.labels,stackedSets(sessions.values,SESSION_GROUPS));
+  document.getElementById("slackWordsLegend").innerHTML=Object.values(PEOPLE).map(p=>`<span><i style="background:${p.color}"></i>${p.name}</span>`).join("");
+  document.getElementById("slackSessionsLegend").innerHTML=Object.values(SESSION_GROUPS).map(p=>`<span><i style="background:${p.color}"></i>${p.name}</span>`).join("");
+
+  const allSessions=DATA.slack?.sessions||[];
+  const statusCounts=Object.fromEntries(Object.keys(STATUS).map(k=>[k,0]));
+  allSessions.forEach(s=>statusCounts[s.status in STATUS?s.status:"unknown"]++);
+  const openSessions=allSessions.filter(s=>["in_process","scheduled",...WAITING].includes(s.status));
+  // One column per open state, so "on you" is always broken out by its actual
+  // glyph. Legacy 🚫 only earns a column while pre-cutover threads still exist.
+  const openCols=["in_process","scheduled","clarify","approve","act"]
+    .concat(openSessions.some(s=>s.status==="blocked")?["blocked"]:[]);
+  const openCounts=Object.fromEntries(openCols.map(k=>[k,openSessions.filter(s=>s.status===k).length]));
+  const openChannels={};
+  openSessions.forEach(s=>{
+    const channel=s.channel||s.channelId||"Slack";
+    (openChannels[channel]=openChannels[channel]||[]).push(s);
+  });
+  const channelGroups=Object.entries(openChannels).sort(([a],[b])=>a.localeCompare(b)).map(([channel,items],index)=>{
+    items.sort((a,b)=>new Date(a.startedAt||0)-new Date(b.startedAt||0));
+    const oldest=openedText(items[0].startedAt);
+    const agents=countLabels(items,s=>s.agents||[],a=>a[0].toUpperCase()+a.slice(1));
+    const harnesses=countLabels(items,s=>s.harnesses||[]);
+    const models=countLabels(items,s=>s.models||[]);
+    return `<tbody>
+      <tr class="channelrow">
+        <td><button class="channelbutton" data-open-channel="${index}" aria-expanded="false" onclick="toggleOpenChannel(${index})">
+          <span class="caret">▶</span><span>${esc(channel)}</span>
+        </button></td>
+        <td class="aggregate">${items.length}</td>${openCols.map(k=>`<td class="aggregate" title="${esc(STATUS[k].name)}">${items.filter(s=>s.status===k).length||"—"}</td>`).join("")}
+        <td class="openedcell" title="${esc(oldest.opened)}">${oldest.ago}<span>oldest open</span></td>
+        <td class="mix">${agents}</td><td class="mix">${harnesses}</td><td class="mix modelmix">${models}</td>
+      </tr>
+      ${items.map(s=>{
+        const label=esc(s.preview||"Opening message unavailable");
+        const thread=s.appUrl?`<a href="${esc(s.appUrl)}">${label} ↗</a>`:`<strong>${label}</strong>`;
+        const agent=esc((s.agents||[]).map(a=>a[0].toUpperCase()+a.slice(1)).join(" + ")||"unowned");
+        const model=esc((s.models||[]).join(", ")||"model unknown");
+        const harness=esc((s.harnesses||[]).join(", ")||"—");
+        const opened=openedText(s.startedAt);
+        return `<tr data-open-row="${index}" hidden>
+          <td class="threadcell">${thread}</td><td>1</td>
+          ${openCols.map(k=>`<td title="${esc(STATUS[k].name)}">${s.status===k?STATUS[k].emoji:"—"}</td>`).join("")}
+          <td class="openedcell">${opened.opened}<span>${opened.ago}</span></td>
+          <td>${agent}</td><td>${harness}</td><td><span class="modelpill" title="${model}">${model}</span></td>
+        </tr>`;
+      }).join("")}
+    </tbody>`;
+  }).join("");
+  document.getElementById("statusSummary").innerHTML=`<div class="sectionhead">
+      <div><div class="sectiontitle">Open sessions</div><div class="sub">${openSessions.length} total · ${openCols.map(k=>`${STATUS[k].emoji} ${openCounts[k]} ${STATUS[k].name.toLowerCase()}`).join(" · ")}</div></div>
+    </div>
+    <div class="tablewrap opensection"><table class="opentable">
+      <thead><tr><th>Channel / thread</th><th>Sessions</th>${openCols.map(k=>`<th title="${esc(STATUS[k].name)}">${STATUS[k].emoji}</th>`).join("")}<th>Opened</th><th>Agent</th><th>Harness</th><th>Model</th></tr></thead>
+      ${channelGroups||`<tbody><tr><td colspan="${6+openCols.length}">No open sessions.</td></tr></tbody>`}
+    </table></div>`;
+  const lifecycleKeys=["done","in_process","scheduled","clarify","approve","act","blocked"];
+  const lifecycleDates=[];for(let d=new Date(period.start);d<=period.end;d.setDate(d.getDate()+1))lifecycleDates.push(new Date(d));
+  const lifecycleValues=Object.fromEntries(lifecycleKeys.map(k=>[k,Object.fromEntries(lifecycleDates.map(d=>[ymd(d),0]))]));
+  lifecycleDates.forEach(d=>{lifecycleValues.done[ymd(d)]=days[ymd(d)]?.completed||0;});
+  openSessions.forEach(s=>{
+    const changed=s.statusChangedAt||s.startedAt;
+    if(!changed)return;
+    const k=ymd(new Date(changed));
+    if(lifecycleValues[s.status]&&k in lifecycleValues[s.status])lifecycleValues[s.status][k]++;
+  });
+  drawLifecycle("c-slack-lifecycle",lifecycleDates.map(d=>`${MONTHS[d.getMonth()]} ${d.getDate()}`),lifecycleKeys.map(k=>({
+    label:STATUS[k].name,data:lifecycleDates.map(d=>lifecycleValues[k][ymd(d)]),
+    backgroundColor:STATUS[k].color+"cc",borderColor:STATUS[k].color,borderWidth:1,stack:"lifecycle",borderRadius:3
+  })));
+  document.getElementById("slackLifecycleLegend").innerHTML=lifecycleKeys.map(k=>`<span><i style="background:${STATUS[k].color}"></i>${STATUS[k].emoji} ${STATUS[k].name}</span>`).join("");
+
+  const rows=allSessions.filter(s=>{
+    if(!s.startedAt)return false;const d=new Date(s.startedAt);return d>=period.start&&d<=new Date(period.end.getTime()+43200000);
+  });
+  const byChannel={};
+  rows.forEach(s=>{
+    const channel=s.channel||s.channelId||"Slack";
+    const agg=byChannel[channel]||(byChannel[channel]={sessions:0,messages:0,words:0,inputTokens:0,outputTokens:0,toolCalls:0,statuses:Object.fromEntries(Object.keys(STATUS).map(k=>[k,0]))});
+    agg.sessions++;agg.messages+=s.messages?.total||0;agg.words+=s.words?.total||0;agg.inputTokens+=s.inputTokens||0;agg.outputTokens+=s.outputTokens||0;agg.toolCalls+=s.toolCalls||0;
+    agg.statuses[s.status in STATUS?s.status:"unknown"]++;
+  });
+  const channelEntries=Object.entries(byChannel).sort((a,b)=>b[1].sessions-a[1].sessions||a[0].localeCompare(b[0]));
+  const chanCols=["in_process","scheduled","clarify","approve","act"]
+    .concat(channelEntries.some(([,a])=>a.statuses.blocked)?["blocked"]:[]).concat(["done"]);
+  document.getElementById("channelStats").innerHTML=`<div class="lbl"><span>Stats by channel</span><span>${Math.round((period.end-period.start)/86400000)+1} days selected</span></div>
+    <div class="tablewrap"><table class="channelstats"><thead><tr><th>Channel</th><th>Sessions</th>${chanCols.map(k=>`<th title="${esc(STATUS[k].name)}">${STATUS[k].emoji}</th>`).join("")}<th>Messages</th><th>Words</th><th>Tools</th><th>Input</th><th>Output</th></tr></thead>
+    <tbody>${channelEntries.map(([channel,a])=>`<tr data-channel="${esc(channel)}"><td><strong>${esc(channel)}</strong></td><td>${a.sessions}</td>${chanCols.map(k=>`<td title="${esc(STATUS[k].name)}">${a.statuses[k]||"—"}</td>`).join("")}<td>${fmtTok(a.messages)}</td><td>${fmtTok(a.words)}</td><td>${fmtTok(a.toolCalls)}</td><td>${fmtTok(a.inputTokens)}</td><td>${fmtTok(a.outputTokens)}</td></tr>`).join("")||`<tr><td colspan="${7+chanCols.length}">No channel activity in this range.</td></tr>`}</tbody></table></div>`;
+  document.querySelectorAll("#channelStats tr[data-channel]").forEach(tr=>tr.onclick=()=>{
+    sessionChannelFilter=tr.dataset.channel;document.getElementById("sessionDetails").open=true;renderSlack();
+  });
+
+  const channelSelect=document.getElementById("sessionChannelFilter");
+  if(sessionChannelFilter!=="all"&&!byChannel[sessionChannelFilter])sessionChannelFilter="all";
+  channelSelect.innerHTML=`<option value="all">All channels</option>${channelEntries.map(([channel])=>`<option value="${esc(channel)}" ${channel===sessionChannelFilter?"selected":""}>${esc(channel)}</option>`).join("")}`;
+  channelSelect.onchange=()=>{sessionChannelFilter=channelSelect.value;renderSlack();};
+  const stateOptions=[["all","All"],["in_process","🔄 Active"],["clarify","❓ Clarify"],["approve","▶️ Approve"],["act","✋ Act"],["scheduled","🗓️ Scheduled"],["done","✅ Done"],["unknown","— Untracked"]];
+  const stateFilter=document.getElementById("sessionStateFilter");
+  stateFilter.innerHTML=stateOptions.map(([value,label])=>`<button data-state="${value}" class="${sessionStatusFilter===value?"active":""}">${label}</button>`).join("");
+  stateFilter.querySelectorAll("button").forEach(button=>button.onclick=()=>{sessionStatusFilter=button.dataset.state;renderSlack();});
+
+  const filteredRows=rows.filter(s=>(sessionChannelFilter==="all"||(s.channel||s.channelId||"Slack")===sessionChannelFilter)&&(sessionStatusFilter==="all"||s.status===sessionStatusFilter));
+  const detailGroups={};
+  filteredRows.forEach(s=>{const channel=s.channel||s.channelId||"Slack";(detailGroups[channel]=detailGroups[channel]||[]).push(s);});
+  document.getElementById("sessionCount").textContent=filteredRows.length===rows.length?`${rows.length} threads`:`${filteredRows.length} of ${rows.length} threads`;
+  document.getElementById("sessionRows").innerHTML=Object.entries(detailGroups).sort(([a],[b])=>a.localeCompare(b)).map(([channel,items])=>
+    `<tr class="sessiongroup"><td colspan="12">${esc(channel)}<span>${items.length} session${items.length===1?"":"s"}</span></td></tr>`+
+    items.slice(0,150).map(s=>{
+      const label=esc(s.preview||"Opening message unavailable");
+      const thread=s.appUrl?`<a href="${esc(s.appUrl)}">${label} ↗</a>`:`<strong>${label}</strong>`;
+      const started=new Date(s.startedAt).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+      const outputs=Object.values(s.outputs||{}).reduce((a,b)=>a+b,0);
+      const status=STATUS[s.status]||STATUS.unknown;
+      return `<tr><td class="threadcell">${thread}</td><td title="${esc(status.name)}">${status.emoji} ${esc(status.name)}</td><td>${started}</td><td>${esc((s.agents||[]).join(" + "))}</td>
+        <td><span class="modelpill" title="${esc((s.models||[]).join(", "))}">${esc((s.models||[]).join(", ")||"—")}</span></td>
+        <td><strong>${fmtTok(s.inputTokens||0)}</strong></td><td><strong>${fmtTok(s.outputTokens||0)}</strong></td><td>${fmtTok(s.toolCalls||0)}</td><td>${fmtTok(s.words?.total||0)}</td><td>${fmtTok(outputs)}</td>
+        <td>${fmtTok(s.links||0)}</td><td>${fmtTok(s.artifacts||0)}</td></tr>`;
+    }).join("")
+  ).join("")||`<tr><td colspan="12">No sessions match these filters.</td></tr>`;
+}
+function slackControls(){
+  const rangeOptions=[[7,"7d"],[30,"30d"],[90,"90d"],["all","All"]];
+  const renderSeg=(id,options,current,setter)=>{
+    const el=document.getElementById(id);
+    el.innerHTML=options.map(([v,l])=>`<button data-v="${v}" class="${String(current)===String(v)?"active":""}">${l}</button>`).join("");
+    el.querySelectorAll("button").forEach(b=>b.onclick=()=>setter(b.dataset.v));
+  };
+  renderSeg("slackRange",rangeOptions,slackRange,v=>{slackRange=v==="all"?"all":Number(v);slackControls();renderSlack();});
+}
+
+function buzzPeriod(){
+  const today=new Date();today.setHours(12,0,0,0);
+  const baseline=DATA.buzz?.startedAt?new Date(DATA.buzz.startedAt):today;baseline.setHours(12,0,0,0);
+  let start=baseline;
+  if(buzzRange!=="all"){
+    const rolling=new Date(today);rolling.setDate(rolling.getDate()-buzzRange+1);
+    if(rolling>start)start=rolling;
+  }
+  return {start,end:today};
+}
+function buzzControls(){
+  const options=[[7,"7d"],[30,"30d"],[90,"90d"],["all","All"]],el=document.getElementById("buzzRange");
+  el.innerHTML=options.map(([v,l])=>`<button data-v="${v}" class="${String(buzzRange)===String(v)?"active":""}">${l}</button>`).join("");
+  el.querySelectorAll("button").forEach(button=>button.onclick=()=>{
+    buzzRange=button.dataset.v==="all"?"all":Number(button.dataset.v);buzzControls();renderBuzz();
+  });
+}
+function renderBuzz(){
+  const buzz=DATA.buzz||{},period=buzzPeriod(),byDate=Object.fromEntries((buzz.days||[]).map(row=>[row.date,row]));
+  const dates=[];for(let d=new Date(period.start);d<=period.end;d.setDate(d.getDate()+1))dates.push(new Date(d));
+  const rows=dates.map(date=>byDate[ymd(date)]||{date:ymd(date),messages:0,activeAuthors:0,activeChannels:0,agentMessages:0,humanMessages:0,reactions:0});
+  const total=field=>rows.reduce((sum,row)=>sum+(row[field]||0),0),peak=field=>Math.max(0,...rows.map(row=>row[field]||0));
+  const messages=total("messages"),human=total("humanMessages"),agent=total("agentMessages"),reactions=total("reactions");
+  const baseline=buzz.baseline||{};
+  document.getElementById("buzzSub").textContent=`Observed since ${new Date(buzz.startedAt).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · Slack seed excluded`;
+  document.getElementById("buzzCards").innerHTML=`
+    <div class="card overviewcard"><div class="lbl">Native messages</div><div class="hero">${fmtTok(messages)}</div><div class="sub">${fmtTok(human)} human · ${fmtTok(agent)} agent</div><div class="rs" style="margin-top:10px">Baseline seed: ${fmtTok(baseline.seedMessages||0)} messages, not counted</div></div>
+    <div class="card overviewcard"><div class="lbl">Peak daily reach</div><div class="hero">${peak("activeAuthors")} authors</div><div class="sub">across ${peak("activeChannels")} active channels</div></div>
+    <div class="card overviewcard"><div class="lbl">Native reactions</div><div class="hero">${fmtTok(reactions)}</div><div class="sub">after instrumentation boundary</div></div>`;
+  const labels=dates.map(d=>`${MONTHS[d.getMonth()]} ${d.getDate()}`);
+  const [humanColor=ACCENT.claude,agentColor=ACCENT.codex]=Object.values(PEOPLE).map(p=>p.color);
+  const messageSeries={human:{name:"Human",color:humanColor},agent:{name:"Agents",color:agentColor}};
+  drawLifecycle("c-buzz-messages",labels,[
+    {label:"Human",data:rows.map(r=>r.humanMessages),backgroundColor:messageSeries.human.color+"cc",borderColor:messageSeries.human.color,borderWidth:1,stack:"messages",borderRadius:3},
+    {label:"Agents",data:rows.map(r=>r.agentMessages),backgroundColor:messageSeries.agent.color+"cc",borderColor:messageSeries.agent.color,borderWidth:1,stack:"messages",borderRadius:3}
+  ]);
+  drawChart("c-buzz-reach",labels,[
+    {label:"Active authors",data:rows.map(r=>r.activeAuthors),borderColor:"#62a0ea",borderWidth:2,fill:false,tension:.2,pointRadius:2},
+    {label:"Active channels",data:rows.map(r=>r.activeChannels),borderColor:"#b78be6",borderWidth:2,fill:false,tension:.2,pointRadius:2}
+  ],true);
+  drawBar("c-buzz-reactions",labels,rows.map(r=>r.reactions),labels.map(()=>"#55c08a"));
+  document.getElementById("buzzMessageLegend").innerHTML=Object.values(messageSeries).map(item=>`<span><i style="background:${item.color}"></i>${item.name}</span>`).join("");
+  document.getElementById("buzzReachLegend").innerHTML=`<span><i style="background:#62a0ea"></i>Authors</span><span><i style="background:#b78be6"></i>Channels</span>`;
+}
+
+function renderOverview(){
+  const weekly=["claude","codex"].map(sub=>({sub,win:windowByMinutes(sub,10080)}));
+  const cycles=["claude","codex"].map(sub=>{
+    const totals=cycleTotals(sub),projected=totals.elapsed?totals.tokens/totals.elapsed*totals.len:0;
+    return {sub,tokens:totals.tokens,projected};
+  });
+  const dayKeys=Object.keys(DATA.slack?.days||{}).sort().slice(-7),slack=emptySlack();
+  dayKeys.forEach(k=>addMetric(slack,DATA.slack.days[k]));
+  const sessions=DATA.slack?.sessions||[];
+  const open=sessions.filter(s=>["in_process","scheduled",...WAITING].includes(s.status));
+  const waitingBreakdown=WAITING.map(k=>[k,open.filter(s=>s.status===k).length]).filter(([,n])=>n>0);
+  const blocked=waitingBreakdown.reduce((n,[,c])=>n+c,0);
+  const waitingDetail=waitingBreakdown.length?` <span class="sub">${waitingBreakdown.map(([k,n])=>`${STATUS[k].emoji}${n}`).join(" ")}</span>`:"";
+  const latestJubilee=(DATA.windows?.jubilees||[]).at(-1);
+  const jubileeHtml=latestJubilee?`<div class="overviewrow"><span>Latest token jubilee</span><strong>${latestJubilee.provider==="codex"?"Codex":"Claude"} · ${new Date(latestJubilee.detectedAt).toLocaleDateString([],{month:"short",day:"numeric"})}</strong></div>`:"";
+  document.getElementById("overview").innerHTML=`
+    <div class="card overviewcard"><div class="lbl">Usage headroom</div><div class="hero">${weekly[0].win?Math.round(100-weekly[0].win.usedPercent)+"%":"—"}</div>
+      <div class="sub">Claude weekly remaining</div><div class="overviewlist">${weekly.map(({sub,win})=>`<div class="overviewrow"><span>${sub==="claude"?"Claude":"Codex"} weekly</span><strong>${win?Math.round(100-win.usedPercent)+"% left":"unavailable"}</strong></div>`).join("")}</div></div>
+    <div class="card overviewcard ${latestJubilee?"jubilee":""}"><div class="lbl">Billing cycles</div><div class="hero">${fmtTok(cycles.reduce((n,c)=>n+c.tokens,0))}</div>
+      <div class="sub">observed tokens across subscriptions</div><div class="overviewlist">${cycles.map(c=>`<div class="overviewrow"><span>${c.sub==="claude"?"Claude":"Codex"} projected</span><strong>${fmtTok(c.projected)}</strong></div>`).join("")}${jubileeHtml}</div></div>
+    <div class="card overviewcard"><div class="lbl">Slack pulse · 7 days</div><div class="hero">${fmtTok(slack.sessions.total)} sessions</div>
+      <div class="sub">${fmtTok(Object.values(slack.messages).reduce((a,b)=>a+b,0))} messages</div><div class="overviewlist"><div class="overviewrow"><span>Open now</span><strong>${open.length}</strong></div><div class="overviewrow"><span>Waiting on you</span><strong>${blocked}${waitingDetail}</strong></div></div></div>`;
+}
+
+function setView(name){
+  const valid=["overview","tokens","slack","buzz"],view=valid.includes(name)?name:"overview";
+  valid.forEach(v=>document.getElementById(`view-${v}`).hidden=v!==view);
+  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+  history.replaceState(null,"",`#${view}`);
+  requestAnimationFrame(()=>{Object.values(charts).forEach(chart=>chart.resize());window.scrollTo(0,0);});
+}
+
+function render(){
+  const cols=document.getElementById("cols");
+  const c1=subColumn("claude"),c2=subColumn("codex"),c3=otherColumn();
+  cols.innerHTML=c1.html+c2.html+c3.html;
+  [...c1.charts,...c2.charts,...c3.charts].forEach(ch=>drawChart(ch.id,ch.labels,ch.datasets,ch.tokenOnly,ch.markers));
+  // period label from claude cycle (anchor may differ per sub; show both if they do)
+  const a=cycleInfo("claude"),b=cycleInfo("codex");
+  const rng=ci=>`${MONTHS[ci.start.getMonth()]} ${ci.start.getDate()} – ${MONTHS[new Date(ci.end-86400000).getMonth()]} ${new Date(ci.end-86400000).getDate()}`;
+  document.getElementById("periodLabel").textContent = anchorDay("claude")===anchorDay("codex") ? rng(a) : rng(a)+" / "+rng(b);
+  document.getElementById("next").disabled=offset>=0;
+  renderOverview();
+  renderSlack();
+  renderBuzz();
+}
+
+async function boot(){
+  const surfaceLoad=fetch("/surface.json",{cache:"no-store"}).then(r=>r.ok?r.json():{}).catch(()=>({}));
+  try{DATA=await(await fetch("data.json?_="+Date.now())).json();}
+  catch(e){document.getElementById("sub").textContent="failed to load data.json";return;}
+  const surface=await surfaceLoad,route=(surface.routes||[]).find(r=>r.id==="stats")||{};
+  PEOPLE=route.people||{};SESSION_GROUPS=route.sessionGroups||{};
+  document.title=`Stats · ${surface.name||"Humanware OS"}`;
+  const gen=new Date(DATA.generatedAt);
+  document.getElementById("sub").textContent="updated "+gen.toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+  document.getElementById("foot").textContent=`${location.host}/stats · AI usage from CodexBar · Slack activity from OpenClaw · Buzz activity from the local relay · updated hourly`;
+  if(DATA.warnings&&DATA.warnings.length)document.getElementById("warn").textContent="⚠ "+DATA.warnings.join(" · ");
+  document.getElementById("prev").onclick=()=>{offset-=1;render();};
+  document.getElementById("next").onclick=()=>{if(offset<0){offset+=1;render();}};
+  document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>setView(b.dataset.view));
+  slackControls();
+  buzzControls();
+  render();
+  setView(location.hash.slice(1)||"overview");
+}
+boot();
+</script>
+<script src="/os-shell.js"></script>
+</body>
+</html>

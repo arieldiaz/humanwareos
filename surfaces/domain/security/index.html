@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Security · Humanware OS</title>
+<!-- No external requests beyond this origin. A page whose job is to report what
+     this host talks to should not itself add a destination. Charts are inline SVG. -->
+<style>
+  :root{
+    --bg:#0b0d10;--panel:#14171c;--panel-2:#1b1f26;--line:#262b33;
+    --ink:#e8ecf1;--muted:#8a93a0;--faint:#5b6473;
+    --ok:#3fb950;--warn:#d29922;--bad:#f85149;--unknown:#f0883e;
+    --accent:#6b9fff;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font)}
+  body{max-width:1240px;margin:0 auto;padding:26px 20px 80px;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent)}
+
+  .topbar{position:sticky;top:0;z-index:20;margin:-12px 0 22px;padding:12px 0;
+    background:rgba(11,13,16,.92);border-bottom:1px solid rgba(38,43,51,.9);backdrop-filter:blur(14px)}
+  header{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  h1{font-size:20px;font-weight:650;letter-spacing:-.01em;margin:0}
+  .sub{color:var(--muted);font-size:12.5px}
+  .spacer{flex:1}
+  .tabs{display:flex;gap:4px;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .tabs button{appearance:none;border:0;background:transparent;color:var(--muted);
+    padding:7px 14px;border-radius:7px;font:inherit;font-size:12px;cursor:pointer}
+  .tabs button.active{background:var(--panel-2);color:var(--ink)}
+
+  /* Freshness is the most important thing on the page. A security dashboard
+     that silently shows yesterday is worse than one that is down. */
+  .fresh{display:inline-flex;align-items:center;gap:7px;font-size:12px;
+    padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .fresh.live .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(63,185,80,.15)}
+  .fresh.stale{border-color:rgba(248,81,73,.5);color:#ffb3ae}
+  .fresh.stale .dot{background:var(--bad);box-shadow:0 0 0 3px rgba(248,81,73,.18)}
+
+  section{margin:0 0 26px}
+  h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;
+    color:var(--faint);margin:0 0 11px}
+  .view[hidden]{display:none}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 15px}
+  .card .k{font-size:11.5px;color:var(--muted);margin-bottom:7px}
+  .card .v{font-size:26px;font-weight:640;letter-spacing:-.02em;line-height:1}
+  .card .n{font-size:11.5px;color:var(--faint);margin-top:6px}
+  .card.bad{border-color:rgba(248,81,73,.45)} .card.bad .v{color:var(--bad)}
+  .card.warn{border-color:rgba(210,153,34,.45)} .card.warn .v{color:var(--warn)}
+  .card.ok .v{color:var(--ok)}
+
+  .finding{display:flex;gap:12px;background:var(--panel);border:1px solid var(--line);
+    border-left-width:3px;border-radius:10px;padding:13px 15px;margin-bottom:9px}
+  .finding.high{border-left-color:var(--bad)}
+  .finding.medium{border-left-color:var(--warn)}
+  .finding.low{border-left-color:var(--muted)}
+  .finding .sev{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--muted);padding-top:2px;min-width:58px}
+  .finding .body{flex:1}
+  .finding .t{font-weight:560;font-size:14px;margin-bottom:4px}
+  .finding .d{font-size:13px;color:var(--muted);line-height:1.5}
+  .finding .act{font-size:12.5px;color:var(--faint);margin-top:7px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-weight:500;font-size:11px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--faint);padding:0 10px 8px;border-bottom:1px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid rgba(38,43,51,.55)}
+  tr:last-child td{border-bottom:0}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+  .mono{font-family:var(--mono);font-size:12px}
+  .owner{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11.5px;
+    background:var(--panel-2);color:var(--muted)}
+  .owner.unknown{background:rgba(240,136,62,.14);color:var(--unknown)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 6px 6px}
+  .panel h3{margin:0 0 10px 10px;font-size:13px;font-weight:560}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}}
+
+  .empty{background:var(--panel);border:1px dashed var(--line);border-radius:12px;
+    padding:30px 22px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.6}
+  .empty strong{color:var(--ink);font-weight:560}
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);
+    color:var(--faint);font-size:12px;line-height:1.6}
+</style>
+<link rel="stylesheet" href="/os-shell.css">
+</head>
+<body>
+
+<div class="topbar">
+  <header>
+    <div>
+      <h1>Security</h1>
+      <div class="sub" id="host">loading…</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="tabs">
+      <button data-view="daily" class="active">Daily</button>
+      <button data-view="weekly">Weekly</button>
+    </div>
+    <span class="fresh" id="fresh"><span class="dot"></span><span id="freshText">loading…</span></span>
+  </header>
+</div>
+
+<div id="root"></div>
+
+<footer>
+  Collected locally on <span class="mono" id="footHost">this host</span> by
+  <span class="mono">services/observability/net-monitor/sample-traffic.py</span> and
+  <span class="mono">services/observability/security-audit/host-audit.py</span>.
+  Audit findings are written by a local model; no host telemetry leaves the box.
+</footer>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num = n => (n ?? 0).toLocaleString();
+
+function ago(iso) {
+  if (!iso) return null;
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const h = Math.round(mins / 60);
+  return h < 48 ? h + 'h ago' : Math.round(h / 24) + 'd ago';
+}
+
+function renderFreshness(d) {
+  const el = $('#fresh'), t = $('#freshText');
+  const iso = d?.generated_at;
+  if (!iso) { t.textContent = 'no data'; el.className = 'fresh stale'; return; }
+  const mins = (Date.now() - new Date(iso).getTime()) / 60000;
+  // 30 minutes is the staleness threshold from the spec: the sampler runs
+  // every 5, so six missed runs means it is dead, not slow.
+  el.className = 'fresh ' + (mins > 30 ? 'stale' : 'live');
+  t.textContent = (mins > 30 ? 'stale · ' : 'updated ') + ago(iso);
+}
+
+function cards(items) {
+  return `<div class="cards">${items.map(c => `
+    <div class="card ${c.tone || ''}">
+      <div class="k">${esc(c.k)}</div>
+      <div class="v">${esc(c.v)}</div>
+      ${c.n ? `<div class="n">${esc(c.n)}</div>` : ''}
+    </div>`).join('')}</div>`;
+}
+
+function table(cols, rows, render) {
+  if (!rows?.length) return `<div class="empty">Nothing to show yet.</div>`;
+  return `<table><thead><tr>${cols.map(c =>
+    `<th${c.num ? ' style="text-align:right"' : ''}>${esc(c.label)}</th>`).join('')}
+    </tr></thead><tbody>${rows.map(render).join('')}</tbody></table>`;
+}
+
+function ownerTag(o) {
+  const unk = !o || o === 'unknown';
+  return `<span class="owner${unk ? ' unknown' : ''}">${esc(unk ? 'unknown' : o)}</span>`;
+}
+
+// Inline sparkline — no chart library, so the page pulls from no CDN.
+function spark(series) {
+  if (!series?.length) return '';
+  const w = 100, h = 26, max = Math.max(...series.map(p => p.count), 1);
+  const pts = series.map((p, i) =>
+    `${(i / Math.max(series.length - 1, 1)) * w},${h - (p.count / max) * h}`).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"
+    style="width:100%;height:64px;display:block">
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.2"
+      vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+function findings(list) {
+  if (!list?.length) return '';
+  const order = { high: 0, medium: 1, low: 2 };
+  const sorted = [...list].sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3));
+  return `<section><h2>Findings</h2>${sorted.map(f => `
+    <div class="finding ${esc(f.severity || 'low')}">
+      <div class="sev">${esc(f.severity || 'low')}</div>
+      <div class="body">
+        <div class="t">${esc(f.title)}${f.count > 1 ? ` <span class="owner">×${f.count}</span>` : ''}</div>
+        <div class="d">${esc(f.detail)}</div>
+        ${f.action ? `<div class="act">→ ${esc(f.action)}</div>` : ''}
+      </div>
+    </div>`).join('')}</section>`;
+}
+
+function renderWindow(d, key) {
+  const w = d?.[key];
+  if (!w) {
+    return `<div class="empty">
+      <strong>Collecting baseline.</strong><br>
+      The sampler is running, but first-seen detection needs history before it
+      means anything. This fills in once there are two days of samples.
+    </div>`;
+  }
+  const p = d.posture || {};
+  return `
+  ${findings(w.findings)}
+
+  <section>
+    <h2>Right now</h2>
+    ${cards([
+      { k: 'External peers', v: num(p.peers), n: 'distinct remote endpoints' },
+      { k: 'Unknown owner', v: num(p.unknown), tone: p.unknown > 0 ? 'bad' : 'ok',
+        n: p.unknown > 0 ? 'needs classifying' : 'all attributed' },
+      { k: 'Public listeners', v: num(p.public_listeners),
+        tone: p.public_listeners > 0 ? 'warn' : 'ok', n: 'non-loopback binds' },
+      { k: 'Firewall', v: p.firewall ? 'on' : 'off', tone: p.firewall ? 'ok' : 'bad' },
+      { k: 'FileVault', v: p.filevault ? 'on' : 'off', tone: p.filevault ? 'ok' : 'bad' },
+    ])}
+  </section>
+
+  <section>
+    <h2>${key === 'daily' ? 'Last 24 hours' : 'Last 7 days'}</h2>
+    <div class="panel"><h3>Connections over time</h3>${spark(w.series)}</div>
+  </section>
+
+  <section>
+    <h2>First seen ${key === 'daily' ? 'today' : 'this week'}</h2>
+    ${w.baseline_pending_hours
+      ? `<div class="empty">
+          <strong>Suppressed for another ${Math.round(w.baseline_pending_hours)}h.</strong><br>
+          With less than two days of history every destination is technically
+          new, so this panel would list Apple and Slack and teach you to ignore
+          it. It switches on once there is a baseline to be new against.
+        </div>`
+      : `<div class="panel">${table(
+          [{ label: 'Destination' }, { label: 'Process' }, { label: 'Owner' }, { label: 'First', num: true }],
+          w.first_seen,
+          r => `<tr><td class="mono">${esc(r.host || r.ip)}</td>
+                  <td class="mono">${esc(r.process)}</td>
+                  <td>${ownerTag(r.owner)}</td>
+                  <td class="num">${esc(ago(r.first_seen))}</td></tr>`)}
+        </div>`}
+  </section>
+
+  ${key === 'weekly' && data.audit_diff ? `
+  <section>
+    <h2>Host changes since last audit</h2>
+    <div class="panel">${table(
+      [{ label: 'What' }, { label: 'Change' }, { label: 'Item' }],
+      Object.entries(data.audit_diff).flatMap(([what, ch]) =>
+        [...(ch.added || []).map(i => ({ what, dir: 'added', item: i })),
+         ...(ch.removed || []).map(i => ({ what, dir: 'removed', item: i }))]),
+      r => `<tr><td>${esc(r.what.replace('_', ' '))}</td>
+              <td>${esc(r.dir)}</td>
+              <td class="mono">${esc(r.item)}</td></tr>`)}
+    </div>
+  </section>` : ''}
+
+  <div class="grid2">
+    <section><h2>By destination</h2><div class="panel">${table(
+      [{ label: 'Host' }, { label: 'Owner' }, { label: 'Conns', num: true }],
+      w.by_destination,
+      r => `<tr><td class="mono">${esc(r.host || r.ip)}</td>
+              <td>${ownerTag(r.owner)}</td>
+              <td class="num">${num(r.count)}</td></tr>`)}
+    </div></section>
+
+    <section><h2>By process</h2><div class="panel">${table(
+      [{ label: 'Process' }, { label: 'Peers', num: true }, { label: 'Conns', num: true }],
+      w.by_process,
+      r => `<tr><td class="mono">${esc(r.process)}</td>
+              <td class="num">${num(r.peers)}</td>
+              <td class="num">${num(r.count)}</td></tr>`)}
+    </div></section>
+  </div>`;
+}
+
+let data = null, view = 'daily';
+
+// Instance values from /surface.json: the brand name and the deployment host.
+// data.json carries the sampled hostname and overrides the configured one.
+function setHost(host) {
+  if (!host) return;
+  $('#host').textContent = host;
+  $('#footHost').textContent = host;
+}
+fetch('/surface.json', { cache: 'no-store' })
+  .then(r => r.ok ? r.json() : {})
+  .then(surface => {
+    document.title = `Security · ${surface.name || 'Humanware OS'}`;
+    if (!data) setHost(surface.deployment?.host);
+  })
+  .catch(() => {});
+
+function draw() {
+  $('#root').innerHTML = renderWindow(data, view);
+}
+
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  view = b.dataset.view;
+  draw();
+}));
+
+fetch('data.json', { cache: 'no-store' })
+  .then(r => r.json())
+  .then(d => {
+    data = d;
+    setHost(d.host);
+    renderFreshness(d);
+    draw();
+  })
+  .catch(() => {
+    $('#freshText').textContent = 'no data';
+    $('#fresh').className = 'fresh stale';
+    $('#root').innerHTML = `<div class="empty">
+      <strong>No data yet.</strong><br>
+      <span class="mono">data.json</span> has not been generated. Check that
+      <span class="mono">build-security-data.py</span> is installed and running.
+    </div>`;
+  });
+</script>
+<script src="/os-shell.js"></script>
+</body>
+</html>

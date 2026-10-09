@@ -2,7 +2,7 @@
 set -eu
 
 DOPPLER_BIN=${DOPPLER_BIN:-/opt/homebrew/bin/doppler}
-JQ_BIN=${JQ_BIN:-/usr/bin/jq}
+JQ_BIN=${JQ_BIN:-$(command -v jq || echo /usr/bin/jq)}
 BOOTSTRAP=${HUMANWARE_DOPPLER_ENV_FILE:-}
 
 [ -x "$DOPPLER_BIN" ] && [ -x "$JQ_BIN" ] && [ -n "$BOOTSTRAP" ] && [ -r "$BOOTSTRAP" ] || exit 1

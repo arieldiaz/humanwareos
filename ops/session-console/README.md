@@ -28,7 +28,7 @@ The template route manifest declares private `/activity/` and `/sessions/` route
 
 Activity searches dates, identity, kind, target, reversibility and channel. It shows separate exact/estimated subtotals and missing-report counts by identity/profile/day/currency. Spend uses date and identity filters only; lineage shows the latest observed membership across all dates. Sessions renders the same metadata trace by run, linking truncated history to Activity. Freshness uses the generation time (stale after two minutes); source coverage is separate and does not claim unobserved actions.
 
-The framework Sessions page is a fallback for the established `/sessions/` route. An instance overlay at `surfaces/static/sessions/index.html` retains precedence. To adopt the trace without replacing its shell, import `/activity/trace.js` and call `renderTrace(container, session.events)` with each event's `logicalSessionId`; handle `?session=` and `?run=` links in its session selection. Add the Activity route and data bindings through the existing instance manifest/deployment review. This PR changes no private instance or production route.
+The framework Sessions page at `surfaces/domain/sessions/` serves the established `/sessions/` route: a live session list with status filters and a detail drawer that renders the shared `/activity/trace.js` trace by run and honors `?session=` and `?run=` links. Add the Activity route and data bindings through the existing instance manifest/deployment review.
 
 ## Verification and remaining acceptance
 

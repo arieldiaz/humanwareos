@@ -1,3 +1,32 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Sessions · Humanware OS</title><link rel="stylesheet" href="/humanware.css"><link rel="stylesheet" href="/activity/activity.css"></head>
-<body><main><nav aria-label="System"><a href="/">System</a><a href="/sessions/" aria-current="page">Sessions</a><a href="/activity/">Activity</a></nav><h1>Sessions</h1><p id="health" role="status">Loading sessions…</p><label>Session<select id="session"></select></label><h2>What the agent saw and did</h2><label>Run<select id="run"></select></label><p id="coverage" class="muted"></p><div id="trace"></div></main><script type="module" src="/sessions/sessions.js"></script></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Sessions · Humanware OS</title>
+<link rel="stylesheet" href="/os-shell.css">
+<link rel="stylesheet" href="/sessions/sessions.css">
+</head>
+<body>
+<main>
+  <div class="topbar"><div><strong>Live agent work</strong><div class="meta" id="source">Loading session ledger…</div></div><div class="live"><i class="pulse"></i><span id="updated">connecting</span><a href="/activity/">Activity</a></div></div>
+  <section class="summary" id="summary"></section>
+  <div class="controls"><div class="segments" id="statusFilters" aria-label="Session status filters"></div><div class="meta" id="count"></div></div>
+  <section class="session-list" id="sessions"></section>
+</main>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Session detail">
+  <div class="drawer-head">
+    <div class="drawer-row"><div><h2 id="drawerTitle">Session</h2><div class="meta" id="drawerMeta"></div></div><button class="close" id="close" aria-label="Close">×</button></div>
+    <div class="drawer-links" id="drawerLinks"></div>
+    <div class="trace-controls"><div class="segments" id="traceLevels" aria-label="Trace level"></div><label>Run<select id="run"></select></label></div>
+    <div class="policy" id="policy"></div>
+    <p class="meta coverage" id="coverage"></p>
+  </div>
+  <div class="timeline" id="timeline"></div>
+</aside>
+<script type="module" src="/sessions/sessions.js"></script>
+<script src="/os-shell.js"></script>
+</body>
+</html>
