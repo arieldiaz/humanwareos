@@ -1,4 +1,4 @@
-// The artifact page frame: breadcrumb, versions link, publish action, and footer. Contract: docs/versioning.md.
+// The artifact page frame: the generated breadcrumb, versions link, publish action, and footer. Contract: docs/versioning.md.
 (async () => {
   const match = location.pathname.match(/^\/artifacts\/([^/]+)\/(\d+)\/(?:versions\/(\d+)\/)?$/);
   if (!match) return;
@@ -23,10 +23,12 @@
     });
   });
   const json = url => fetch(url, {cache: 'no-store'}).then(response => response.json()).catch(() => ({}));
-  const [registry, site] = await Promise.all([json('/artifacts/registry.json'), json('/artifacts/site.json')]);
+  const crumbs = fetch(`${location.pathname.replace(/\/$/, '')}.crumbs.html`, {cache: 'no-store'})
+    .then(response => response.ok ? response.text() : '')
+    .catch(() => '');
+  const [registry, site, trail] = await Promise.all([json('/artifacts/registry.json'), json('/artifacts/site.json'), crumbs]);
   const entry = registry.projects?.find(candidate => candidate.id === project || candidate.aliases?.includes(project));
   const versionCount = entry?.artifacts?.find(candidate => candidate.number === Number(number))?.versions?.length || 1;
-  const projectName = entry?.name || project;
   const base = `/artifacts/${project}/${number}/`;
   for (const href of ['/os-header.css', '/os-footer.css']) {
     const link = document.createElement('link');
@@ -40,12 +42,9 @@
   const bar = document.createElement('header');
   bar.className = 'os-shell-header artifact-registry-bar';
   const currentLabel = `${number} · ${artifactTitle}`;
-  const crumbs = [`<a href="/">${site.name || 'Home'}</a>`, '<a href="/artifacts/">Artifacts</a>', `<a href="/artifacts/${project}/">${projectName}</a>`,
-    live ? `<span class="current">${currentLabel}</span>` : `<a href="${base}">${currentLabel}</a>`];
-  if (!live) crumbs.push(`<a href="${base}versions/">Versions</a>`, `<span class="current">Version ${version}</span>`);
   const actions = (versionCount > 1 && live ? `<a class="os-header-public-link artifact-versions-link" href="${base}versions/">${versionCount} versions</a>` : '')
     + (live ? '<button class="os-header-action" type="button">Publish to www</button>' : '');
-  bar.innerHTML = `<nav class="os-breadcrumbs" aria-label="Artifact breadcrumb">${crumbs.join('<span class="sep">/</span>')}</nav><span class="artifact-actions">${actions}</span>`;
+  bar.innerHTML = `${trail}<span class="artifact-actions">${actions}</span>`;
   document.body.prepend(bar);
   [...document.querySelectorAll('body > nav, body > header')].forEach(candidate => {
     if (candidate === bar) return;
