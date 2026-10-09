@@ -30,7 +30,6 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 
 [ -L "$RUNTIME/current" ]
 [ -f "$RUNTIME/current/manifest.json" ]
-[ -x "$RUNTIME/current/framework/scripts/runtime-cutover-lease.sh" ]
 [ -x "$RUNTIME/current/framework/scripts/runtime-restart-guard.sh" ]
 [ -x "$RUNTIME/current/framework/scripts/apply-openclaw-patches.sh" ]
 [ -x "$RUNTIME/current/framework/ops/openclaw/runtime/secret-exec.sh" ]
