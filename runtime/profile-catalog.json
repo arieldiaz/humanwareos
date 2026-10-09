@@ -7,7 +7,11 @@
       "harness": "openclaw",
       "family": "openai-sol",
       "model": "openai/gpt-5.6-sol",
-      "aliases": ["native", "openclaw", "openclaw/sol"],
+      "aliases": [
+        "native",
+        "openclaw",
+        "openclaw/sol"
+      ],
       "permissions": "standard",
       "workspace": "isolated-on-write",
       "dataScope": "tier-2",
@@ -23,7 +27,11 @@
       "backend": "cursor-agent",
       "family": "cursor-grok",
       "model": "cursor-agent/grok-4.7-low-fast",
-      "aliases": ["cursor/grok", "cursor", "grok"],
+      "aliases": [
+        "cursor/grok",
+        "cursor",
+        "grok"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -38,7 +46,11 @@
       "backend": "cursor-agent",
       "family": "cursor-grok",
       "model": "cursor-agent/grok-4.7-high-fast",
-      "aliases": ["cursor/grok", "cursor", "grok"],
+      "aliases": [
+        "cursor/grok",
+        "cursor",
+        "grok"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -53,13 +65,38 @@
       "backend": "codex",
       "family": "codex-sol",
       "model": "openai/gpt-5.6-sol",
-      "aliases": ["codex/sol", "codex", "chatgpt/sol", "sol"],
+      "aliases": [
+        "codex/sol",
+        "codex",
+        "chatgpt/sol",
+        "sol"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
       "reasoning": "low",
       "fastMode": true,
       "responseTargetSeconds": 30
+    },
+    "codex-medium": {
+      "executionMode": "workspace",
+      "runtime": "app-server",
+      "harness": "codex",
+      "backend": "codex",
+      "family": "codex-sol",
+      "model": "openai/gpt-5.6-sol",
+      "aliases": [
+        "codex/sol",
+        "codex",
+        "chatgpt/sol",
+        "sol"
+      ],
+      "permissions": "standard",
+      "workspace": "required",
+      "dataScope": "tier-2",
+      "reasoning": "medium",
+      "fastMode": true,
+      "responseTargetSeconds": 45
     },
     "codex-high": {
       "executionMode": "workspace",
@@ -68,7 +105,12 @@
       "backend": "codex",
       "family": "codex-sol",
       "model": "openai/gpt-5.6-sol",
-      "aliases": ["codex/sol", "codex", "chatgpt/sol", "sol"],
+      "aliases": [
+        "codex/sol",
+        "codex",
+        "chatgpt/sol",
+        "sol"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -83,7 +125,11 @@
       "backend": "codex",
       "family": "codex-astra",
       "model": "openai/gpt-6-astra",
-      "aliases": ["codex/astra", "chatgpt/astra", "astra"],
+      "aliases": [
+        "codex/astra",
+        "chatgpt/astra",
+        "astra"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -98,7 +144,11 @@
       "backend": "codex",
       "family": "codex-astra",
       "model": "openai/gpt-6-astra",
-      "aliases": ["codex/astra", "chatgpt/astra", "astra"],
+      "aliases": [
+        "codex/astra",
+        "chatgpt/astra",
+        "astra"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -113,13 +163,36 @@
       "backend": "claude-cli",
       "family": "claude-opus",
       "model": "anthropic/claude-opus-5-5",
-      "aliases": ["claude/opus", "claude", "opus"],
+      "aliases": [
+        "claude/opus",
+        "claude",
+        "opus"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
       "reasoning": "low",
       "fastMode": false,
       "responseTargetSeconds": 30
+    },
+    "claude-opus-medium": {
+      "executionMode": "workspace",
+      "runtime": "cli",
+      "harness": "claude",
+      "backend": "claude-cli",
+      "family": "claude-opus",
+      "model": "anthropic/claude-opus-5-5",
+      "aliases": [
+        "claude/opus",
+        "claude",
+        "opus"
+      ],
+      "permissions": "standard",
+      "workspace": "required",
+      "dataScope": "tier-2",
+      "reasoning": "medium",
+      "fastMode": false,
+      "responseTargetSeconds": 45
     },
     "claude-opus-high": {
       "executionMode": "workspace",
@@ -128,7 +201,11 @@
       "backend": "claude-cli",
       "family": "claude-opus",
       "model": "anthropic/claude-opus-5-5",
-      "aliases": ["claude/opus", "claude", "opus"],
+      "aliases": [
+        "claude/opus",
+        "claude",
+        "opus"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -143,7 +220,10 @@
       "backend": "claude-cli",
       "family": "claude-fable",
       "model": "anthropic/claude-fable-5-1",
-      "aliases": ["claude/fable", "fable"],
+      "aliases": [
+        "claude/fable",
+        "fable"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -158,7 +238,10 @@
       "backend": "claude-cli",
       "family": "claude-fable",
       "model": "anthropic/claude-fable-5-1",
-      "aliases": ["claude/fable", "fable"],
+      "aliases": [
+        "claude/fable",
+        "fable"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -173,7 +256,10 @@
       "backend": "claude-cli",
       "family": "claude-sonnet",
       "model": "anthropic/claude-sonnet-5-5",
-      "aliases": ["claude/sonnet", "sonnet"],
+      "aliases": [
+        "claude/sonnet",
+        "sonnet"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -188,7 +274,10 @@
       "backend": "claude-cli",
       "family": "claude-sonnet",
       "model": "anthropic/claude-sonnet-5-5",
-      "aliases": ["claude/sonnet", "sonnet"],
+      "aliases": [
+        "claude/sonnet",
+        "sonnet"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -203,7 +292,10 @@
       "backend": "claude-cli",
       "family": "claude-haiku",
       "model": "anthropic/claude-haiku-4-5-20251001",
-      "aliases": ["claude/haiku", "haiku"],
+      "aliases": [
+        "claude/haiku",
+        "haiku"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
@@ -218,7 +310,10 @@
       "backend": "claude-cli",
       "family": "claude-haiku",
       "model": "anthropic/claude-haiku-4-5-20251001",
-      "aliases": ["claude/haiku", "haiku"],
+      "aliases": [
+        "claude/haiku",
+        "haiku"
+      ],
       "permissions": "standard",
       "workspace": "required",
       "dataScope": "tier-2",
