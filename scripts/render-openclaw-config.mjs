@@ -4,7 +4,13 @@ import {readFileSync, realpathSync, writeFileSync} from "node:fs";
 import {fileURLToPath} from "node:url";
 import {applyRuntimeProfiles, canonicalRuntimeRoot, loadJson5, loadProfilePolicy} from "./render-openclaw-runtime-profiles.mjs";
 
-export const configBasePath = fileURLToPath(new URL("../ops/openclaw/config.base.json5", import.meta.url));
+// Framework defaults for the rendered OpenClaw configuration, kept as strict
+// JSON so no JSON5 parser is needed. The instance overlay is applied over it as
+// a JSON merge patch (RFC 7396): objects merge recursively, every other overlay
+// value replaces the default (arrays included), and null removes a default. The
+// __HUMANWARE_SECRETS_PROVIDER__ entry is bound to the provider named by
+// humanware.instance.json secrets.openclawProvider.
+export const configBasePath = fileURLToPath(new URL("../ops/openclaw/config.base.json", import.meta.url));
 const SECRETS_PROVIDER_KEY = "__HUMANWARE_SECRETS_PROVIDER__";
 
 function fail(message) {

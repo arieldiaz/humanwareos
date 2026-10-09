@@ -78,7 +78,7 @@ cp "$FRAMEWORK_DIR/scripts/render-openclaw-runtime-profiles.mjs" "$BUILD_DIR/fra
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-config.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-config.mjs"
 cp "$FRAMEWORK_DIR/scripts/openclaw-agent-entries.mjs" "$BUILD_DIR/framework/scripts/openclaw-agent-entries.mjs"
 cp "$FRAMEWORK_DIR/runtime/profile-catalog.json" "$BUILD_DIR/framework/runtime/profile-catalog.json"
-cp "$FRAMEWORK_DIR/ops/openclaw/config.base.json5" "$BUILD_DIR/framework/ops/openclaw/config.base.json5"
+cp "$FRAMEWORK_DIR/ops/openclaw/config.base.json" "$BUILD_DIR/framework/ops/openclaw/config.base.json"
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-agent-context.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-agent-context.mjs"
 cp "$FRAMEWORK_DIR/scripts/materialize-openclaw-workspaces.mjs" "$BUILD_DIR/framework/scripts/materialize-openclaw-workspaces.mjs"
 cp "$FRAMEWORK_DIR/scripts/apply-openclaw-patches.sh" "$BUILD_DIR/framework/scripts/apply-openclaw-patches.sh"
