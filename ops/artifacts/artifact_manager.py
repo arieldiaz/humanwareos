@@ -712,8 +712,12 @@ def plan_grouping(registry: dict, plan: dict) -> tuple[dict, dict[str, str], lis
         except LookupError:
             return False
 
-    mapping = {old: new for old, new in ({old: moves.get(new, new) for old, new in mapping.items()} | moves).items()
-               if existed(old)}
+    # Dense moves are keyed by post-grouping addresses; an old address the grouping already moved (e.g. a version
+    # re-sequenced by date) follows its composed path, not the dense move that now happens to share its spelling.
+    mapping = {old: new for old, new in (moves | {old: moves.get(new, new) for old, new in mapping.items()}).items()
+               if old != new and existed(old)}
+    if any(not shadows(updated, old) for old in mapping):
+        updated["redirects"] = updated.get("redirects", {}) | {old: new for old, new in mapping.items() if not shadows(updated, old)}
     warnings += [f"dropped redirect shadowing a live address: {old} -> {new}" for old, new in dropped if existed(old)]
     if updated.get("redirects"):
         updated["redirects"] = {old: new for old, new in updated["redirects"].items() if existed(old)}

@@ -253,6 +253,23 @@ class ArtifactManagerTests(unittest.TestCase):
         self.promote("s:a", "s:a", body="<p>07</p>", day="07 Sep 2026")
         self.assertNotIn("learning/1/versions/3", am.load_registry(self.root)["redirects"])
 
+    def test_group_redirects_compose_version_resequencing_with_dense_renumber(self) -> None:
+        for session, day in (("s:a", "01"), ("s:b", "02"), ("s:c", "03"), ("s:b", "04")):
+            self.promote(session, session, body=f"<p>{day}</p>", day=f"{day} Sep 2026")
+        before = am.load_registry(self.root)
+        held = {f"learning/{a['number']}/versions/{v['number']}": v["revision"]
+                for a in before["projects"][0]["artifacts"] for v in a["versions"]}
+        plan = {"groups": [{"project": "learning", "title": "B", "artifacts": [2, "learning/1/versions/1"]},
+                           {"project": "learning", "title": "C", "artifacts": [3]}]}
+        am.group(self.root, self.review, plan, write=True)
+        registry = am.load_registry(self.root)
+        self.assertEqual(registry["redirects"]["learning/2/versions/2"], "learning/1/versions/3")
+        record = json.loads(next((self.root / "manifests/groupings").iterdir()).read_text())
+        for old, revision in held.items():
+            self.assertEqual(am.locate_artifact(self.root, record["mapping"].get(old, old)).name, revision, old)
+            if old in registry.get("redirects", {}):
+                self.assertEqual(am.locate_artifact(self.root, old).name, revision, old)
+
     def test_allocator_uses_next_number_yields_redirects_and_never_reuses_a_revision_name(self) -> None:
         self.promote("s:a", "A")
         registry = am.load_registry(self.root)
