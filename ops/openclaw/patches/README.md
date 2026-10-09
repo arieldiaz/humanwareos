@@ -35,6 +35,8 @@ openclaw gateway start
 
 `patch-2026.9.8-current-thread-root-edit.mjs` lets a delegated Slack agent edit the root message of its current thread when the caller omitted the canonical target. It infers only the trusted current channel when the requested message ID exactly matches the trusted thread root and the provider and account match; the stock conversation gate and Slack message ownership check still run afterward.
 
+`patch-2026.9.8-slack-session-status-keepalive.mjs` refreshes Slack's working status throughout a long turn instead of setting it only once and letting it expire. The ordinary typing-reaction fallback remains single-shot.
+
 `../slack-spin-out.mjs` posts the brief as one ordinary top-level message through stock send, then owns scaffold cleanup, status and durable session creation with high reasoning set before the initial run; the session replies in that message's thread.
 
 ## Prompt boilerplate
