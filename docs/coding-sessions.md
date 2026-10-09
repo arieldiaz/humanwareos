@@ -32,7 +32,9 @@ Before opening or merging a pull request, fetch the canonical branch again and i
 
 End every coding session in one of two states:
 
-- the branch is committed and pushed, with its pull request or merge state reported, and the disposable worktree is removed once no longer needed; or
+- the branch is committed and pushed, with its pull request or merge state reported; or
 - the work is consciously discarded, with no unique change left only in that checkout.
 
 The completion report names the repository and worktree, branch, working-tree state, commit and push state, and whether the change is merged to the canonical branch. A local commit without a pushed remote ref is not a durable handoff.
+
+A merged pull request ends its branch and worktree. The session that merges it, or the scheduled check that observes the merge, deletes the remote branch and removes the worktree in the same run; a merged branch's worktree is residue, never a workspace. A superseded branch that will not merge is closed and deleted the same way. Worktrees and branches that outlive their pull request are the signal that this step was skipped.
