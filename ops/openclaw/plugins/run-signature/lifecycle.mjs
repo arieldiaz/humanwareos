@@ -20,9 +20,10 @@ export class ThreadLifecycle {
     return this.closing.has(conversationFenceKey(route)) || Boolean(await this.closed(route, accountId));
   }
   // The owner's request is held for the run and takes effect when it ends.
-  async requestClose(sessionKey, input, assertCurrent = () => {}) {
-    if (!this.route(sessionKey)) throw new Error('Closure needs a Slack thread');
-    const run = [...this.runs.values()].findLast(turn => turn.sessionKey === sessionKey);
+  async requestClose(route, input, assertCurrent = () => {}) {
+    const conversation = conversationFenceKey(route);
+    if (!conversation) throw new Error('Closure needs a Slack thread');
+    const run = [...this.runs.values()].findLast(turn => turn.conversation === conversation);
     if (!run) throw new Error('Closure needs a running turn');
     assertCurrent();
     this.pendingClose.set(run.key, input);

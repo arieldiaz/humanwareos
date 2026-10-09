@@ -435,7 +435,6 @@ const plugin = {
     const byRun = new Map();
     const bySession = new Map();
     const byAgent = new Map();
-    const currentInbound = new Map();
     const botIdCache = new Map();
     const serializeRunStrip = createKeyedSerialQueue();
     const maintainStatusTile = createStatusProjector(api, {appendFaultJournal, botIdCache,
@@ -445,7 +444,7 @@ const plugin = {
     registerWorkThreadTool(api, {resolveSlackRuntimeModule, retrySlackRateLimit, maintainStatusTile, workThreadPosts});
     registerHostClose(api, {isExcludedChannel, maintainStatusTile,
       recordOutboundStatus, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule,
-      resolveBotUserId, slackApi, botIdCache, currentInbound});
+      resolveBotUserId, slackApi, botIdCache});
 
     // Seed the last-resort fallback from the previous process's snapshot, so
     // the first reply after a restart still carries tiles. Live events win.
@@ -496,11 +495,6 @@ const plugin = {
     api.on("model_call_started", rememberProvenance);
     api.on("llm_input", rememberProvenance);
     api.on("llm_output", rememberProvenance);
-    api.on("message_received", (event, ctx) => {
-      const sessionKey = event?.sessionKey ?? ctx?.sessionKey;
-      if (sessionKey) currentInbound.set(sessionKey, {messageId: String(event.messageId ?? event.metadata?.messageId ?? ""), senderId: event.senderId, content: event.content});
-    });
-
     api.on('message_sent', async (event, ctx) => {
       try { await reactToSentMessage(event, ctx); }
       catch (error) { await appendFaultJournal({reason: `Run signature: ${String(error)}`}); }
