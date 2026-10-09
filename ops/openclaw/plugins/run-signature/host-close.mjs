@@ -12,7 +12,7 @@ import {
 } from "./close-report.mjs";
 import {ThreadLifecycle} from "./lifecycle.mjs";
 import {normalizeReactions} from "./strip-core.mjs";
-import {conversationFenceKey, conversationFenceRoute} from "./conversation-fence.mjs";
+import {conversationFenceRoute} from "./conversation-fence.mjs";
 
 const closeTransport = new AsyncLocalStorage();
 
@@ -63,28 +63,27 @@ export async function sendThreadMessage(config, turn, sdk) {
   });
 }
 
-export function closeThreadTool(context, {config, ownerUserId, lifecycle, currentInbound}) {
+export function closeThreadTool(context, {config, ownerUserId, lifecycle}) {
   if (context.messageChannel !== "slack" || !context.sessionKey) return;
   const accountId = context.agentAccountId ?? String(context.agentId ?? "").toLowerCase();
   const reply = (text, isError) => ({content: [{type: "text", text}], ...(isError ? {isError} : {})});
   return {
     name: "close_thread",
-    description: "Close this Slack thread when the current run ends. Call it only when the owner's current message asks for closure, after finishing the other requested work. Only your final response after this call is delivered, so it must contain the complete answer.",
+    description: "Close this Slack thread when the current run ends. Call it only when the owner asks to close the thread, after finishing the other requested work. Only your final response after this call is delivered, so it must contain the complete answer.",
     parameters: {type: "object", additionalProperties: false},
     async execute() {
+      // The run's own thread is the only input; nothing about the triggering message is required.
       if (!/^U[A-Z0-9]+$/.test(ownerUserId ?? "")) return reply("Closure requires configured ownerUserId", true);
       if (context.requesterSenderId !== ownerUserId) return reply("Refused: only the owner can close this thread.", true);
-      if (!config?.channels?.slack?.accounts?.[accountId]) return reply("Closure requires a configured Slack sender", true);
       const route = conversationFenceRoute({
         channel: context.nativeChannelId,
         threadId: context.deliveryContext?.threadId,
         sessionKey: context.sessionKey,
         origin: context.deliveryContext,
       });
-      const inbound = currentInbound?.(route);
-      if (!route || !inbound?.messageId) return reply("Closure requires the current Slack message", true);
+      if (!route || !config?.channels?.slack?.accounts?.[accountId]) return reply("close_thread needs a Slack thread and a configured Slack sender", true);
       try {
-        await lifecycle.requestClose(route, {messageId: inbound.messageId, principal: ownerUserId, accountId}, () => context.assertInvocationCurrent?.());
+        await lifecycle.requestClose(route, {principal: ownerUserId, accountId}, () => context.assertInvocationCurrent?.());
       } catch (error) {
         return reply(String(error?.message ?? error), true);
       }
@@ -110,7 +109,6 @@ export function registerHostClose(api, {
   botIdCache,
 }) {
   const threadLeads = new Map();
-  const currentInbound = new Map();
   const slackAccounts = async () => {
     const accounts = await import(resolveSlackRuntimeModule("accounts"));
     const tokens = new Map(), accountByBotUserId = new Map();
@@ -147,7 +145,7 @@ export function registerHostClose(api, {
     snapshot: async close => {
       const accounts = await import(resolveSlackRuntimeModule("accounts"));
       const token = accounts.resolveSlackAccount({cfg: api.config, accountId: close.accountId})?.botToken;
-      const snapshotThrough = Math.max(close.startedAt, Number(close.sourceMessageId) * 1000);
+      const snapshotThrough = close.startedAt;
       const latest = (snapshotThrough / 1000).toFixed(6);
       const messages = await loadSlackThreadSnapshot({
         channel: close.route.channel, threadId: close.route.threadId, latest, token, call: slackApi,
@@ -158,7 +156,7 @@ export function registerHostClose(api, {
       const followUps = close.evidence.filter(turn => turn.phase === "running").map(turn => `${turn.runId}: work unresolved at closure`);
       const pullRequests = await loadPullRequests(stats?.pullRequests);
       const snapshot = {summary: stats?.topic || "Session closed", followUps, stats, usage, pullRequests,
-        boundary: `thread messages and timestamped usage through reservation ${latest} (source ${close.sourceMessageId}); later work and this report excluded`};
+        boundary: `thread messages and timestamped usage through reservation ${latest}; later work and this report excluded`};
       return {...snapshot, report: formatCloseReport({...snapshot, agent: close.accountId, prices: modelPrices(api.config)})};
     },
     writeReport: close => writeCloseReport({dataRoot: resolveDataRoot(api.config, api.pluginConfig, close.accountId), operationId: close.key, report: close.snapshot.report}),
@@ -177,9 +175,6 @@ export function registerHostClose(api, {
     const senderId = event.senderId ?? ctx.senderId;
     if (!channel || !threadId || !senderId) return;
     if (isExcludedChannel(channel)) return;
-    const messageId = String(event.messageId ?? ctx.messageId ?? "");
-    const conversation = conversationFenceKey({channel, threadId});
-    if (senderId === ownerUserId && messageId && conversation) currentInbound.set(conversation, {messageId});
     const {accountByBotUserId} = await slackAccounts();
     const botUserIds = new Set(accountByBotUserId.keys());
     const accountId = String(event.accountId ?? ctx.accountId ?? ctx.sessionKey?.match(/^agent:([^:]+)/i)?.[1] ?? "").toLowerCase();
@@ -214,7 +209,6 @@ export function registerHostClose(api, {
     config: api.config,
     ownerUserId: api.pluginConfig?.ownerUserId,
     lifecycle,
-    currentInbound: route => currentInbound.get(conversationFenceKey(route)),
   })}, {name: "close_thread"});
   return lifecycle;
 }

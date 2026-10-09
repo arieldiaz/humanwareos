@@ -197,7 +197,7 @@ export function reportParts(report, limit = 3000) {
   return parts;
 }
 
-export async function recordSessionClose({ dataRoot, channel, thread, agent, summary, stats, usage, ownerLabel, operationId, report, now = new Date() }) {
+export async function recordSessionClose({ dataRoot, channel, thread, agent, summary, stats, usage, operationId, report, now = new Date() }) {
   const ts = now.toISOString();
   const logicalSessionId = `slack:${channel}:${thread}`;
   const id = operationId;

@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {conversationFenceRoute, conversationFenceKey} from './conversation-fence.mjs';
 
 // Stateless thread lifecycle. Status derives from the current run (working →
@@ -19,25 +20,26 @@ export class ThreadLifecycle {
   async isClosingOrClosed(route, accountId) {
     return this.closing.has(conversationFenceKey(route)) || Boolean(await this.closed(route, accountId));
   }
-  // The owner's request is held for the run and takes effect when it ends.
+  // A close requested during a run takes effect when that run ends. If a
+  // restart lost the start hook, the matching conversation's end hook still
+  // applies the request after the final response has settled.
   async requestClose(route, input, assertCurrent = () => {}) {
     const conversation = conversationFenceKey(route);
     if (!conversation) throw new Error('Closure needs a Slack thread');
     const run = [...this.runs.values()].findLast(turn => turn.conversation === conversation);
-    if (!run) throw new Error('Closure needs a running turn');
     assertCurrent();
-    this.pendingClose.set(run.key, input);
+    this.pendingClose.set(run?.key ?? conversation, {...input, reservationId: randomUUID()});
   }
-  async closeCommand(route, {messageId, principal, accountId}) {
-    if (!messageId || !principal || !accountId) throw new Error('Closure requires source, principal and configured sender');
+  async closeCommand(route, {reservationId, principal, accountId}) {
+    if (!reservationId || !principal || !accountId) throw new Error('Closure requires reservation, principal and configured sender');
     const conversation = conversationFenceKey(route);
     if (!conversation) throw new Error('Canonical closure route is unavailable');
     if (this.closing.has(conversation)) return this.closing.get(conversation);
-    const key = `${conversation}:close:${messageId}`;
+    const startedAt = Date.now(), key = `${conversation}:close:${reservationId}`;
     const work = (async () => {
       // A repeated close on a thread whose root still shows ✅ is a no-op.
       if (await this.closed(route, accountId)) return;
-      const close = {key, conversation, route, sourceMessageId: messageId, principal, accountId, startedAt: Date.now(),
+      const close = {key, conversation, route, principal, accountId, startedAt,
         evidence: [...this.runs.values()].filter(turn => turn.conversation === conversation).map(({runId}) => ({runId, phase: 'running'})),
         sessionKey: `agent:${accountId}:slack:channel:${route.channel.toLowerCase()}:thread:${route.threadId}`};
       this.latest.set(conversation, key);
@@ -65,12 +67,15 @@ export class ThreadLifecycle {
   async end({sessionKey, runId}) {
     const route = this.route(sessionKey);
     if (!route || !runId) return;
-    const turn = this.runs.get(`${conversationFenceKey(route)}:${runId}`);
-    if (!turn) return;
-    this.runs.delete(turn.key);
-    const close = this.pendingClose.get(turn.key);
-    this.pendingClose.delete(turn.key);
-    await this.settle(turn, 'act');
+    const conversation = conversationFenceKey(route);
+    const turn = this.runs.get(`${conversation}:${runId}`);
+    const close = this.pendingClose.get(turn?.key) ?? this.pendingClose.get(conversation);
+    if (turn) {
+      this.runs.delete(turn.key);
+      await this.settle(turn, 'act');
+      this.pendingClose.delete(turn.key);
+    }
+    this.pendingClose.delete(conversation);
     if (close) await this.closeCommand(route, close);
   }
   async settle(turn, status) {

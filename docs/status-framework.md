@@ -8,13 +8,13 @@ Budget: 900 words. Over it, consolidate.
 
 - `working`: admitted execution owns the next move; 🔄.
 - `act`: the run ended and the turn returns to the human; ✋.
-- `closed`: the owner asked to close the whole thread; ✅.
+- `closed`: the owner asked to close the thread; ✅.
 
 `done` is not a current alias. Historical append-only records are not rewritten. Domain processing states and harness run completion are separate vocabularies.
 
 ## Projection and recovery
 
-The first model-start event of a run admits it as `working`; duplicate start events are idempotent, and the end of that run sets `act`. Only the latest admitted run, from any agent, sets the root tile. No lifecycle state is stored: the root's bot-held ✅ is the record of closure, and a run interrupted by restart leaves 🔄 until the thread's next run ends. Closure is the owner's decision, inferred by the agent and enforced by the host. The owner's message goes through a normal run; when its meaning includes closing the thread, the agent finishes the other requested work and requests closure with the host `close_thread` tool. The host accepts the request only when the run's trusted inbound sender is the configured owner, and applies it after the run ends. Other senders, bots, quoted text, reactions, and the model's own initiative cannot close a thread.
+The first model-start event of a run admits it as `working`; duplicate start events are idempotent, and the end of that run sets `act`. Only the latest admitted run, from any agent, sets the root tile. No lifecycle state is stored: the root's bot-held ✅ is the record of closure, and a run interrupted by restart leaves 🔄 until the thread's next run ends. Closure has one path. When the owner asks to close, the agent finishes the other requested work and calls `close_thread`. The host verifies the run's trusted sender is the configured owner and closes the thread derived from the session key after the run ends. The request needs no triggering message id or inbound cache, so an end hook can apply it even when a restart lost the matching start hook. Other senders, bots, quoted text, reactions, and the model's own initiative cannot close a thread.
 
 Only the projector can add/remove bot-owned lifecycle reactions. Human reactions remain untouched social input and cannot suppress canonical state. Agent reaction tools reject the lifecycle vocabulary. Provenance reactions belong on the delivered reply, not the root. Remove retired provenance tiles only through a bounded migration, not steady-state projection.
 
