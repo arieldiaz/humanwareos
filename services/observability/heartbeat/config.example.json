@@ -1,0 +1,15 @@
+{
+  "incidentChannel": "C0000000000",
+  "agents": ["agent-a", "agent-b"],
+  "dopplerProjects": ["example-agent-a", "example-agent-b"],
+  "dopplerConfig": "prd",
+  "monitorName": "example monitor",
+  "monitorIcon": ":heartpulse:",
+  "hostName": "example-host",
+  "gatewayLabel": "ai.openclaw.gateway",
+  "gatewayPort": 18789,
+  "gatewayLogDir": "/tmp/openclaw",
+  "dopplerBin": "/opt/homebrew/bin/doppler",
+  "nodeBin": "/opt/homebrew/opt/node/bin/node",
+  "openclawJs": "/opt/homebrew/lib/node_modules/openclaw/dist/index.js"
+}
