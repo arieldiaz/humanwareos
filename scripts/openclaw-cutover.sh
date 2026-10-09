@@ -35,6 +35,12 @@ prune() {
   if [ -d "$data/operations/control/restart-approvals/pending" ]; then
     find "$data/operations/control/restart-approvals/pending" -name '*.json' -mmin +31 -delete
   fi
+  # Finished one-shot cutover jobs stay registered in launchd until something boots them out.
+  if command -v launchctl >/dev/null 2>&1; then
+    launchctl list 2>/dev/null | awk '$3 ~ /^com\.humanwareos\.cutover\./ && $1 == "-" {print $3}' | while IFS= read -r label; do
+      launchctl bootout "gui/$(id -u)/$label" >/dev/null 2>&1 || true
+    done
+  fi
 }
 
 prepare() {
@@ -72,7 +78,7 @@ prepare() {
 activate() {
   [ "$#" -eq 2 ] || usage
   local prepared approval framework instance runtime transaction version data runtime_root current control instance_id
-  local report previous_runtime live_config config_rollback workspace_rollback candidate_bin active=1
+  local report previous_runtime live_config config_rollback workspace_rollback candidate_bin active=1 previous_patch_set="" stock_needed=0
   local cutover_started=0 package_installed=0 config_replaced=0 workspace_applied=0 runtime_switched=0
   prepared=$(CDPATH= cd -- "$(dirname "$1")" && pwd)/$(basename "$1")
   approval=$(CDPATH= cd -- "$(dirname "$2")" && pwd)/$(basename "$2")
@@ -112,6 +118,10 @@ activate() {
   previous_runtime=""
   [ ! -L "$current" ] || previous_runtime=$(readlink "$current")
   printf '%s\n' "$previous_runtime" > "$report/previous-runtime"
+  # A changed patch set means the live package carries edits that no longer
+  # exist in source; it must return to stock text before patches apply.
+  [ ! -f "$previous_runtime/manifest.json" ] || previous_patch_set=$($JQ -r '.patchSet // ""' "$previous_runtime/manifest.json")
+  [ "$previous_patch_set" = "$($JQ -r '.patchSet // ""' "$runtime/manifest.json")" ] || stock_needed=1
   cp -p "$live_config" "$config_rollback"
   chmod 600 "$config_rollback"
 
@@ -158,15 +168,18 @@ activate() {
   else
     "$NODE_BIN" "$candidate_bin" gateway stop --disable --force --json > "$report/gateway-stop.json"
   fi
-  /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" install --transaction "$transaction" --target "$PACKAGE_TARGET"
-  if $JQ -e '.changed == true' "$transaction/installed.json" >/dev/null; then
+  /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" install --transaction "$transaction" --target "$PACKAGE_TARGET" $([ "$stock_needed" -eq 1 ] && echo --force)
+  if $JQ -e '.replaced == true' "$transaction/installed.json" >/dev/null; then
     package_installed=1
   fi
   cp -p "$runtime/config/openclaw/openclaw.json" "$live_config"
   chmod 600 "$live_config"
   config_replaced=1
-  if [ "$package_installed" -eq 1 ]; then
+  # A version change refreshes every plugin; a patch-set change refreshes only the Slack plugin the patches edit.
+  if $JQ -e '.changed == true' "$transaction/installed.json" >/dev/null; then
     while IFS= read -r plugin; do "$OPENCLAW_BIN" plugins update "$plugin" > "$report/plugin-$(basename "$plugin").log" 2>&1; done < <($JQ -r '.openclaw.plugins[]' "$instance/humanware.instance.json")
+  elif [ "$stock_needed" -eq 1 ]; then
+    while IFS= read -r plugin; do "$OPENCLAW_BIN" plugins update "$plugin" > "$report/plugin-$(basename "$plugin").log" 2>&1; done < <($JQ -r '.openclaw.plugins[] | select(startswith("@openclaw/slack"))' "$instance/humanware.instance.json")
   fi
   NODE_BIN="$NODE_BIN" "$framework/scripts/apply-openclaw-patches.sh" > "$report/patches.log"
   HUMANWARE_WORKSPACE_BACKUP_DIR="$workspace_rollback" "$NODE_BIN" "$framework/scripts/materialize-openclaw-workspaces.mjs" apply "$runtime" "$live_config"
