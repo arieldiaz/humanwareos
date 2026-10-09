@@ -177,6 +177,9 @@ export function registerHostClose(api, {
     const senderId = event.senderId ?? ctx.senderId;
     if (!channel || !threadId || !senderId) return;
     if (isExcludedChannel(channel)) return;
+    const messageId = String(event.messageId ?? ctx.messageId ?? "");
+    const conversation = conversationFenceKey({channel, threadId});
+    if (senderId === ownerUserId && messageId && conversation) currentInbound.set(conversation, {messageId});
     const {accountByBotUserId} = await slackAccounts();
     const botUserIds = new Set(accountByBotUserId.keys());
     const accountId = String(event.accountId ?? ctx.accountId ?? ctx.sessionKey?.match(/^agent:([^:]+)/i)?.[1] ?? "").toLowerCase();
@@ -192,16 +195,6 @@ export function registerHostClose(api, {
     if (!lead) return {handled: true};
     threadLeads.set(routeKey, lead);
     if (accountId !== lead) return {handled: true};
-  });
-  api.on("message_received", (event, ctx) => {
-    const route = conversationFenceRoute({
-      channel: ctx.conversationId,
-      threadId: event.threadId ?? event.replyToId ?? ctx.threadId ?? ctx.replyToId,
-      sessionKey: event.sessionKey ?? ctx.sessionKey,
-      origin: event.metadata,
-    });
-    const key = conversationFenceKey(route);
-    if (key) currentInbound.set(key, {messageId: String(event.messageId ?? ctx.messageId ?? "")});
   });
   const lifecycleHook = transition => async (event, ctx) => {
     try { await lifecycle[transition]({sessionKey: event.sessionKey ?? ctx.sessionKey, runId: event.runId ?? ctx.runId}); }
