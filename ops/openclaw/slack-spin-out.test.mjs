@@ -84,7 +84,7 @@ test("does not start work when durable publication identity is unavailable", asy
 test("matches channels loosely by name and passes IDs through", () => {
   const channels = [
     { id: "C1", name: "humanware-os" },
-    { id: "C2", name: "ariel-works" },
+    { id: "C2", name: "acme-works" },
     { id: "C3", name: "inbox" },
   ];
   assert.equal(matchSlackChannel("C0ABCDEF12", channels), "C0ABCDEF12");
@@ -93,5 +93,5 @@ test("matches channels loosely by name and passes IDs through", () => {
   assert.equal(matchSlackChannel("humanware", channels), "C1");
   assert.equal(matchSlackChannel("works", channels), "C2");
   assert.throws(() => matchSlackChannel("garden", channels), /No Slack channel/);
-  assert.throws(() => matchSlackChannel("os", [{ id: "C1", name: "humanware-os" }, { id: "C4", name: "ariel-os" }]), /several channels/);
+  assert.throws(() => matchSlackChannel("os", [{ id: "C1", name: "humanware-os" }, { id: "C4", name: "acme-os" }]), /several channels/);
 });

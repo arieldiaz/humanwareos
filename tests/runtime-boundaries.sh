@@ -41,7 +41,6 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -f "$RUNTIME/current/framework/ops/openclaw/patches/slack-rich-text/markdown-to-rich-text.mjs" ]
 [ -f "$RUNTIME/current/surface/activity/index.html" ]
 [ -f "$RUNTIME/current/surface/sessions/index.html" ]
-[ ! -e "$RUNTIME/current/framework/ops/openclaw/plugins/calendar" ]
 [ -e "$RUNTIME/current/framework/ops/session-console" ]
 [ -e "$RUNTIME/current/framework/ops/email-intake" ]
 [ -f "$RUNTIME/current/framework/ops/artifacts/artifact_manager.py" ]

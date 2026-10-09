@@ -11,7 +11,7 @@ Humanware OS framework ─┐
                        ├─► immutable runtime ─► agent core ─► tools and data
 private instance config ┘          ▲                  ▲
                                   │                  │
-                        channel adapters      Ariel Data plane
+                        channel adapters          data plane
                         Slack · app · Buzz     stream · memory · work
                                   │
                                   ▼
@@ -51,7 +51,7 @@ Data does not live in either source repository. Behavioral rules never enter thr
 
 A complete installation has a domain surface with public and private halves. The public half explains and publishes intentionally shared work. The private half exposes dashboards, usage, tokens, sessions, security, artifacts, and operational controls to authorized clients. The framework provides the shell, route contract, deployment adapters, and access-control hooks. The instance supplies the domain, branding, enabled routes, private origin, and publication policy.
 
-The reference Ariel installation uses `os.arieldiaz.com` for its private frontend. The same framework can run on an always-on Mac, behind Tailscale, or in a cloud deployment. See [Domain surface](domain-surface.md).
+The reference installation serves its private frontend from the instance's private domain. The same framework can run on an always-on Mac, behind Tailscale, or in a cloud deployment. See [Domain surface](domain-surface.md).
 
 ## Source and deployment flow
 

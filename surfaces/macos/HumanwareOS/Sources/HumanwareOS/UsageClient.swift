@@ -25,7 +25,7 @@ struct UsageSnapshot {
 final class UsageClient {
     static let shared = UsageClient()
 
-    private let defaultEndpoint = "http://100.74.220.98:8899/usage"
+    private let defaultEndpoint = "http://127.0.0.1:8899/usage"
 
     private var endpoint: URL {
         if let stored = UserDefaults.standard.string(forKey: "usageEndpoint"),
