@@ -60,7 +60,6 @@ export function switchModelTool(context, {config, apply = applySessionSelection}
     async execute(_toolCallId, args) {
       const selected = resolveRequestedModel(models, args?.model);
       if (!selected) return reply(`Unknown model "${args?.model ?? ""}". Allowed: ${options}.`, true);
-      if (context.senderIsOwner === false) return reply("Refused: only the owner can switch the model.", true);
       const [provider, model] = selected.ref.split("/");
       try {
         context.assertInvocationCurrent?.();

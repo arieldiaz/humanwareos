@@ -12,6 +12,10 @@ The adapter preserves authored Markdown across ordinary, chunked, and media-bear
 
 Verify authored output against delivered Slack blocks: a bold label authored by the model is a writing choice; a lost Markdown heading is a rendering defect. Delivery receipts, splitting, deduplication, and run signatures belong to the adapter. The response contract does not require glossary updates, decorative conventions, or one artifact format for every task.
 
+## Channel posts
+
+A top-level post in any channel is one line. Details, reports, lists and links go in the first reply in that post's thread, never in the root. This holds for agent-initiated posts, scheduled checks and status reports alike: post the line, then reply in its thread, or use the work-thread tool, which does both.
+
 ## Work threads
 
 A work thread's top-level post is only its title: a general type word, colon, short descriptive summary (e.g. "Fix: raw JSON wrapper in Slack replies").

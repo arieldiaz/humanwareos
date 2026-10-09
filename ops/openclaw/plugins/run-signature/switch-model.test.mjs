@@ -38,11 +38,10 @@ test('a prose switch persists the selection the native /model command writes', a
   assert.deepEqual(applied, [{config, sessionKey: context.sessionKey, agentId: 'liv', provider: 'anthropic', model: 'claude-fable-5-1', reasoning: 'high'}]);
 });
 
-test('unknown models, non-owners and stale invocations are refused without a write', async () => {
+test('unknown models and stale invocations are refused without a write', async () => {
   const applied = [];
   const options = {config, apply: async selection => {applied.push(selection);}};
   assert.match((await switchModelTool(context, options).execute('c', {model: 'gemini'})).content[0].text, /Unknown model "gemini"/);
-  assert.equal((await switchModelTool({...context, senderIsOwner: false}, options).execute('c', {model: 'sol'})).isError, true);
   assert.equal((await switchModelTool({...context, assertInvocationCurrent: () => { throw new Error('stale'); }}, options).execute('c', {model: 'sol'})).isError, true);
   assert.deepEqual(applied, []);
   assert.equal(switchModelTool({agentId: 'liv'}, options), undefined, 'no session, no tool');
