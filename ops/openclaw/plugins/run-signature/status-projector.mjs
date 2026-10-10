@@ -1,4 +1,4 @@
-import {normalizeReactions, planStatusTile, resolveStatusTile} from "./strip-core.mjs";
+import {normalizeReactions, planStatusTile, resolveStatusTile, OUTBOUND_STATUS_TO_TILE} from "./strip-core.mjs";
 
 function tolerantWrite(task) {
   return task().catch((error) => {
@@ -62,6 +62,7 @@ export function createStatusProjector(api, {
           for (const holder of holders) await tolerantWrite(() => call(() => actions.reactSlackMessage(channel, rootTs, name, optsFor(holder))));
         }
         await journalRecovery(channel, rootTs);
+        return Object.entries(OUTBOUND_STATUS_TO_TILE).find(([, tile]) => tile === plan.effective)?.[0] ?? outboundStatus;
       } catch (error) {
         api.logger?.error?.(`run-signature status tile failed for ${routeKey}: ${String(error)}`);
         await journalFault(channel, rootTs, String(error?.message ?? error));

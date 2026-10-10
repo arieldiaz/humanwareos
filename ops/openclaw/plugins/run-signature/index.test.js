@@ -182,6 +182,16 @@ test("a lifecycle transition swaps the one tile", () => {
   assert.deepEqual(addNames(plan), ["raised_hand"]);
 });
 
+test("a run ending on a closed thread keeps ✅: ✋ never replaces a bot-held ✅, 🔄 does", () => {
+  const closed = [ownTile("white_check_mark")];
+  const act = planStatusTile(closed, { ...SPEC, lifecycle: "raised_hand" });
+  assert.equal(act.unchanged, true);
+  assert.equal(act.effective, "white_check_mark");
+  const working = planStatusTile(closed, { ...SPEC, lifecycle: "arrows_counterclockwise" });
+  assert.deepEqual(working.remove.map(r => r.name), ["white_check_mark"]);
+  assert.equal(working.effective, "arrows_counterclockwise");
+});
+
 test("done replaces a stale working tile", () => {
   const plan = planStatusTile([ownTile("arrows_counterclockwise")], { ...SPEC, lifecycle: "white_check_mark" });
   assert.deepEqual(removeNames(plan), ["arrows_counterclockwise"]);

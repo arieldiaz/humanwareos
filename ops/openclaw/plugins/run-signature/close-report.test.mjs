@@ -100,13 +100,14 @@ test("the close report is short: what, tokens with API cost, code, follow-up", (
     "- What: please fix this",
     "- Tokens: 1.0M in (100% cached) · 1k out · ~$0.22 API",
     "- Code: [PR #142](https://github.com/o/r/pull/142) · open · +62/−140 · 2 files",
+    "- Follow-up: none",
   ].join("\n"));
 });
 
 test("unpriced models mark cost as a lower bound and missing usage stays explicit", () => {
   const usage = summarizeTrajectory([{ type: "model.completed", modelId: "mystery", data: { usage: { input: 10, output: 1 } } }]);
   assert.match(formatCloseReport({ usage, agent: "liv" }), /≥\$0\.00 API/);
-  assert.match(formatCloseReport({ agent: "liv" }), /Tokens: liv usage unavailable$/);
+  assert.match(formatCloseReport({ agent: "liv" }), /Tokens: liv usage unavailable\n- Follow-up: none$/);
   assert.equal(slackMrkdwn("**Session closed** · 2m\n- Code: [PR #142](https://github.com/o/r/pull/142) · open"), "*Session closed* · 2m\n• Code: <https://github.com/o/r/pull/142|PR #142> · open");
 });
 

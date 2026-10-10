@@ -154,7 +154,7 @@ function duration(seconds) {
   return minutes < 60 ? `${Math.max(1, Math.round(minutes))}m` : minutes < 60 * 48 ? `${(minutes / 60).toFixed(1)}h` : `${Math.round(minutes / 1440)}d`;
 }
 
-export function formatCloseReport({ stats, usage, agent, pullRequests = [], prices }) {
+export function formatCloseReport({ stats, usage, agent, followUps = [], pullRequests = [], prices }) {
   const records = (Array.isArray(usage) ? usage : [{agent, usage}]).filter(record => record.usage);
   const usages = records.map(record => record.usage);
   const header = ["**Session closed**", stats?.elapsedSeconds != null && duration(stats.elapsedSeconds), stats && `${stats.totalMessages} msgs`].filter(Boolean).join(" · ");
@@ -169,6 +169,7 @@ export function formatCloseReport({ stats, usage, agent, pullRequests = [], pric
   if (!records.some(record => record.agent === agent)) lines.push(`- Tokens: ${agent ?? "agent"} usage unavailable`);
   if (pullRequests.length) lines.push(`- Code: ${pullRequests.map(pr => [`[PR #${pr.number}](${pr.url})`, pr.state?.toLowerCase(),
     pr.additions != null && `+${pr.additions}/−${pr.deletions}`, pr.changedFiles != null && `${pr.changedFiles} files`].filter(Boolean).join(" · ")).join("; ")}`);
+  lines.push(`- Follow-up: ${followUps.length ? followUps.join("; ") : "none"}`);
   return lines.join("\n");
 }
 

@@ -112,12 +112,15 @@ export function planStatusTile(rawReactions, { lifecycle, sendingBotId, botUserI
       };
     });
 
-  const desired = lifecycle;
+  // Closure wins over a run ending: ✋ never replaces a bot-held ✅. Only a
+  // newly admitted run (🔄) reopens the thread.
+  const closed = entries.some((entry) => entry.name === "white_check_mark" && entry.botHolders.length);
+  const desired = lifecycle === "raised_hand" && closed ? "white_check_mark" : lifecycle;
 
   const remove = entries
     .filter((entry) => entry.botHolders.length && entry.name !== desired)
     .map((entry) => ({ name: entry.name, holders: entry.botHolders }));
   const present = entries.some((entry) => entry.name === desired && entry.botHolders.length);
   const add = desired && !present ? [{ name: desired, holders: [sendingBotId] }] : [];
-  return { unchanged: !remove.length && !add.length, remove, add };
+  return { unchanged: !remove.length && !add.length, remove, add, effective: desired };
 }
