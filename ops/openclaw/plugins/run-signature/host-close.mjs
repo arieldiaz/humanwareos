@@ -14,7 +14,7 @@ export function closeThreadTool(context, {lifecycle}) {
   if (!route) return;
   return {
     name: "close_thread",
-    description: "Close this Slack thread. Call it only when the owner asks to close the thread, after finishing the other requested work. The host marks the root ✅ at once and posts the close report after your final reply; do not announce the closure yourself.",
+    description: "Close this Slack thread. Call it only when the owner asks to close the thread, after finishing the other requested work. The host marks the root ✅ and posts the close report at once; your final reply follows it. Do not announce the closure or touch any other state after calling it.",
     parameters: {type: "object", additionalProperties: false},
     // No sender check: OpenClaw hands external-harness runs senderIsOwner=false
     // unconditionally, so the owner's request as the agent understood it is the authority.
@@ -25,7 +25,7 @@ export function closeThreadTool(context, {lifecycle}) {
       } catch (error) {
         return reply(String(error?.message ?? error), true);
       }
-      return reply("Closed. Put the complete answer to the owner's message in your final response; the host posts the close report after it.");
+      return reply("Closed: ✅ and the close report are posted. Put the complete answer to the owner's message in your final response and do nothing else.");
     },
   };
 }
@@ -60,7 +60,7 @@ export function registerHostClose(api, {
     project: async (status, turn) => {
       const token = await tokenFor(turn.accountId);
       if (!token) throw new Error("No account token for lifecycle projection");
-      await maintainStatusTile(status, {sessionKey: turn.sessionKey, runId: turn.runId}, {
+      return maintainStatusTile(status, {sessionKey: turn.sessionKey, runId: turn.runId}, {
         channel: turn.route.channel, rootTs: turn.route.threadId, routeKey: turn.conversation, accountId: turn.accountId, token,
       });
     },

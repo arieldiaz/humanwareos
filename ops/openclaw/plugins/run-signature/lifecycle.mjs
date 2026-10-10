@@ -1,15 +1,15 @@
 import {slackRoute, slackRouteKey} from './slack-route.mjs';
 
 // Stateless thread lifecycle. A run's first model input projects 🔄 and its end
-// projects ✋. An owner close projects ✅ at once; the close report follows the
-// run's final reply. Nothing is stored: the in-process maps only pair a run's
-// start with its end and remember a close until that run ends.
+// projects ✋; an owner close projects ✅ and posts the report at once. The
+// root's bot-held tile is the only shared fact: the projector keeps ✅ when a
+// run ends on a closed thread, so no memory has to connect a close to a run.
+// The in-process map only pairs a run's start with its end.
 export class ThreadLifecycle {
   constructor({project, record, report, excluded = () => false}) {
     Object.assign(this, {project, record, report, excluded});
     this.runs = new Map(); // run key → running turn
     this.latest = new Map(); // conversation → latest admitted run or close
-    this.closes = new Map(); // conversation → turn whose end posts the close report
   }
   route(sessionKey) {
     const route = slackRoute({sessionKey});
@@ -28,31 +28,24 @@ export class ThreadLifecycle {
   async end({sessionKey, runId}) {
     const route = this.route(sessionKey);
     if (!route || !runId) return;
-    const conversation = slackRouteKey(route);
-    const turn = this.runs.get(`${conversation}:${runId}`);
+    const turn = this.runs.get(`${slackRouteKey(route)}:${runId}`);
     if (!turn) return;
     this.runs.delete(turn.key);
-    const close = this.closes.get(conversation);
-    if (!close) return this.settle(turn, 'act');
-    this.closes.delete(conversation);
-    await this.report(close);
+    await this.settle(turn, 'act');
   }
-  // ✅ goes on the root now. The report waits for the live run to end so it
-  // lands after the final reply; without a live run it posts immediately.
   async close({route, sessionKey, accountId}) {
     if (!route || this.excluded(route.channel)) throw new Error('close_thread needs a Slack thread outside excluded channels');
     const conversation = slackRouteKey(route);
-    const run = [...this.runs.values()].findLast(turn => turn.conversation === conversation);
-    const turn = run ?? {key: `${conversation}:close`, route, conversation, sessionKey, accountId};
+    const turn = {key: `${conversation}:close`, route, conversation, sessionKey, accountId};
     this.latest.set(conversation, turn.key);
-    await this.record({...turn, status: 'closed'});
     await this.project('closed', turn);
-    if (run) this.closes.set(conversation, turn);
-    else await this.report(turn);
+    await this.record({...turn, status: 'closed'});
+    await this.report(turn);
   }
+  // The projector reads the root and may keep ✅ in place of ✋; the ledger records what it did.
   async settle(turn, status) {
     if (this.latest.get(turn.conversation) !== turn.key) return;
-    await this.record({...turn, status});
-    await this.project(status, turn);
+    const effective = (await this.project(status, turn)) ?? status;
+    await this.record({...turn, status: effective});
   }
 }
