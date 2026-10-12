@@ -44,6 +44,6 @@ The artifact should make the requested decision easier:
 - carry no questions, decisions, or approval requests; ask those in the conversation that delivered the link;
 - identify source assets and model provenance when relevant.
 
-Promote the completed review through the artifact service with the working session's key as `--session` and return the addressed HTML revision link. The artifact is the review surface and source of truth: never embed or upload its frames, screenshots, or files into chat. Artifact and production images come from the framework generator, `ops/artifacts/image_generator.py`; use a chat-delivering media tool only when the human asks to see an image in chat.
+Promote the completed review through the artifact service with the working session's key as `--session` and return the addressed HTML revision link. The artifact is the review surface and source of truth: never embed or upload its frames, screenshots, or files into chat. Artifact and production images come from the framework generator, `ops/artifacts/image_generator.py`.
 
 If a prior board conflicts with the current brief or instance overlay, the board loses.

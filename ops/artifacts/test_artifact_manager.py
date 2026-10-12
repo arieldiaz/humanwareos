@@ -98,6 +98,7 @@ class ArtifactManagerTests(unittest.TestCase):
         originals = self.source / "originals"
         originals.mkdir()
         (originals / "cat-1.png").write_bytes(b"png")
+        (originals / ".DS_Store").write_bytes(b"finder")
         with self.assertRaisesRegex(ValueError, "originals/ without provenance.json"):
             self.promote("slack:a")
         (self.source / "provenance.json").write_text(json.dumps({"images": [{"file": "originals/dog-1.png"}]}))

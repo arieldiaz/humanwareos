@@ -224,7 +224,8 @@ def validate_document(path: Path, projects: list[str]) -> list[str]:
 
 def validate_media(source: Path) -> list[str]:
     """Originals travel with their provenance: every file under originals/ has a provenance.json entry and back."""
-    originals = {path.relative_to(source).as_posix() for path in (source / ORIGINALS).rglob("*") if path.is_file()}
+    originals = {path.relative_to(source).as_posix() for path in (source / ORIGINALS).rglob("*")
+                 if path.is_file() and not path.name.startswith(".")}
     if not (source / PROVENANCE).is_file():
         return [f"{ORIGINALS}/ without {PROVENANCE}"] if originals else []
     try:
