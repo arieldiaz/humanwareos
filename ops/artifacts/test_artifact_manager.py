@@ -94,6 +94,19 @@ class ArtifactManagerTests(unittest.TestCase):
         self.assertIn("invalid or duplicate artifact number: learning/1", errors)
         self.assertIn("versions are not numbered 1..N: learning/1", errors)
 
+    def test_originals_travel_into_the_revision_only_with_matching_provenance(self) -> None:
+        originals = self.source / "originals"
+        originals.mkdir()
+        (originals / "cat-1.png").write_bytes(b"png")
+        with self.assertRaisesRegex(ValueError, "originals/ without provenance.json"):
+            self.promote("slack:a")
+        (self.source / "provenance.json").write_text(json.dumps({"images": [{"file": "originals/dog-1.png"}]}))
+        with self.assertRaisesRegex(ValueError, "original without provenance: originals/cat-1.png"):
+            self.promote("slack:a")
+        (self.source / "provenance.json").write_text(json.dumps({"images": [{"file": "originals/cat-1.png"}]}))
+        self.promote("slack:a")
+        self.assertEqual((am.locate_artifact(self.root, "learning/1") / "originals" / "cat-1.png").read_bytes(), b"png")
+
     def test_migration_groups_by_session_renumbers_by_date_and_keeps_old_addresses_as_redirects(self) -> None:
         legacy = [("iter-13", "Home · 13", "Q2", "2026-09-03"), ("iter-07", "Home · 7", "3.2", "2026-09-01"),
                   ("variants", "Variants", "F", "2026-09-02"), ("solo", "Solo", "1", "2026-08-30")]

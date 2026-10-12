@@ -16,7 +16,7 @@ data-root/
 └── operations/      shared control state, cache, backups, migrations, and restore evidence
 ```
 
-These six parents express storage semantics. They are separate from privacy tiers: an item can be Tier 0 and generated, or Tier 2 and current. They are also separate from the four context layers: framework and identity context live in source/runtime, while approved current projections enter Layer 4.
+These six parents express storage semantics, independent of privacy tiers (an item can be Tier 0 and generated, or Tier 2 and current) and of the four context layers: framework and identity context live in source/runtime, while approved current projections enter Layer 4.
 
 The instance declares `dataRoot`; framework code never hardcodes a username or machine path.
 
@@ -30,11 +30,11 @@ Strategy uses the same shape: agents load `current/strategy/current.md`, while c
 
 ## Working documents
 
-Working documents are mutable and owned by a project or conversation. They use automatic filesystem snapshots or content revisions, not Git PRs. A workspace manifest records its owner, originating session, creation time, current status, source references, and promoted outputs. Two live sessions do not write the same workspace without an explicit handoff.
+Working documents are mutable and owned by a project or conversation. They use automatic filesystem snapshots or content revisions, not Git PRs. A workspace manifest records its owner, originating session, creation time, current status, source references, and promoted outputs. Two live sessions do not write the same workspace without an explicit handoff. A workspace is scratch: once its outputs are promoted it may be deleted.
 
 ## Artifacts and derived data
 
-An artifact is a versioned item as defined in [`docs/versioning.md`](docs/versioning.md); its revisions are immutable versions. Framework code owns renderers, shells, schemas, and publication behavior; the data plane owns rendered content, source material, and manifests. Agents stage artifact candidates in a task-owned workspace and promote them only through the framework artifact service. Canonical revisions live in a non-served store. A versioned registry is the publication authority, and a disposable review projection is generated only from registered revisions. The domain adapter serves that projection rather than the canonical store, so filesystem presence cannot create an addressable artifact. The service is the single writer for canonical revisions and the registry and the sole builder of project indexes, compatibility aliases, and the review projection; instructions must not tell an agent to copy a candidate directly into either artifact location or update discovery files by hand.
+An artifact is a versioned item as defined in [`docs/versioning.md`](docs/versioning.md); its revisions are immutable versions. Framework code owns renderers, shells, schemas, and publication behavior; the data plane owns rendered content, source material, and manifests. Agents stage artifact candidates in a task-owned workspace and promote them only through the framework artifact service. A revision carries its images' full-resolution originals under `originals/`, each listed in `provenance.json` with prompt, model, references, and date; the framework generator `ops/artifacts/image_generator.py` writes both into the staged folder, and promotion rejects either without the other. Canonical revisions live in a non-served store. A versioned registry is the publication authority, and a disposable review projection is generated only from registered revisions. The domain adapter serves that projection rather than the canonical store, so filesystem presence cannot create an addressable artifact. The service is the sole writer of canonical revisions, the registry, project indexes, compatibility aliases, and the review projection; agents never copy a candidate into either artifact location or edit discovery files by hand.
 
 Promotion fails closed in this order: validate the staged candidate, install the immutable revision, prepare the next registry, build and verify a complete temporary review projection, commit the registry, then atomically swap the projection. An interrupted promotion may leave an inert unregistered revision in the non-served store, but it must never expose a URL. Public publication is a separate explicit transition and may resolve sources only through the registry.
 
@@ -44,7 +44,7 @@ Imports preserve an external corpus exactly as received, including its original 
 
 ## Locating things
 
-Agents find data-plane items by their identifiers, never by searching the home folder. `artifact_manager.py locate artifact <project>/<n>[/versions/<k>]` prints the canonical revision directory for an artifact address from the registry; artifacts have no per-project working path. `artifact_manager.py locate media <filename>` prints a generated media file from the configured media roots: `generated/media/` and the OpenClaw state `media/` directory. Both exit nonzero when nothing matches.
+Agents find data-plane items by their identifiers, never by searching the home folder. `artifact_manager.py locate artifact <project>/<n>[/versions/<k>]` prints the canonical revision directory for an artifact address from the registry; artifacts have no per-project working path. `artifact_manager.py locate media <filename>` prints a generated media file from `generated/media/`. Both exit nonzero when nothing matches.
 
 ## Sessions
 
