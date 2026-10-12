@@ -10,6 +10,14 @@ Promote a staged directory as the working session's artifact. The first promotio
 /usr/bin/python3 "<runtime>/current/framework/ops/artifacts/artifact_manager.py" create --source <STAGED_DIRECTORY> --project <PROJECT_SLUG> --project-name <PROJECT_NAME> --session <SESSION_KEY> --title <TITLE> --date <DATE_LABEL>
 ```
 
+Generate or edit images straight into the staged directory with `image_generator.py`. It runs one `codex exec` turn with Codex's built-in image tool, which bills the owner's signed-in ChatGPT subscription rather than an API key, copies each full-resolution image under `originals/`, and appends its prompt, Codex version, parameters, reference checksums, and date to `provenance.json`; `create` rejects originals and provenance that do not match. Repeat `--reference` to edit from up to 16 images. Codex failures, including subscription limits, exit nonzero with Codex's message. It never posts to a chat.
+
+```text
+/usr/bin/python3 "<runtime>/current/framework/ops/artifacts/image_generator.py" --staging <STAGED_DIRECTORY> --name <IMAGE_SLUG> --prompt <PROMPT> [--reference <IMAGE>]... [--aspect <W:H>] [--count 1-4]
+```
+
+The image tool does not promise transparency. `remove_background.swift <INPUT> <OUTPUT.png>` cuts the foreground out with macOS Vision as an sRGB RGBA PNG at full size; write the cutout beside `index.html` as a derived asset and keep its source in `originals/`.
+
 Never write the revision store, registry, or projection by hand. Verify the store and projection with `artifact_manager.py verify`, and rebuild the projection with `rebuild`.
 
 `migrate --sessions <FILE>` converts a pre-schema-3 registry: it groups revisions strictly by creating session (`{"<project>/<revision>": "<session>"|null}`), numbers artifacts and versions by date, keeps old addresses as redirects, and prints the plan with the current registry checksum. It writes only with `--write`; rehearse against a copied store first.

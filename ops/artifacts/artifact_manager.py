@@ -43,7 +43,7 @@ LEGACY_LABEL = re.compile(r"\s*(?:·\s*(?:[A-Z]?\d+(?:\.\d+)?|[A-Z]\d*)|\((?:[rv
 DATE_FORMATS = ("%Y-%m-%d", "%d %b %Y", "%B %d, %Y", "%b %d, %Y", "%b %d %Y")
 ARTIFACT_ADDRESS = re.compile(r"(?:.*/artifacts/)?([a-z0-9-]+)/(\d+)(?:/versions/(\d+))?/?")
 MEDIA_ROOTS = [Path(DATA_ROOT) / "generated" / "media"] if DATA_ROOT else []
-MEDIA_ROOTS.append(Path(os.environ.get("OPENCLAW_STATE_DIR") or Path.home() / ".openclaw") / "media")
+ORIGINALS, PROVENANCE = "originals", "provenance.json"
 
 
 # Registry: projects own artifacts numbered 1..N and the next number to assign; artifacts own versions numbered 1..N.
@@ -220,6 +220,20 @@ def validate_document(path: Path, projects: list[str]) -> list[str]:
     if SHELL_SCRIPT_REFERENCE not in document:
         errors.append("missing artifact-shell.js")
     return errors
+
+
+def validate_media(source: Path) -> list[str]:
+    """Originals travel with their provenance: every file under originals/ has a provenance.json entry and back."""
+    originals = {path.relative_to(source).as_posix() for path in (source / ORIGINALS).rglob("*")
+                 if path.is_file() and not path.name.startswith(".")}
+    if not (source / PROVENANCE).is_file():
+        return [f"{ORIGINALS}/ without {PROVENANCE}"] if originals else []
+    try:
+        recorded = {image["file"] for image in json.loads((source / PROVENANCE).read_text())["images"]}
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return [f"invalid {PROVENANCE}"]
+    return ([f"original without provenance: {name}" for name in sorted(originals - recorded)]
+            + [f"provenance without original: {name}" for name in sorted(recorded - originals)])
 
 
 def verify_store(root: Path, registry: dict, strict_shell: bool = True, planned: frozenset = frozenset()) -> list[str]:
@@ -483,7 +497,7 @@ def create(args: argparse.Namespace) -> None:
                                               frozenset(entry.name for entry in on_disk.iterdir()) if on_disk.is_dir() else frozenset())
     source = Path(args.source).resolve()
     errors = (validate_document(source / "index.html", [project["id"], *project.get("aliases", [])])
-              if (source / "index.html").is_file() else ["missing index.html"])
+              if (source / "index.html").is_file() else ["missing index.html"]) + validate_media(source)
     if errors:
         raise ValueError("artifact contract failed:\n- " + "\n- ".join(errors))
     target = revisions_root(args.root) / project["id"] / current(artifact)["revision"]
