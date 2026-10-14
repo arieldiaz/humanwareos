@@ -380,3 +380,16 @@ export function markdownToSlackRichTextBlocks(markdown, options = {}) {
 }
 
 export default markdownToSlackRichTextBlocks;
+
+/**
+ * A channel root is one line. Split a multi-line channel post into the title
+ * line and the body that belongs in its thread; null when it is already one line.
+ */
+export function splitSlackChannelRoot(markdown) {
+  const lines = String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n");
+  const first = lines.findIndex((line) => line.trim());
+  if (first < 0) return null;
+  const body = lines.slice(first + 1).join("\n").trim();
+  if (!body) return null;
+  return { title: lines[first].trim(), body };
+}

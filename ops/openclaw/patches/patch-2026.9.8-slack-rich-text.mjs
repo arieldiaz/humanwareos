@@ -21,6 +21,11 @@ import {resolveSlackPluginDist} from "./slack-plugin-root.mjs";
 // multi-chunk, plain-text or pre-rendered mrkdwn sends, and anything over
 // Slack's block limits.
 //
+// It also makes a channel root one line: a multi-line text send with no
+// thread posts its first line as the root and the rest as the first reply in
+// that thread, so the shape holds whichever harness or tool posted it. Media,
+// block, DM and threaded sends are untouched.
+//
 // Idempotent, fails closed if the bundle shape changed. Restart the gateway
 // after applying.
 
@@ -49,7 +54,7 @@ const sendFile = path.join(pluginRoot, matches[0]);
 // 1. Install the converter next to the bundle it is imported from.
 fs.copyFileSync(moduleSource, path.join(pluginRoot, MODULE_NAME));
 
-const result = { module: MODULE_NAME, send: "unchanged" };
+const result = { module: MODULE_NAME, send: "unchanged", root: "unchanged" };
 
 // 2. Text chunk post. Only single-chunk, media-free Markdown sends get blocks:
 // multi-chunk splits would need per-chunk conversion, and media sends carry
@@ -78,6 +83,81 @@ const result = { module: MODULE_NAME, send: "unchanged" };
     source = importLine + source.replace(before, after);
     fs.writeFileSync(sendFile, source);
     result.send = "patched";
+  }
+}
+
+// 3. Channel root split. The title line posts at the root; the body posts in
+// its thread and keeps the single-chunk rich_text conversion.
+{
+  const steps = [
+    {
+      before: `	let lastMessageId = "";`,
+      after: `	let lastMessageId = "";
+	let rootTs;`,
+    },
+    {
+      before: `			threadTs: opts.threadTs,
+			identity: sendIdentity,`,
+      after: `			threadTs: opts.threadTs ?? rootTs,
+			identity: sendIdentity,`,
+    },
+    {
+      before: `		text: trimmedMessage,
+		textLimit: textChunkLimit,`,
+      after: `		text: rootSplit ? rootSplit.body : trimmedMessage,
+		textLimit: textChunkLimit,`,
+    },
+    {
+      before: `	const resolvedChunks = resolveSlackTextChunks({`,
+      after: `	const rootSplit = !opts.threadTs && !opts.mediaUrl && !blocks && recipient.kind === "channel" ? splitSlackChannelRoot(trimmedMessage) : null;
+	const resolvedChunks = resolveSlackTextChunks({`,
+    },
+    {
+      before: `	} else chunksToPost = resolvedChunks.length ? resolvedChunks : [""];`,
+      after: `	} else chunksToPost = rootSplit ? [rootSplit.title, ...resolvedChunks] : resolvedChunks.length ? resolvedChunks : [""];`,
+    },
+    {
+      before: `		const autoRichTextBlocks = chunksToPost.length === 1 && !opts.mediaUrl && !opts.textIsSlackPlainText && !opts.textIsSlackMrkdwn ? markdownToSlackRichTextBlocks(trimmedMessage) : void 0;`,
+      after: `		const autoRichTextBlocks = chunksToPost.length === (rootSplit ? 2 : 1) && partIndex === chunksToPost.length - 1 && !opts.mediaUrl && !opts.textIsSlackPlainText && !opts.textIsSlackMrkdwn ? markdownToSlackRichTextBlocks(rootSplit ? rootSplit.body : trimmedMessage) : void 0;`,
+    },
+    {
+      before: `			...opts.textIsSlackPlainText ? { mrkdwn: false } : {}
+		});
+	}`,
+      after: `			...opts.textIsSlackPlainText ? { mrkdwn: false } : {}
+		});
+		if (rootSplit && partIndex === 0) rootTs = lastMessageId;
+	}`,
+    },
+    {
+      before: `	return {
+		messageId: lastMessageId,
+		channelId: deliveredChannelId,
+		threadTs: deliveredThreadTs,
+		receipt: createSlackSendReceiptFromResults(deliveredResults, deliveredThreadTs)
+	};`,
+      after: `	return {
+		messageId: rootTs ?? lastMessageId,
+		channelId: deliveredChannelId,
+		threadTs: deliveredThreadTs,
+		receipt: createSlackSendReceiptFromResults(deliveredResults, deliveredThreadTs)
+	};`,
+    },
+  ];
+  const importLine = `import { splitSlackChannelRoot } from "./${MODULE_NAME}";\n`;
+  let source = fs.readFileSync(sendFile, "utf8");
+  if (source.includes("splitSlackChannelRoot")) {
+    result.root = "alreadyPatched";
+  } else {
+    for (const { before } of steps) {
+      if (source.split(before).length !== 2) {
+        throw new Error(`sendMessageSlack root shape changed in ${sendFile}; review before patching.`);
+      }
+    }
+    for (const { before, after } of steps) source = source.replace(before, after);
+    source = importLine + source;
+    fs.writeFileSync(sendFile, source);
+    result.root = "patched";
   }
 }
 

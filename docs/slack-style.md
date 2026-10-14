@@ -14,7 +14,7 @@ Verify authored output against delivered Slack blocks: a bold label authored by 
 
 ## Channel posts
 
-A top-level post in any channel is one line. Details, reports, lists and links go in the first reply in that post's thread, never in the root. This holds for agent-initiated posts, scheduled checks and status reports alike: post the line, then reply in its thread, or use the work-thread tool, which does both.
+A top-level post in any channel is one line. Details, reports, lists and links go in the first reply in that post's thread, never in the root. The adapter enforces this shape: a multi-line channel post lands as its first line at the root and the rest as the first reply in that thread.
 
 ## Work threads
 
