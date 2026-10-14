@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { markdownToSlackRichTextBlocks } from "./markdown-to-rich-text.mjs";
+import { markdownToSlackRichTextBlocks, splitSlackChannelRoot } from "./markdown-to-rich-text.mjs";
 
 test("plain prose keeps the upstream text path", () => {
   assert.equal(markdownToSlackRichTextBlocks("Just a sentence with **bold** in it."), null);
@@ -89,4 +89,14 @@ test("oversized input falls back to the text path", () => {
 test("too many blocks falls back to the text path", () => {
   const many = Array.from({ length: 60 }, (_, index) => `## Heading ${index}`).join("\n\n");
   assert.equal(markdownToSlackRichTextBlocks(many), null);
+});
+
+test("a multi-line channel post splits into a one-line root and a threaded body", () => {
+  assert.deepEqual(splitSlackChannelRoot("## Fix: raw JSON\n\nDetails here\n- one\n- two\n"), {
+    title: "## Fix: raw JSON",
+    body: "Details here\n- one\n- two",
+  });
+  assert.deepEqual(splitSlackChannelRoot("\n\n  Title only  \n\n"), null);
+  assert.equal(splitSlackChannelRoot("One line"), null);
+  assert.equal(splitSlackChannelRoot(""), null);
 });
