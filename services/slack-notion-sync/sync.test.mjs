@@ -102,8 +102,20 @@ test("classifies message roots and builds rows without session enrichment", () =
 test("uses the first root reaction and leaves only absent reactions blank", () => {
   assert.equal(statusFromRoot({ reactions: [{ name: "raised_hand" }, { name: "white_check_mark" }] }), "✋ Act");
   assert.equal(statusFromRoot({ reactions: [{ name: "eyes" }] }), "👀 Eyes");
-  assert.equal(statusFromRoot({ reactions: [{ name: "custom_state" }] }), ":custom_state: Custom State");
+  assert.equal(statusFromRoot({ reactions: [{ name: "butterfly" }] }), "🦋 Butterfly");
+  assert.equal(statusFromRoot({ reactions: [{ name: "chart_with_upwards_trend" }] }), "📈 Chart With Upwards Trend");
+  assert.equal(statusFromRoot({ reactions: [{ name: "spiral_calendar_pad" }] }), "🗓️ Spiral Calendar Pad");
+  assert.equal(statusFromRoot({ reactions: [{ name: "melting_face" }] }), "🫠 Melting Face");
+  assert.equal(statusFromRoot({ reactions: [{ name: "custom_state" }] }), "🧩 Custom State");
   assert.equal(statusFromRoot({}), null);
+});
+
+test("changes the fingerprint when status rendering changes", () => {
+  const root = { ts: "1.0", text: "A root", reactions: [{ name: "butterfly" }] };
+  assert.notEqual(
+    rootFingerprint("work", root),
+    rootFingerprint("work", { ...root, reactions: [{ name: "chart_with_upwards_trend" }] }),
+  );
 });
 
 test("formats timestamps and session stats from primary sources", () => {
