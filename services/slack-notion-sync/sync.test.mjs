@@ -14,6 +14,9 @@ import {
   sessionStats,
   slackPermalink,
   statusFromRoot,
+  statusesFromRoot,
+  pendingStatusEvents,
+  hasUnprocessedStatusEvents,
   titleFromSlackText,
   validateInput,
 } from "./sync.mjs";
@@ -99,24 +102,41 @@ test("classifies message roots and builds rows without session enrichment", () =
   assert.notEqual(rootFingerprint("work", discovered.root), rootFingerprint("work", { ...discovered.root, reply_count: 1 }));
 });
 
-test("uses the first root reaction and leaves only absent reactions blank", () => {
-  assert.equal(statusFromRoot({ reactions: [{ name: "raised_hand" }, { name: "white_check_mark" }] }), "✋ Act");
-  assert.equal(statusFromRoot({ reactions: [{ name: "hand" }] }), "✋ Act");
-  assert.equal(statusFromRoot({ reactions: [{ name: "eyes" }] }), "👀 Eyes");
-  assert.equal(statusFromRoot({ reactions: [{ name: "butterfly" }] }), "🦋 Butterfly");
-  assert.equal(statusFromRoot({ reactions: [{ name: "chart_with_upwards_trend" }] }), "📈 Chart With Upwards Trend");
-  assert.equal(statusFromRoot({ reactions: [{ name: "spiral_calendar_pad" }] }), "🗓️ Spiral Calendar Pad");
-  assert.equal(statusFromRoot({ reactions: [{ name: "melting_face" }] }), "🫠 Melting Face");
-  assert.equal(statusFromRoot({ reactions: [{ name: "custom_state" }] }), "🧩 Custom State");
-  assert.equal(statusFromRoot({}), null);
+test("derives status only from configured human-held canonical reactions", () => {
+  const actors = new Set(["UOWNER"]);
+  assert.equal(statusFromRoot({ reactions: [{ name: "hand", users: ["UOWNER"] }] }, actors), "✋ Act");
+  assert.equal(statusFromRoot({ reactions: [{ name: "raised_hand", users: ["UBOT"] }] }, actors), null);
+  assert.equal(statusFromRoot({ reactions: [{ name: "eyes", users: ["UOWNER"] }] }, actors), null);
+  assert.deepEqual(statusesFromRoot({ reactions: [
+    { name: "raised_hand", users: ["UOWNER"] },
+    { name: "white_check_mark", users: ["UOWNER"] },
+  ] }, actors), ["raised_hand", "white_check_mark"]);
+  assert.equal(statusFromRoot({ reactions: [
+    { name: "raised_hand", users: ["UOWNER"] },
+    { name: "white_check_mark", users: ["UOWNER"] },
+  ] }, actors), null);
 });
 
-test("changes the fingerprint when status rendering changes", () => {
-  const root = { ts: "1.0", text: "A root", reactions: [{ name: "butterfly" }] };
-  assert.notEqual(
+test("ignores social reactions in the workflow fingerprint", () => {
+  const root = { ts: "1.0", text: "A root", reactions: [{ name: "butterfly", users: ["UOTHER"] }] };
+  assert.equal(
     rootFingerprint("work", root),
-    rootFingerprint("work", { ...root, reactions: [{ name: "chart_with_upwards_trend" }] }),
+    rootFingerprint("work", { ...root, reactions: [{ name: "chart_with_upwards_trend", users: ["UOTHER"] }] }),
   );
+});
+
+test("debounces and deduplicates structured status events by thread", () => {
+  const first = {id: "a", observedAt: "2026-10-15T12:00:00Z", channelId: "C1", messageTs: "1.0", eventTs: "1.1"};
+  const second = {...first, id: "b", observedAt: "2026-10-15T12:00:01Z", eventTs: "1.2"};
+  const text = `${JSON.stringify(first)}\n${JSON.stringify(second)}\n`;
+  assert.deepEqual(pendingStatusEvents(text, {processedEvents: {}}, new Date("2026-10-15T12:00:02Z")), []);
+  const ready = pendingStatusEvents(text, {processedEvents: {a: "done"}}, new Date("2026-10-15T12:00:04Z"));
+  assert.equal(ready.length, 1);
+  assert.equal(ready[0].event.id, "b");
+  assert.deepEqual(ready[0].ids, ["b"]);
+  assert.equal(hasUnprocessedStatusEvents(text, {processedEvents: {a: "done"}}), true);
+  assert.equal(hasUnprocessedStatusEvents(text, {processedEvents: {a: "done", b: "done"}}), false);
+  assert.doesNotThrow(() => pendingStatusEvents(`${JSON.stringify(first)}\n{`, {processedEvents: {}}, new Date("2026-10-15T12:00:04Z")));
 });
 
 test("formats timestamps and session stats from primary sources", () => {

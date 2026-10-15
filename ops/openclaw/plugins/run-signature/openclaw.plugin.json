@@ -1,7 +1,7 @@
 {
   "id": "run-signature",
   "name": "Run Signature",
-  "description": "Per-message reaction signatures, the root lifecycle tile, owner thread closure, and model switching for Slack conversations.",
+  "description": "Per-message reaction signatures, human status-event capture, owner thread closure, and model switching for Slack conversations.",
   "activation": {
     "onStartup": true
   },
@@ -13,6 +13,11 @@
     "properties": {
       "defaultSlackAccount": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
       "dataRoot": {"type": "string", "pattern": "^/"},
+      "humanStatusActors": {
+        "type": "array",
+        "items": {"type": "string", "pattern": "^[A-Z0-9]+$"},
+        "uniqueItems": true
+      },
       "excludedChannels": {
         "type": "array",
         "items": {"type": "string", "pattern": "^[A-Z0-9]+$"},

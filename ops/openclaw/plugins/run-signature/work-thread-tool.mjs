@@ -17,7 +17,6 @@ async function listSlackChannels(token) {
 export function registerWorkThreadTool(api, {
   resolveSlackRuntimeModule,
   retrySlackRateLimit,
-  maintainStatusTile,
   workThreadPosts,
 }) {
   api.registerTool?.({contextVersion: 2, create: context => {
@@ -28,7 +27,7 @@ export function registerWorkThreadTool(api, {
     if (!currentChannel || !agentId || !accountId) return;
     return {
       name: "start_work_thread",
-      description: "Start substantial Slack work in its normal shape with one call: the title as one top-level channel post, a working status, and a durable high-reasoning session that receives the brief, replies in that thread, and begins immediately. Use this instead of separate message and sessions_spawn calls.",
+      description: "Start substantial Slack work in its normal shape with one call: the title as one top-level channel post and a durable high-reasoning session that receives the brief, replies in that thread, and begins immediately. Use this instead of separate message and sessions_spawn calls.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -73,13 +72,6 @@ export function registerWorkThreadTool(api, {
               return api.runtime.gateway.request("send", params);
             },
             prepareScaffold: clearScaffold,
-            setStatus: ({rootMessageId, status}) => maintainStatusTile(status, context, {
-              channel,
-              rootTs: rootMessageId,
-              routeKey: `${channel.toLowerCase()}:${rootMessageId}`,
-              accountId,
-              token,
-            }),
             createSession: (params) => api.runtime.gateway.request("sessions.create", params),
           });
           return {content: [{type: "text", text: JSON.stringify(result)}], details: result};

@@ -13,7 +13,7 @@ import {registerWorkThreadTool} from "./work-thread-tool.mjs";
 import {registerHostClose} from "./host-close.mjs";
 import {registerThreadLead} from "./thread-lead.mjs";
 import {registerSwitchModelTool} from "./switch-model-tool.mjs";
-import {createStatusProjector} from "./status-projector.mjs";
+import {installHumanStatusEventBridge} from "./human-status-events.mjs";
 import {resolveSlackChannel, slackRouteFromSessionKey} from "./slack-route.mjs";
 
 export {slackRouteFromSessionKey};
@@ -22,15 +22,10 @@ export {closeThreadTool} from "./host-close.mjs";
 export {allowedModels, applySessionSelection, resolveRequestedModel, switchModelTool} from "./switch-model-tool.mjs";
 
 export {
-  normalizeReactions,
   resolveModelTile,
   resolveHarnessTile,
   resolveThinkingTile,
   normalizeThinkingLevel,
-  ADMITTED_STATUS,
-  resolveStatusTile,
-  planStatusTile,
-  tileKind,
 } from "./strip-core.mjs";
 
 // Faults go to a machine-readable journal, not just a human-readable log line.
@@ -40,29 +35,23 @@ export {
 const HOME = homedir();
 const STATE_ROOT = process.env.OPENCLAW_STATE_DIR || join(HOME, ".openclaw");
 const FAULT_JOURNAL = `${STATE_ROOT}/run-signature/faults.jsonl`;
-const OUTBOUND_EMOJI = {
-  act: "raised_hand",
-  working: "arrows_counterclockwise",
-  closed: "white_check_mark",
-};
-
-async function recordOutboundStatus({ dataRoot, channel, threadId, status, agent, traceId, sessionKey, runId, recovery }) {
+async function recordRunLifecycle({ dataRoot, channel, threadId, status, agent, traceId, sessionKey, runId, recovery }) {
   if (!channel || !threadId) return;
   if (!dataRoot) throw new Error("the canonical Humanware data root is unavailable");
   const ts = new Date().toISOString();
   const event = {
     schemaVersion: 2,
-    id: `status:${channel}:${threadId}:${runId ?? ts}:${recovery ? "recovery" : status}`,
-    traceId: traceId ?? `status:${channel}:${threadId}`,
+    id: `lifecycle:${channel}:${threadId}:${runId ?? ts}:${recovery ? "recovery" : status}`,
+    traceId: traceId ?? `lifecycle:${channel}:${threadId}`,
     ts,
     logicalSessionId: `slack:${channel}:${threadId}`,
     runtimeSessionId: null,
     agent: agent ?? null,
     source: "openclaw",
-    kind: "status.set",
+    kind: "lifecycle.set",
     level: "normal",
-    summary: status ? `Status ${status}` : "Clear interrupted working",
-    details: { channelId: channel, threadId, status, emoji: OUTBOUND_EMOJI[status], ...(status == null ? {remove: true} : {}) },
+    summary: status ? `Lifecycle ${status}` : "Clear interrupted lifecycle",
+    details: {channelId: channel, threadId, lifecycle: status, ...(status == null ? {remove: true} : {})},
     sourceRef: {sessionKey: sessionKey ?? null, runId: runId ?? null},
   };
   const path = join(dataRoot, "evidence", "sessions", "events", `${ts.slice(0, 10)}.jsonl`);
@@ -278,7 +267,7 @@ function tolerantWrite(task) {
 const plugin = {
   id: "run-signature",
   name: "Run Signature",
-  description: "Adds run signatures and maintains the root status tile.",
+  description: "Adds per-message run signatures and captures human root-status events.",
   register(api) {
     const excludedChannels = new Set((api.pluginConfig?.excludedChannels ?? []).map((value) => String(value).toUpperCase()));
     const isExcludedChannel = (channel) => excludedChannels.has(String(channel ?? "").toUpperCase());
@@ -286,9 +275,12 @@ const plugin = {
     const bySession = new Map();
     const byAgent = new Map();
     const botIdCache = new Map();
-    const serializeRunStrip = createKeyedSerialQueue();
-    const maintainStatusTile = createStatusProjector(api, {appendFaultJournal, botIdCache,
-      resolveBotUserId, resolveSlackRuntimeModule, retrySlackRateLimit, serialize: serializeRunStrip});
+    const dataRoot = resolveDataRoot(api.config, api.pluginConfig);
+    const uninstallHumanStatusBridge = installHumanStatusEventBridge({
+      dataRoot,
+      actorIds: api.pluginConfig?.humanStatusActors,
+    });
+    api.on("gateway_stop", uninstallHumanStatusBridge);
 
     const workThreadPosts = new Set();
     const slackBotUserIds = async () => {
@@ -300,8 +292,8 @@ const plugin = {
       }
       return ids;
     };
-    registerWorkThreadTool(api, {resolveSlackRuntimeModule, retrySlackRateLimit, maintainStatusTile, workThreadPosts});
-    registerHostClose(api, {isExcludedChannel, maintainStatusTile, recordOutboundStatus, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi});
+    registerWorkThreadTool(api, {resolveSlackRuntimeModule, retrySlackRateLimit, workThreadPosts});
+    registerHostClose(api, {isExcludedChannel, recordRunLifecycle, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi});
     registerSwitchModelTool(api);
     registerThreadLead(api, {isExcludedChannel, botUserIds: slackBotUserIds});
 

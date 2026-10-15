@@ -48,7 +48,7 @@ Agents find data-plane items by their identifiers, never by searching the home f
 
 ## Sessions
 
-Channels are inputs to the session ledger, not durable memory. A canonical conversation event records channel adapter, external thread identifier, agent identity, selected execution profile, timestamps, attachments, delivery result, and the same outbound status that rendered the root tile. A channel export may preserve the surface transcript, but memory promotion is a separate deliberate operation.
+Channels are inputs to the session ledger, not durable memory. A canonical conversation event records channel adapter, external thread identifier, agent identity, selected execution profile, timestamps, attachments, delivery result, and internal run lifecycle. Observed human root status is a separate fact with its source event or reconciliation provenance. A channel export may preserve the surface transcript, but memory promotion is a separate deliberate operation.
 
 The canonical metadata ledger is append-only JSONL under `evidence/sessions/events/` and conforms to `schemas/session-event.schema.json`. Stable event identifiers make adapters idempotent. Harness-specific sanitized traces remain Tier 0 evidence under `evidence/sessions/raw`; normalized events retain a bounded source reference. Each generated session JSON under `generated/sessions/records` puts its summary first and its complete sanitized provider-visible activity second. That file and other human-readable session views are rebuildable, never authorities. Activity remains a metadata-only cross-session index.
 

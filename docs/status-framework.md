@@ -1,27 +1,51 @@
 # Status framework
 
-Lifecycle answers who owns the next move. The host derives it from the run lifecycle and owner-authorized closure; model output never chooses it.
+Run lifecycle and human workflow status are separate facts. The host records run lifecycle; an instance-configured human controls Slack root status. Neither substitutes for the other.
 
 Budget: 900 words. Over it, consolidate.
 
-## States
+## Run lifecycle
 
-- `working`: admitted execution owns the next move; 🔄.
-- `act`: the run ended and the turn returns to the human; ✋.
-- `closed`: the owner asked to close the thread; ✅.
+- `working`: admitted execution owns the next move.
+- `act`: the run ended and the turn returns to the human.
+- `closed`: the owner asked to close the thread.
 
-`done` is not a current alias. Historical append-only records are not rewritten. Domain processing states and harness run completion are separate vocabularies.
+`done` is not a current alias. Historical append-only records are not rewritten. Domain processing states, human workflow status, and harness completion are separate vocabularies.
+
+The first model-start event admits a run as `working`; duplicate starts are idempotent, and the end of the latest admitted run records `act`. When the owner asks to close, the agent finishes the other requested work and calls `close_thread`. The host records `closed` and posts one measured close report. Closure remains soft: later sends, completions, scheduled wakes, and human messages proceed normally.
+
+Slack never renders run lifecycle as a root reaction. Run admission, completion, closure, acknowledgement, typing, work-thread creation, recovery, and sweeps may not add, replace, or remove reactions on a Slack root. Agent reaction tools may not write root reactions. This restriction does not affect per-message provenance reactions on delivered agent replies.
+
+## Human Slack status
+
+The canonical Slack root statuses are:
+
+- `working`: 🔄 (`arrows_counterclockwise`)
+- `act`: ✋ (`raised_hand`; normalize Slack's read alias `hand`)
+- `scheduled`: 🗓️ (`calendar`)
+- `closed`: ✅ (`white_check_mark`)
+- `unknown`: no accepted canonical reaction
+
+Only reactions held by an instance-configured human status actor count. Bot-held reactions, reactions from other people, and noncanonical emoji are social or provenance data and do not set status.
+
+Status is derived from the current root snapshot. Zero distinct canonical reactions held by configured actors means `unknown`; exactly one means that status; more than one is ambiguous, projects as `unknown`, and is journaled for manual review. Never resolve ambiguity by reaction order, first reaction, precedence, or inference.
+
+Human reactions are never removed or rewritten by the system. To change status, the human removes the old canonical reaction and adds the new one. A short per-root debounce may coalesce that pair before projection.
 
 ## Projection and recovery
 
-The first model-start event of a run admits it as `working`; duplicate start events are idempotent, and the end of that run sets `act`. Only the latest admitted run, from any agent, sets the root tile. No lifecycle state is stored: the root's bot-held tile is the record, and a run interrupted by restart leaves 🔄 until the thread's next run ends.
+Slack is the source for human workflow status. Notion projects it one way and never writes back to Slack.
 
-Closure has one path. When the owner asks to close, the agent finishes the other requested work and calls `close_thread`. The host puts ✅ on the root and posts one measured close report in the thread at once, writing it to the generated session view and the session ledger; the agent's final reply follows. A run that ends on a closed thread leaves ✅ in place, because the projector reads the root before writing and ✋ never replaces a bot-held ✅; no memory has to connect the close to the run. The report is best effort: if measuring or posting fails, ✅ stays and the fault is journaled. Closure authority is the owner's request as the agent understood it: bots, quoted text, reactions, and the model's own initiative cannot close a thread. The host does not re-check the sender, because the runtime hands external-harness runs no trustworthy owner bit.
+The Slack adapter consumes structured `reaction_added` and `reaction_removed` events for message items. It accepts only configured human actors and canonical status reactions, silently claims the event before ordinary agent dispatch, and never wakes a model or posts a reply. Prose rendering of a system event is not an authentication or parsing boundary.
 
-Only the projector can add/remove bot-owned lifecycle reactions. Human reactions remain untouched social input and cannot suppress canonical state. Agent reaction tools reject the lifecycle vocabulary. Provenance reactions belong on the delivered reply, not the root.
+After a short per-root debounce, the projector refetches the exact message, verifies it is a root, derives status from the complete current reaction snapshot, and upserts the row by `channel_id:thread_ts`. Reactions on replies and non-message items are ignored.
 
-`closed` is soft and nothing is fenced: later sends, subagent completions and scheduled wakes proceed normally, and the next admitted run in the thread replaces ✅ with 🔄 and then its own terminal status through ordinary admission. A repeated close request posts another report. Agent-authored Slack messages, including the close report, are context, never triggers, so a report cannot wake another identity; a later human message reopens the thread normally. Machine workflows, including email receipts, may report domain state but cannot choose conversation lifecycle. Slack acknowledgement and native status-reaction writers must be disabled in the activation configuration.
+Processing is idempotent. Deduplicate Slack retries by event ID and, when multiple apps observe one workspace action, by a stable logical event key. A status-change timestamp never moves backward. A validated event supplies its event timestamp; reconciliation without a retained event uses observation time and records that provenance.
+
+A periodic full reconciliation remains mandatory. It repairs dropped, delayed, duplicated, or out-of-order events and Notion write failures. Projection updates only owned Notion properties; page bodies, comments, and unrelated properties remain untouched.
+
+Cutover removes every agent-held root reaction, including canonical lifecycle reactions, while preserving every human-held reaction. Historical agent suggestions may be retained only as a manual-review artifact; they do not become human-authored status. Disable acknowledgement, typing, native status-reaction, and custom root-reaction writers before cleanup. Rollback may restore code but must not recreate agent-held root status.
 
 ## Verification and release
 
-Verify changed behavior through the affected harness and delivery paths, including recovery where relevant. Fixtures alone do not establish live Slack acceptance. Merge and production activation require separate human approval.
+Verify that agent runs, closure, and work-thread creation make zero root-reaction writes; closure still records lifecycle and posts one report; per-message provenance remains; status reduction covers authorized and unauthorized holders, zero, one, and multiple statuses, and `hand`; events converge after retries and reordering without waking a model; reconciliation repairs a dropped event; and Notion preserves page bodies, comments, and unrelated properties. Live acceptance has the configured human add, change, and remove each status while Notion follows. Fixtures alone do not establish live Slack acceptance. Merge and production activation require separate human approval.

@@ -22,6 +22,8 @@ Patches are applied by `scripts/openclaw-cutover.sh activate`, after the staged 
 
 `patch-2026.9.8-slack-response-reliability.mjs` makes a terminal event from the session's current writer authoritative when restart bookkeeping still names an older recovery run, preventing a successful Slack turn from remaining falsely `running`. Session-start conflicts remain retryable until the ordinary age floor rather than being dead-lettered after eight quick attempts, and persisted or inspected ingress payloads redact credential-shaped fields.
 
+`patch-2026.9.8-slack-human-status-events.mjs` offers structured Slack reaction events to the Humanware status bridge before stock reaction notifications render them as prose. A claimed configured-human canonical status event is journaled for the Notion projector and silently consumed, so it neither starts a model turn nor posts text. Nonclaimed events retain stock behavior; the instance disables general reaction notifications.
+
 `../slack-spin-out.mjs` posts the brief as one ordinary top-level message through stock send, then owns scaffold cleanup, status and durable session creation with high reasoning set before the initial run; the session replies in that message's thread.
 
 ## Prompt boilerplate

@@ -9,20 +9,13 @@ const manifest = JSON.parse(await readFile(new URL('./openclaw.plugin.json', imp
 const params = {sessionKey: 'agent:max:slack:channel:c123:thread:1790050400.000001', runId: 'r1'};
 const route = {channel: 'C123', threadId: '1790050400.000001'};
 
-// Stubbed host: the root tile and an ordered trace are the only observable effects.
-// The projector stub applies the planner rule the real one gets from strip-core: ✋ never replaces a bot-held ✅.
 function fixture() {
-  const order = [], reports = [], root = [];
+  const order = [], reports = [];
   const runtime = new ThreadLifecycle({
     record: async turn => {order.push(`record:${turn.status}`);},
-    project: async status => {
-      const effective = status === 'act' && root.some(r => r.name === 'white_check_mark') ? 'closed' : status;
-      order.push(effective); root.splice(0, root.length, {name: {working: 'arrows_counterclockwise', act: 'raised_hand', closed: 'white_check_mark'}[effective], users: ['UMAX']});
-      return effective;
-    },
     report: async turn => {order.push('report'); reports.push(turn);},
   });
-  return {order, reports, root, runtime};
+  return {order, reports, runtime};
 }
 const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, agentAccountId: 'max', senderIsOwner: true, assertInvocationCurrent: () => {}};
 
@@ -31,16 +24,15 @@ test('the plugin no longer configures an owner principal', () => {
   assert.deepEqual(manifest.contracts.tools, ['start_work_thread', 'close_thread', 'switch_model']);
 });
 
-test('owner close during a run: ✅ and the report at once; the run ending keeps ✅', async () => {
+test('owner close during a run records closure and posts the report without a root reaction', async () => {
   const f = fixture();
   await f.runtime.start(params);
   const result = await closeThreadTool(toolContext, {lifecycle: f.runtime}).execute();
   assert.equal(result.isError, undefined);
   assert.match(result.content[0].text, /final response/);
-  assert.deepEqual(f.order, ['working', 'record:working', 'closed', 'record:closed', 'report']);
+  assert.deepEqual(f.order, ['record:working', 'record:closed', 'report']);
   await f.runtime.end(params);
-  assert.deepEqual(f.order.slice(5), [], 'in-process, the close is the latest event, so the run end projects nothing');
-  assert.deepEqual(f.root, [{name: 'white_check_mark', users: ['UMAX']}]);
+  assert.deepEqual(f.order.slice(3), [], 'in-process, the close is the latest event, so the run end records nothing');
   assert.deepEqual(f.reports[0].route, route);
 });
 
@@ -48,9 +40,9 @@ test('close needs no in-memory run: a tool answered elsewhere, or after a restar
   const f = fixture();
   const result = await closeThreadTool(toolContext, {lifecycle: f.runtime}).execute();
   assert.equal(result.isError, undefined);
-  assert.deepEqual(f.order, ['closed', 'record:closed', 'report']);
+  assert.deepEqual(f.order, ['record:closed', 'report']);
   await f.runtime.end(params);
-  assert.deepEqual(f.order.slice(3), [], 'an unknown run end is ignored');
+  assert.deepEqual(f.order.slice(2), [], 'an unknown run end is ignored');
 });
 
 test('the runtime owner bit is not consulted: external-harness runs always carry senderIsOwner=false', async () => {
@@ -61,14 +53,14 @@ test('the runtime owner bit is not consulted: external-harness runs always carry
   assert.equal(f.reports.length, 2);
 });
 
-test('a stale invocation is refused before anything is projected', async () => {
+test('a stale invocation is refused before closure is recorded', async () => {
   const f = fixture();
   await f.runtime.start(params);
   const result = await closeThreadTool({...toolContext, assertInvocationCurrent: () => { throw new Error('stale invocation'); }}, {lifecycle: f.runtime}).execute();
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /stale invocation/);
   await f.runtime.end(params);
-  assert.deepEqual(f.order, ['working', 'record:working', 'act', 'record:act']);
+  assert.deepEqual(f.order, ['record:working', 'record:act']);
 });
 
 test('closure uses the delivery route when the harness session key is not the Slack thread', async () => {
@@ -77,7 +69,7 @@ test('closure uses the delivery route when the harness session key is not the Sl
   const harnessContext = {...toolContext, sessionKey: 'agent:max:acp:claude-cli:session-1', nativeChannelId: 'C123', deliveryContext: {channel: 'slack', to: 'channel:C123', threadId: route.threadId}};
   assert.equal((await closeThreadTool(harnessContext, {lifecycle: f.runtime}).execute()).isError, undefined);
   await f.runtime.end(params);
-  assert.deepEqual(f.order, ['working', 'record:working', 'closed', 'record:closed', 'report']);
+  assert.deepEqual(f.order, ['record:working', 'record:closed', 'report']);
 });
 
 test('the tool exists only on Slack thread sessions', () => {
@@ -89,41 +81,37 @@ test('the tool exists only on Slack thread sessions', () => {
 test('no close without a request: a run that never calls close_thread ends in act', async () => {
   const f = fixture();
   await f.runtime.start(params); await f.runtime.end(params);
-  assert.deepEqual(f.order, ['working', 'record:working', 'act', 'record:act']);
+  assert.deepEqual(f.order, ['record:working', 'record:act']);
 });
 
-test('closed is soft: the next admitted run replaces ✅ and the thread can be closed again', async () => {
+test('closed is soft: the next admitted run records normally and the thread can be closed again', async () => {
   const f = fixture();
   await closeThreadTool(toolContext, {lifecycle: f.runtime}).execute();
   await f.runtime.start({...params, runId: 'r2'});
-  assert.deepEqual(f.root, [{name: 'arrows_counterclockwise', users: ['UMAX']}]);
   await f.runtime.end({...params, runId: 'r2'});
-  assert.deepEqual(f.root, [{name: 'raised_hand', users: ['UMAX']}]);
   await closeThreadTool(toolContext, {lifecycle: f.runtime}).execute();
   assert.equal(f.reports.length, 2);
 });
 
-test('an older run ending after a newer one started cannot overwrite the newer tile', async () => {
+test('an older run ending after a newer one started cannot overwrite newer lifecycle evidence', async () => {
   const f = fixture();
   await f.runtime.start(params);
   await f.runtime.start({...params, runId: 'r2'});
   await f.runtime.end(params);
-  assert.deepEqual(f.root, [{name: 'arrows_counterclockwise', users: ['UMAX']}]);
+  assert.deepEqual(f.order, ['record:working', 'record:working']);
 });
 
-test('a failing report is journaled and leaves ✅ in place', async () => {
-  const hooks = new Map(), faults = [], tiles = [];
+test('a failing report is journaled after closure is recorded', async () => {
+  const hooks = new Map(), faults = [];
   const lifecycle = registerHostClose({config: {channels: {slack: {accounts: {max: {}}}}}, on: (name, fn) => hooks.set(name, fn), registerTool() {}}, {
     isExcludedChannel: () => false,
-    maintainStatusTile: async status => tiles.push(status),
-    recordOutboundStatus: async () => {},
+    recordRunLifecycle: async () => {},
     appendFaultJournal: async entry => faults.push(entry),
     resolveDataRoot: () => '/nonexistent',
     resolveSlackRuntimeModule: () => new URL('./host-close.test-accounts.mjs', import.meta.url).pathname,
     slackApi: async () => { throw new Error('slack down'); },
   });
   await lifecycle.close({route, sessionKey: params.sessionKey, accountId: 'max'});
-  assert.deepEqual(tiles, ['closed']);
   assert.equal(faults.length, 1);
   assert.match(faults[0].reason, /Close report/);
   assert.ok(hooks.has('agent_end') && hooks.has('llm_input') && hooks.has('before_tool_call'));

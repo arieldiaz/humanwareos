@@ -21,7 +21,6 @@ function fixture(overrides = {}) {
         return { messageId: "1787000000.100000" };
       },
       prepareScaffold: async (params) => calls.push(["scaffold", params]),
-      setStatus: async (params) => calls.push(["status", params]),
       createSession: async (params) => {
         calls.push(["session", params]);
         return { key: "agent:max:dashboard:child", runId: "run-1", runStarted: true };
@@ -35,19 +34,18 @@ test("posts only the title as the top-level message and starts high before work 
   const { calls, input } = fixture();
   const result = await startSlackWorkThread(input);
 
-  assert.deepEqual(calls.map(([kind]) => kind), ["send", "send", "scaffold", "status", "session"]);
+  assert.deepEqual(calls.map(([kind]) => kind), ["send", "send", "scaffold", "session"]);
   assert.equal("title" in calls[0][1], false);
   assert.equal(calls[0][1].sessionKey, undefined);
   assert.equal(calls[0][1].threadId, undefined);
   assert.equal(calls[0][1].message, "Fix: focused patch");
-  assert.match(calls[4][1].task, /Scope and first action are underway\./);
+  assert.match(calls[3][1].task, /Scope and first action are underway\./);
   assert.deepEqual(calls[2][1], { channel: "C123", messageIds: ["1787000000.100000"] });
-  assert.deepEqual(calls[3][1], { channel: "C123", rootMessageId: "1787000000.100000", status: "working" });
-  assert.equal(calls[4][1].label, "Fix: focused patch");
-  assert.equal(calls[4][1].thinkingLevel, "high");
-  assert.equal(calls[4][1].parentSessionKey, input.parentSessionKey);
-  assert.match(calls[4][1].task, /Slack channel C123, thread root 1787000000\.100000/);
-  assert.match(calls[4][1].task, /Begin this work now/);
+  assert.equal(calls[3][1].label, "Fix: focused patch");
+  assert.equal(calls[3][1].thinkingLevel, "high");
+  assert.equal(calls[3][1].parentSessionKey, input.parentSessionKey);
+  assert.match(calls[3][1].task, /Slack channel C123, thread root 1787000000\.100000/);
+  assert.match(calls[3][1].task, /Begin this work now/);
   assert.deepEqual(result, {
     rootMessageId: "1787000000.100000",
     childSessionKey: "agent:max:dashboard:child",
@@ -60,10 +58,10 @@ test("uses stable idempotency keys for a repeated tool call", async () => {
   const { calls, input } = fixture();
   await startSlackWorkThread(input);
   assert.equal(calls[0][1].idempotencyKey, "work-thread:call-1:publication");
-  assert.equal(calls[4][1].idempotencyKey, "work-thread:call-1:session");
+  assert.equal(calls[3][1].idempotencyKey, "work-thread:call-1:session");
 });
 
-test("clears the transient tile without selecting a terminal if the session cannot start", async () => {
+test("does not write a root status if the session cannot start", async () => {
   const { calls, input } = fixture({
     createSession: async (params) => {
       calls.push(["session", params]);
@@ -71,7 +69,7 @@ test("clears the transient tile without selecting a terminal if the session cann
     },
   });
   await assert.rejects(startSlackWorkThread(input), /launch failed/);
-  assert.deepEqual(calls.at(-1), ["status", { channel: "C123", rootMessageId: "1787000000.100000", status: undefined }]);
+  assert.equal(calls.some(([kind]) => kind === "status"), false);
 });
 
 test("does not start work when durable publication identity is unavailable", async () => {
