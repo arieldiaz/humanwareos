@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 const DATA_ROOT = process.env.HUMANWARE_DATA_ROOT || null;
 const INPUT_PATH = process.env.SLACK_NOTION_INPUT
@@ -44,6 +45,10 @@ export function missingRequiredConfig({ dryRun = false } = {}) {
   if (!dryRun && !process.env.SLACK_BOT_TOKEN) missing.push("SLACK_BOT_TOKEN");
   if (!dryRun && !process.env.NOTION_TOKEN) missing.push("NOTION_TOKEN");
   return missing;
+}
+
+export function isMainModule(moduleUrl, entrypoint) {
+  return Boolean(entrypoint) && moduleUrl === pathToFileURL(entrypoint).href;
 }
 
 function decodeEntities(value) {
@@ -354,7 +359,7 @@ async function main() {
   if (totals.failed) process.exitCode = 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   main().catch((error) => {
     process.stderr.write(`${JSON.stringify({ event: "slack_notion_sync_failed", error: error.message })}\n`);
     process.exitCode = 1;

@@ -1,15 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import {
   existingRowFromPage,
   isoFromSlackTs,
+  isMainModule,
   notionProperties,
   sessionStats,
   statusFromRoot,
   titleFromSlackText,
   validateInput,
 } from "./sync.mjs";
+
+test("recognizes a runtime entrypoint whose path contains spaces", () => {
+  const entrypoint = "/Users/admin/Library/Application Support/HumanwareOS/sync.mjs";
+  assert.equal(isMainModule(pathToFileURL(entrypoint).href, entrypoint), true);
+  assert.equal(isMainModule(pathToFileURL(entrypoint).href, undefined), false);
+});
 
 test("builds a bounded title without Slack mentions or links", () => {
   assert.equal(
