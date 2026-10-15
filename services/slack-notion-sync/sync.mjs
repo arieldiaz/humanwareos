@@ -25,12 +25,12 @@ const STATUS_BY_REACTION = {
   arrows_counterclockwise: "🔄 Working",
   question: "❓ Clarify",
   raised_hand: "✋ Act",
+  hand: "✋ Act",
   calendar: "🗓️ Scheduled",
   white_check_mark: "✅ Closed",
   warning: "⚠️ Error",
 };
 const SLACK_EMOJI_ALIASES = {
-  hand: "✋",
   melting_face: "🫠",
   spiral_calendar_pad: "🗓️",
 };
