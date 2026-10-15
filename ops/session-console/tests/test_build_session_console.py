@@ -71,6 +71,10 @@ class SessionConsoleTest(unittest.TestCase):
             session = result["sessions"][0]
             self.assertEqual(session["agents"], ["liv", "max"])
             self.assertEqual(session["title"], "#ops · liv, max")
+            summary_path = data / "generated" / "sessions" / session["summaryMarkdown"]
+            self.assertTrue(summary_path.exists())
+            self.assertIn("# Session summary", summary_path.read_text())
+            self.assertIn("**Agents:** liv, max", summary_path.read_text())
             self.assertNotIn("Stable root request", json.dumps(result))
             ledger = "".join(path.read_text() for path in (data / "evidence" / "sessions" / "events").glob("*.jsonl"))
             self.assertNotIn("abcdefghijklmnop", ledger)

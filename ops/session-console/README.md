@@ -9,6 +9,7 @@ The [traceable activity contract](docs/traceable-activity-index-spec.md) owns th
 - `evidence/memory/events/`: normalized memory-service events alongside historical evidence. Untyped historical memory contributes to the coverage gap, never inferred lineage.
 - `generated/sessions/current.json`: recent session events including memory events, with truncation indicated.
 - `generated/sessions/records/*.json`: one private file per session, with summary first and the complete captured activity second.
+- `generated/sessions/summaries/*.md`: one metadata-only Markdown summary per session for linked read-only projections.
 - `generated/indexes/activity/index.sqlite`: one disposable SQLite store, day-partitioned through `(day,id)` keys and indexed across dates by actor, session/run, and target.
 - `generated/indexes/activity/current.json` and `days/*.json`: metadata manifest and content-addressed static exports of that store. Old partition exports remain readable for in-flight clients; removing the entire generated Activity directory and rebuilding is safe while the surface is offline.
 

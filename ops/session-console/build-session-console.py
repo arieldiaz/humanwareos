@@ -327,12 +327,38 @@ def session_record_path(logical_id: str) -> str:
     return os.path.join("records", hashlib.sha256(logical_id.encode()).hexdigest()[:24] + ".json")
 
 
+def session_summary_path(logical_id: str) -> str:
+    return os.path.join("summaries", hashlib.sha256(logical_id.encode()).hexdigest()[:24] + ".md")
+
+
+def render_session_summary(session: dict, summary: dict) -> str:
+    def value(item):
+        return str(item) if item not in (None, "") else "Unavailable"
+
+    agents = ", ".join(summary["agents"]) or "Unavailable"
+    models = ", ".join(summary["models"]) or "Unavailable"
+    return "\n".join([
+        "# Session summary",
+        "",
+        f"- **Session:** `{session['id']}`",
+        f"- **Status:** {value(summary['status'])}",
+        f"- **Outcome:** {value(summary['outcome'])}",
+        f"- **Agents:** {agents}",
+        f"- **Models:** {models}",
+        f"- **Started:** {value(summary['startedAt'])}",
+        f"- **Closed:** {value(summary['closedAt'])}",
+        "",
+    ])
+
+
 def write_session_records(derived_root: str, sessions: list[dict], trace: list[dict]):
     grouped = defaultdict(list)
     for record in trace:
         grouped[record.get("logicalSessionId")].append(record)
     records_root = os.path.join(derived_root, "records")
+    summaries_root = os.path.join(derived_root, "summaries")
     os.makedirs(records_root, mode=0o700, exist_ok=True)
+    os.makedirs(summaries_root, mode=0o700, exist_ok=True)
     for session in sessions:
         details = sorted(grouped.get(session["id"], []), key=lambda item: (item.get("timestamp") or "", item.get("id") or ""))
         completed = next((event for event in reversed(session["events"]) if event.get("kind") == "session.completed"), None)
@@ -353,6 +379,12 @@ def write_session_records(derived_root: str, sessions: list[dict], trace: list[d
             json.dump(payload, handle, separators=(",", ":"))
         os.chmod(temp, 0o600)
         os.replace(temp, target)
+        summary_target = os.path.join(derived_root, session["summaryMarkdown"])
+        summary_temp = summary_target + ".tmp"
+        with open(summary_temp, "w", encoding="utf-8") as handle:
+            handle.write(render_session_summary(session, summary))
+        os.chmod(summary_temp, 0o600)
+        os.replace(summary_temp, summary_target)
 
 
 append_events = activity.append_events
@@ -572,6 +604,7 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
             "events": [projected_session_event(e) for e in events[-MAX_EVENTS_PER_SESSION:]],
             "traceTruncated": len(events) > MAX_EVENTS_PER_SESSION,
             "record": session_record_path(logical_id),
+            "summaryMarkdown": session_summary_path(logical_id),
         })
 
     sessions.sort(key=lambda item: item.get("updatedAt") or item.get("startedAt") or "", reverse=True)
