@@ -101,6 +101,7 @@ test("classifies message roots and builds rows without session enrichment", () =
 
 test("uses the first root reaction and leaves only absent reactions blank", () => {
   assert.equal(statusFromRoot({ reactions: [{ name: "raised_hand" }, { name: "white_check_mark" }] }), "✋ Act");
+  assert.equal(statusFromRoot({ reactions: [{ name: "hand" }] }), "✋ Act");
   assert.equal(statusFromRoot({ reactions: [{ name: "eyes" }] }), "👀 Eyes");
   assert.equal(statusFromRoot({ reactions: [{ name: "butterfly" }] }), "🦋 Butterfly");
   assert.equal(statusFromRoot({ reactions: [{ name: "chart_with_upwards_trend" }] }), "📈 Chart With Upwards Trend");
