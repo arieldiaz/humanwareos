@@ -1,6 +1,6 @@
 # Slack to Notion thread projection
 
-This one-way scheduled projector upserts Slack-backed session threads into a Notion database. Slack and the session ledger remain authoritative. The Notion `Thread key` (`channel_id:thread_ts`) is the idempotency key; Notion edits are overwritten on the next changed or six-hour full sync and never flow back to Slack.
+This one-way scheduled projector upserts Slack-backed session threads into a Notion database. Slack and the session ledger remain authoritative. The Notion `Thread key` (`channel_id:thread_ts`) is the idempotency key; edits to projected properties are overwritten on the next changed or six-hour full sync and never flow back to Slack. Page body blocks, comments, and additional Notion-only properties are not part of the update request and remain untouched.
 
 The projector reads `<data-root>/generated/sessions/current.json`, fetches each changed Slack root, and writes the requested title, lifecycle reaction, permalink, channel, timestamps, reply count, session stats, and session-summary URL. `Status changed` uses the matching session-ledger workflow timestamp when available and otherwise records when the projector first observes a transition. Unknown or absent first reactions leave Status blank.
 
