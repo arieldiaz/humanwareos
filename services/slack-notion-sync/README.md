@@ -4,7 +4,7 @@ This one-way projector upserts every human or bot message root from every Slack 
 
 Slack channel history is the row inventory. The optional `<data-root>/generated/sessions/current.json` projection enriches matching roots with session stats and session-summary URLs; those fields stay blank for ordinary Slack threads. Slack system events such as joins, renames, tombstones, and canvas updates are not message roots and are excluded.
 
-Status is derived only from canonical reactions held by `SLACK_HUMAN_STATUS_ACTORS`: 🔄 Working, ✋ Act (`hand` is normalized), 🗓️ Scheduled, and ✅ Closed. Zero accepted reactions leaves Status blank. Multiple accepted reactions leave Status blank and append one ambiguity record for manual review. Bot-held and noncanonical reactions never set status.
+Status is derived only from canonical reactions held by `SLACK_HUMAN_STATUS_ACTORS`: 🔄 Working, ✋ Act (`hand` is normalized), 🗓️ Scheduled, and ✅ Closed. A one-time migration baseline at `<data-root>/operations/slack-notion-sync/migration-baseline.json` preserves an unambiguous pre-cutover status until the human first adds or removes a canonical status reaction on that thread. After that claim, zero accepted reactions leaves Status blank. Multiple accepted reactions leave Status blank and append one ambiguity record for manual review. Bot-held and noncanonical reactions never set status.
 
 The OpenClaw Slack adapter journals accepted structured `reaction_added` and `reaction_removed` events under `<data-root>/operations/slack-notion-sync/events.jsonl` without waking a model. The instance LaunchAgent watches that journal. After a short debounce, the projector refetches exactly one root and upserts exactly one Notion row; the regular scan remains recovery and inventory discovery.
 
@@ -23,6 +23,7 @@ The OpenClaw Slack adapter journals accepted structured `reaction_added` and `re
 | `SLACK_NOTION_STATE` | no | Override private incremental state path |
 | `SLACK_NOTION_EVENTS` | no | Override structured reaction-event journal path |
 | `SLACK_NOTION_REVIEW` | no | Override ambiguity-review journal path |
+| `SLACK_NOTION_MIGRATION_BASELINE` | no | Override the one-time migrated-status baseline path |
 | `SLACK_NOTION_MAX_INPUT_AGE_MS` | no (`300000`) | Fail-closed freshness bound |
 | `SLACK_NOTION_FULL_SYNC_INTERVAL_MS` | no (`21600000`) | Recheck every thread at least this often |
 | `SLACK_NOTION_WRITE_DELAY_MS` | no (`350`) | Minimum spacing between Notion writes during backfill |

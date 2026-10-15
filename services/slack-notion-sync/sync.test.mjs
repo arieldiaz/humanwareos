@@ -15,6 +15,7 @@ import {
   slackPermalink,
   statusFromRoot,
   statusesFromRoot,
+  migratedStatusForThread,
   pendingStatusEvents,
   hasUnprocessedStatusEvents,
   titleFromSlackText,
@@ -115,6 +116,29 @@ test("derives status only from configured human-held canonical reactions", () =>
     { name: "raised_hand", users: ["UOWNER"] },
     { name: "white_check_mark", users: ["UOWNER"] },
   ] }, actors), null);
+});
+
+test("preserves a migrated status until the human claims the thread", () => {
+  const actors = new Set(["UOWNER"]);
+  const baseline = {"C1:1.0": "✋ Act"};
+  assert.equal(migratedStatusForThread("C1:1.0", {reactions: []}, baseline, {}, actors), "✋ Act");
+  assert.equal(migratedStatusForThread("C1:1.0", {
+    reactions: [{name: "arrows_counterclockwise", users: ["UOWNER"]}],
+  }, baseline, {}, actors), "🔄 Working");
+  assert.equal(migratedStatusForThread("C1:1.0", {reactions: []}, baseline, {"C1:1.0": "claimed"}, actors), null);
+});
+
+test("leaves conflicting human statuses blank instead of falling back to migration", () => {
+  const root = {reactions: [
+    {name: "hand", users: ["UOWNER"]},
+    {name: "calendar", users: ["UOWNER"]},
+  ]};
+  assert.equal(migratedStatusForThread("C1:1.0", root, {"C1:1.0": "✋ Act"}, {}, new Set(["UOWNER"])), null);
+});
+
+test("includes the effective migrated status in the workflow fingerprint", () => {
+  const root = {ts: "1.0", text: "A root", reactions: []};
+  assert.notEqual(rootFingerprint("work", root, "✋ Act"), rootFingerprint("work", root, null));
 });
 
 test("ignores social reactions in the workflow fingerprint", () => {
