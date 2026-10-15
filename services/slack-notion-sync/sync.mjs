@@ -5,7 +5,6 @@ import path from "node:path";
 import process from "node:process";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { get as emojiForName, has as hasEmoji } from "node-emoji";
 
 const DATA_ROOT = process.env.HUMANWARE_DATA_ROOT || null;
 const INPUT_PATH = process.env.SLACK_NOTION_INPUT
@@ -14,27 +13,27 @@ const RECORDS_ROOT = process.env.SLACK_NOTION_RECORDS_ROOT
   || (DATA_ROOT ? path.join(DATA_ROOT, "generated/sessions") : null);
 const STATE_PATH = process.env.SLACK_NOTION_STATE
   || (DATA_ROOT ? path.join(DATA_ROOT, "operations/slack-notion-sync/state.json") : null);
+const EVENTS_PATH = process.env.SLACK_NOTION_EVENTS
+  || (DATA_ROOT ? path.join(DATA_ROOT, "operations/slack-notion-sync/events.jsonl") : null);
+const REVIEW_PATH = process.env.SLACK_NOTION_REVIEW
+  || (DATA_ROOT ? path.join(DATA_ROOT, "operations/slack-notion-sync/manual-review.jsonl") : null);
 const SUMMARY_BASE_URL = (process.env.SLACK_NOTION_SUMMARY_BASE_URL || "").replace(/\/$/, "");
 const NOTION_DATA_SOURCE_ID = process.env.NOTION_DATA_SOURCE_ID || null;
 const NOTION_API_VERSION = process.env.NOTION_API_VERSION || "2026-03-11";
 const MAX_INPUT_AGE_MS = Number(process.env.SLACK_NOTION_MAX_INPUT_AGE_MS ?? 300_000);
 const FULL_SYNC_INTERVAL_MS = Number(process.env.SLACK_NOTION_FULL_SYNC_INTERVAL_MS ?? 21_600_000);
 const NOTION_WRITE_DELAY_MS = Number(process.env.SLACK_NOTION_WRITE_DELAY_MS ?? 350);
+const EVENT_DEBOUNCE_MS = Number(process.env.SLACK_NOTION_EVENT_DEBOUNCE_MS ?? 2_000);
+const HUMAN_STATUS_ACTORS = new Set(String(process.env.SLACK_HUMAN_STATUS_ACTORS || "")
+  .split(",").map((value) => value.trim()).filter(Boolean));
 
 const STATUS_BY_REACTION = {
   arrows_counterclockwise: "🔄 Working",
-  question: "❓ Clarify",
   raised_hand: "✋ Act",
   hand: "✋ Act",
   calendar: "🗓️ Scheduled",
   white_check_mark: "✅ Closed",
-  warning: "⚠️ Error",
 };
-const SLACK_EMOJI_ALIASES = {
-  melting_face: "🫠",
-  spiral_calendar_pad: "🗓️",
-};
-const CUSTOM_EMOJI_MARKER = "🧩";
 const NON_MESSAGE_ROOT_SUBTYPES = new Set([
   "channel_archive",
   "channel_convert_to_public",
@@ -63,8 +62,11 @@ export function missingRequiredConfig({ dryRun = false } = {}) {
   if (!INPUT_PATH) missing.push("HUMANWARE_DATA_ROOT or SLACK_NOTION_INPUT");
   if (!RECORDS_ROOT) missing.push("HUMANWARE_DATA_ROOT or SLACK_NOTION_RECORDS_ROOT");
   if (!STATE_PATH) missing.push("HUMANWARE_DATA_ROOT or SLACK_NOTION_STATE");
+  if (!EVENTS_PATH) missing.push("HUMANWARE_DATA_ROOT or SLACK_NOTION_EVENTS");
+  if (!REVIEW_PATH) missing.push("HUMANWARE_DATA_ROOT or SLACK_NOTION_REVIEW");
   if (!SUMMARY_BASE_URL) missing.push("SLACK_NOTION_SUMMARY_BASE_URL");
   if (!NOTION_DATA_SOURCE_ID) missing.push("NOTION_DATA_SOURCE_ID");
+  if (!HUMAN_STATUS_ACTORS.size) missing.push("SLACK_HUMAN_STATUS_ACTORS");
   if (!dryRun && !process.env.SLACK_BOT_TOKEN) missing.push("SLACK_BOT_TOKEN");
   if (!dryRun && !process.env.NOTION_TOKEN) missing.push("NOTION_TOKEN");
   return missing;
@@ -91,7 +93,7 @@ export function rootFingerprint(channelName, root) {
     text: root.text || "",
     replyCount: Number(root.reply_count || 0),
     latestReply: root.latest_reply || root.ts,
-    firstReaction: statusFromRoot(root),
+    status: statusFromRoot(root, HUMAN_STATUS_ACTORS),
   };
   return createHash("sha256").update(JSON.stringify(relevant)).digest("hex");
 }
@@ -119,13 +121,19 @@ export function titleFromSlackText(text, limit = 80) {
   return cleaned.slice(0, limit).trimEnd();
 }
 
-export function statusFromRoot(root) {
-  const name = root?.reactions?.[0]?.name;
-  if (!name) return null;
-  if (STATUS_BY_REACTION[name]) return STATUS_BY_REACTION[name];
-  const word = name.split(/[_-]+/).filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ") || name;
-  const glyph = SLACK_EMOJI_ALIASES[name] || (hasEmoji(name) ? emojiForName(name) : CUSTOM_EMOJI_MARKER);
-  return `${glyph} ${word}`;
+export function statusesFromRoot(root, actorIds = HUMAN_STATUS_ACTORS) {
+  const names = new Set();
+  for (const reaction of root?.reactions ?? []) {
+    const canonical = reaction.name === "hand" ? "raised_hand" : reaction.name;
+    if (!STATUS_BY_REACTION[canonical]) continue;
+    if ((reaction.users ?? []).some((userId) => actorIds.has(userId))) names.add(canonical);
+  }
+  return [...names].sort();
+}
+
+export function statusFromRoot(root, actorIds = HUMAN_STATUS_ACTORS) {
+  const statuses = statusesFromRoot(root, actorIds);
+  return statuses.length === 1 ? STATUS_BY_REACTION[statuses[0]] : null;
 }
 
 export function isoFromSlackTs(ts) {
@@ -292,6 +300,90 @@ export async function discoverSlackRoots(callSlack = slack) {
   return { channels: channels.length, roots };
 }
 
+export async function discoverSlackRoot(channelId, threadTs, callSlack = slack) {
+  const [authentication, channel, page] = await Promise.all([
+    callSlack("auth.test"),
+    callSlack("conversations.info", {channel: channelId}),
+    callSlack("conversations.history", {
+      channel: channelId,
+      oldest: threadTs,
+      latest: threadTs,
+      inclusive: "true",
+      limit: "1",
+    }),
+  ]);
+  const root = (page.messages ?? []).find((message) => message.ts === threadTs);
+  if (!root || !isSlackMessageRoot(root)) return null;
+  return {
+    channelId,
+    channelName: channel.channel?.name || channelId,
+    root,
+    slackLink: slackPermalink(authentication.url, channelId, threadTs),
+  };
+}
+
+export function pendingStatusEvents(text, state, now = new Date()) {
+  const processed = state.processedEvents ?? {};
+  const byThread = new Map();
+  const source = String(text ?? "");
+  const lines = source.split("\n");
+  for (const [index, line] of lines.entries()) {
+    if (!line.trim()) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch (error) {
+      if (index === lines.length - 1 && !source.endsWith("\n")) continue;
+      throw error;
+    }
+    if (!event.id || processed[event.id] || !event.channelId || !event.messageTs) continue;
+    const key = `${event.channelId}:${event.messageTs}`;
+    const group = byThread.get(key) ?? [];
+    group.push(event);
+    byThread.set(key, group);
+  }
+  const ready = [];
+  for (const [threadKey, events] of byThread) {
+    events.sort((a, b) => String(a.observedAt).localeCompare(String(b.observedAt)));
+    const latest = events.at(-1);
+    const observedAt = new Date(latest.observedAt);
+    if (Number.isNaN(observedAt.getTime()) || now.getTime() - observedAt.getTime() < EVENT_DEBOUNCE_MS) continue;
+    ready.push({threadKey, event: latest, ids: [...new Set(events.map((event) => event.id))]});
+  }
+  return ready;
+}
+
+export function hasUnprocessedStatusEvents(text, state) {
+  const processed = state.processedEvents ?? {};
+  const source = String(text ?? "");
+  const lines = source.split("\n");
+  for (const [index, line] of lines.entries()) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event.id && !processed[event.id]) return true;
+    } catch (error) {
+      if (index === lines.length - 1 && !source.endsWith("\n")) continue;
+      throw error;
+    }
+  }
+  return false;
+}
+
+function readText(filePath, fallback = "") {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return fallback;
+    throw error;
+  }
+}
+
+function appendJsonLine(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), {recursive: true, mode: 0o700});
+  fs.appendFileSync(filePath, `${JSON.stringify(value)}\n`, {mode: 0o600});
+}
+
 let nextNotionWriteAt = 0;
 async function notion(endpoint, { method = "GET", body } = {}) {
   const isWrite = method === "PATCH" || (method === "POST" && endpoint === "pages");
@@ -328,6 +420,18 @@ async function existingNotionRows() {
   return rows;
 }
 
+async function existingNotionRow(threadKey) {
+  const page = await notion(`data_sources/${NOTION_DATA_SOURCE_ID}/query`, {
+    method: "POST",
+    body: {
+      page_size: 2,
+      filter: {property: "Thread key", rich_text: {equals: threadKey}},
+    },
+  });
+  if ((page.results ?? []).length > 1) throw new Error(`duplicate Notion Thread key: ${threadKey}`);
+  return page.results?.[0] ? existingRowFromPage(page.results[0]) : null;
+}
+
 async function notionSelectOptionWriter(propertyName) {
   const source = await notion(`data_sources/${NOTION_DATA_SOURCE_ID}`);
   const property = source.properties?.[propertyName];
@@ -348,12 +452,7 @@ async function notionSelectOptionWriter(propertyName) {
   };
 }
 
-function statusChangedAt(session, status, now) {
-  const expected = STATUS_BY_REACTION[session.workflow?.emoji];
-  return status && expected === status ? session.workflow?.ts || now : now;
-}
-
-export function buildRowFromRoot(discovered, session = null, now = new Date().toISOString()) {
+export function buildRowFromRoot(discovered, session = null, now = new Date().toISOString(), statusObservedAt = now) {
   const { channelId, channelName, root, slackLink } = discovered;
   const record = session?.record ? readJson(path.join(RECORDS_ROOT, session.record), {}) : {};
   const replyCount = Number(root.reply_count || 0);
@@ -370,7 +469,7 @@ export function buildRowFromRoot(discovered, session = null, now = new Date().to
     started: isoFromSlackTs(root.ts),
     lastActivity: isoFromSlackTs(root.latest_reply || root.ts),
     replies: replyCount,
-    statusChanged: session ? statusChangedAt(session, status, now) : now,
+    statusChanged: statusObservedAt,
     sessionStats: session ? sessionStats(session, replyCount, record) : null,
     sessionSummary: summaryName ? `${SUMMARY_BASE_URL}/${encodeURIComponent(summaryName)}` : null,
     threadKey: `${channelId}:${root.ts}`,
@@ -416,8 +515,10 @@ async function main() {
     })}\n`);
     return;
   }
-  const state = readJson(STATE_PATH, { schemaVersion: 1, threads: {}, lastFullSyncAt: null });
-  const existing = await existingNotionRows();
+  const state = readJson(STATE_PATH, { schemaVersion: 3, threads: {}, processedEvents: {}, ambiguities: {}, lastFullSyncAt: null });
+  state.threads ??= {};
+  state.processedEvents ??= {};
+  state.ambiguities ??= {};
   const ensureChannelOption = await notionSelectOptionWriter("Channel");
   const ensureStatusOption = await notionSelectOptionWriter("Status");
   const fullSync = !state.lastFullSyncAt || now.getTime() - new Date(state.lastFullSyncAt).getTime() >= FULL_SYNC_INTERVAL_MS;
@@ -425,34 +526,87 @@ async function main() {
     `${session.channelId}:${session.threadId}`,
     session,
   ]));
-  const discovered = await discoverSlackRoots();
-  const totals = { created: 0, updated: 0, skipped: 0, failed: 0 };
-  for (const item of discovered.roots) {
-    const threadKey = `${item.channelId}:${item.root.ts}`;
-    const fingerprint = rootFingerprint(item.channelName, item.root);
-    const observed = state.threads[threadKey];
-    if (!fullSync && existing.has(threadKey) && observed?.fingerprint === fingerprint) {
-      totals.skipped += 1;
-      continue;
-    }
-    try {
-      const row = buildRowFromRoot(item, sessionByThread.get(threadKey), now.toISOString());
-      await ensureChannelOption(row.channel);
-      await ensureStatusOption(row.status);
-      const result = await upsertRow(row, existing.get(threadKey), now.toISOString());
-      totals[result] += 1;
-      state.threads[threadKey] = { fingerprint };
-    } catch (error) {
-      totals.failed += 1;
-      delete state.threads[threadKey];
-      process.stderr.write(`${JSON.stringify({ event: "slack_notion_thread_failed", threadKey, error: error.message })}\n`);
-    }
+  let eventText = readText(EVENTS_PATH);
+  let pendingEvents = pendingStatusEvents(eventText, state, now);
+  for (let attempt = 0; attempt < 3 && !pendingEvents.length && hasUnprocessedStatusEvents(eventText, state); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, EVENT_DEBOUNCE_MS));
+    eventText = readText(EVENTS_PATH);
+    pendingEvents = pendingStatusEvents(eventText, state, new Date());
   }
-  if (fullSync) state.lastFullSyncAt = now.toISOString();
+  const totals = { created: 0, updated: 0, skipped: 0, failed: 0 };
+  if (pendingEvents.length) {
+    for (const pending of pendingEvents) {
+      try {
+        const item = await discoverSlackRoot(pending.event.channelId, pending.event.messageTs);
+        if (!item) throw new Error("reaction target is not a Slack message root");
+        const statuses = statusesFromRoot(item.root);
+        if (statuses.length > 1) {
+          const fingerprint = statuses.join(",");
+          if (state.ambiguities[pending.threadKey] !== fingerprint) {
+            appendJsonLine(REVIEW_PATH, {at: now.toISOString(), threadKey: pending.threadKey, statuses});
+            state.ambiguities[pending.threadKey] = fingerprint;
+          }
+        } else {
+          delete state.ambiguities[pending.threadKey];
+        }
+        const statusObservedAt = isoFromSlackTs(pending.event.eventTs) ?? pending.event.observedAt ?? now.toISOString();
+        const row = buildRowFromRoot(item, sessionByThread.get(pending.threadKey), now.toISOString(), statusObservedAt);
+        await ensureChannelOption(row.channel);
+        await ensureStatusOption(row.status);
+        const previous = await existingNotionRow(pending.threadKey);
+        const result = await upsertRow(row, previous, now.toISOString());
+        totals[result] += 1;
+        state.threads[pending.threadKey] = {fingerprint: rootFingerprint(item.channelName, item.root)};
+        for (const id of pending.ids) state.processedEvents[id] = now.toISOString();
+      } catch (error) {
+        totals.failed += 1;
+        process.stderr.write(`${JSON.stringify({event: "slack_notion_event_failed", threadKey: pending.threadKey, error: error.message})}\n`);
+      }
+    }
+  } else {
+    const existing = await existingNotionRows();
+    const discovered = await discoverSlackRoots();
+    for (const item of discovered.roots) {
+      const threadKey = `${item.channelId}:${item.root.ts}`;
+      const fingerprint = rootFingerprint(item.channelName, item.root);
+      const observed = state.threads[threadKey];
+      if (!fullSync && existing.has(threadKey) && observed?.fingerprint === fingerprint) {
+        totals.skipped += 1;
+        continue;
+      }
+      try {
+        const row = buildRowFromRoot(item, sessionByThread.get(threadKey), now.toISOString());
+        await ensureChannelOption(row.channel);
+        await ensureStatusOption(row.status);
+        const result = await upsertRow(row, existing.get(threadKey), now.toISOString());
+        totals[result] += 1;
+        state.threads[threadKey] = { fingerprint };
+      } catch (error) {
+        totals.failed += 1;
+        delete state.threads[threadKey];
+        process.stderr.write(`${JSON.stringify({ event: "slack_notion_thread_failed", threadKey, error: error.message })}\n`);
+      }
+      const statuses = statusesFromRoot(item.root);
+      if (statuses.length > 1) {
+        const fingerprint = statuses.join(",");
+        if (state.ambiguities[threadKey] !== fingerprint) {
+          appendJsonLine(REVIEW_PATH, {at: now.toISOString(), threadKey, statuses});
+          state.ambiguities[threadKey] = fingerprint;
+        }
+      } else {
+        delete state.ambiguities[threadKey];
+      }
+    }
+    if (fullSync) state.lastFullSyncAt = now.toISOString();
+    totals.channels = discovered.channels;
+    totals.roots = discovered.roots.length;
+  }
+  const processedEntries = Object.entries(state.processedEvents).sort((a, b) => String(b[1]).localeCompare(String(a[1]))).slice(0, 10_000);
+  state.processedEvents = Object.fromEntries(processedEntries);
   state.updatedAt = now.toISOString();
-  state.schemaVersion = 2;
+  state.schemaVersion = 3;
   atomicJson(STATE_PATH, state);
-  process.stdout.write(`${JSON.stringify({ event: "slack_notion_sync_completed", input: INPUT_PATH, channels: discovered.channels, roots: discovered.roots.length, fullSync, ...totals })}\n`);
+  process.stdout.write(`${JSON.stringify({ event: "slack_notion_sync_completed", input: INPUT_PATH, mode: pendingEvents.length ? "targeted" : "reconciliation", targeted: pendingEvents.length, fullSync, ...totals })}\n`);
   if (totals.failed) process.exitCode = 1;
 }
 

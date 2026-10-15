@@ -1,13 +1,10 @@
 import {slackRoute, slackRouteKey} from './slack-route.mjs';
 
-// Stateless thread lifecycle. A run's first model input projects 🔄 and its end
-// projects ✋; an owner close projects ✅ and posts the report at once. The
-// root's bot-held tile is the only shared fact: the projector keeps ✅ when a
-// run ends on a closed thread, so no memory has to connect a close to a run.
-// The in-process map only pairs a run's start with its end.
+// Run lifecycle is internal evidence. Slack root status is separate,
+// human-authored workflow data and is never written from this class.
 export class ThreadLifecycle {
-  constructor({project, record, report, excluded = () => false}) {
-    Object.assign(this, {project, record, report, excluded});
+  constructor({record, report, excluded = () => false}) {
+    Object.assign(this, {record, report, excluded});
     this.runs = new Map(); // run key → running turn
     this.latest = new Map(); // conversation → latest admitted run or close
   }
@@ -38,14 +35,11 @@ export class ThreadLifecycle {
     const conversation = slackRouteKey(route);
     const turn = {key: `${conversation}:close`, route, conversation, sessionKey, accountId};
     this.latest.set(conversation, turn.key);
-    await this.project('closed', turn);
     await this.record({...turn, status: 'closed'});
     await this.report(turn);
   }
-  // The projector reads the root and may keep ✅ in place of ✋; the ledger records what it did.
   async settle(turn, status) {
     if (this.latest.get(turn.conversation) !== turn.key) return;
-    const effective = (await this.project(status, turn)) ?? status;
-    await this.record({...turn, status: effective});
+    await this.record({...turn, status});
   }
 }

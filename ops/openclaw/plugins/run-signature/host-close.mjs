@@ -14,7 +14,7 @@ export function closeThreadTool(context, {lifecycle}) {
   if (!route) return;
   return {
     name: "close_thread",
-    description: "Close this Slack thread. Call it only when the owner asks to close the thread, after finishing the other requested work. The host marks the root ✅ and posts the close report at once; your final reply follows it. Do not announce the closure or touch any other state after calling it.",
+    description: "Close this Slack thread. Call it only when the owner asks to close the thread, after finishing the other requested work. The host records closure and posts the close report at once; your final reply follows it. Do not announce the closure or touch any other state after calling it.",
     parameters: {type: "object", additionalProperties: false},
     // No sender check: OpenClaw hands external-harness runs senderIsOwner=false
     // unconditionally, so the owner's request as the agent understood it is the authority.
@@ -25,13 +25,13 @@ export function closeThreadTool(context, {lifecycle}) {
       } catch (error) {
         return reply(String(error?.message ?? error), true);
       }
-      return reply("Closed: ✅ and the close report are posted. Put the complete answer to the owner's message in your final response and do nothing else.");
+      return reply("Closed: the lifecycle record and close report are posted. Put the complete answer to the owner's message in your final response and do nothing else.");
     },
   };
 }
 
 export function registerHostClose(api, {
-  isExcludedChannel, maintainStatusTile, recordOutboundStatus, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi,
+  isExcludedChannel, recordRunLifecycle, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi,
 }) {
   const tokenFor = async accountId => (await import(resolveSlackRuntimeModule("accounts"))).resolveSlackAccount({cfg: api.config, accountId})?.botToken;
 
@@ -57,16 +57,9 @@ export function registerHostClose(api, {
 
   const lifecycle = new ThreadLifecycle({
     excluded: isExcludedChannel,
-    project: async (status, turn) => {
-      const token = await tokenFor(turn.accountId);
-      if (!token) throw new Error("No account token for lifecycle projection");
-      return maintainStatusTile(status, {sessionKey: turn.sessionKey, runId: turn.runId}, {
-        channel: turn.route.channel, rootTs: turn.route.threadId, routeKey: turn.conversation, accountId: turn.accountId, token,
-      });
-    },
-    record: turn => recordOutboundStatus({dataRoot: resolveDataRoot(api.config, api.pluginConfig, turn.accountId),
+    record: turn => recordRunLifecycle({dataRoot: resolveDataRoot(api.config, api.pluginConfig, turn.accountId),
       channel: turn.route.channel, threadId: turn.route.threadId, status: turn.status, agent: turn.accountId, sessionKey: turn.sessionKey, runId: turn.runId}),
-    // Best effort: ✅ is already on the root, so a report failure is journaled, never surfaced.
+    // Best effort: lifecycle is already recorded, so a report failure is journaled, never surfaced.
     report: async turn => {
       try { await postCloseReport(turn); }
       catch (error) { await appendFaultJournal({channel: turn.route.channel, rootTs: turn.route.threadId, reason: `Close report: ${String(error)}`}); }
@@ -85,7 +78,7 @@ export function registerHostClose(api, {
     const emoji = String(params.emoji ?? "").replaceAll(":", "");
     if (/(?:^|__)message$/.test(event.toolName) && params.action === "react" &&
         (!emoji || ["arrows_counterclockwise", "raised_hand", "hand", "calendar", "white_check_mark", "🔄", "✋", "🗓", "🗓️", "✅"].includes(emoji)))
-      return {block: true, blockReason: "Lifecycle reactions belong to the projector"};
+      return {block: true, blockReason: "Slack root workflow status is human-authored"};
   });
   api.registerTool?.({contextVersion: 2, create: context => closeThreadTool(context, {lifecycle})}, {name: "close_thread"});
   return lifecycle;

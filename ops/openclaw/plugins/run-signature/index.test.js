@@ -6,12 +6,9 @@ import {
   addReactionsInOrder,
   slackApi,
   buildRunReactionNames,
-  ADMITTED_STATUS,
   createKeyedSerialQueue,
-  planStatusTile,
   resolveHarnessTile,
   resolveModelTile,
-  resolveStatusTile,
   resolveBotUserId,
   resolveConfiguredThinking,
   slackRouteFromSessionKey,
@@ -23,7 +20,6 @@ import {
   resolveSlackRuntimeModule,
   mergeProvenance,
   resolveSelectedHarness,
-  normalizeReactions,
 } from "./index.js";
 import runSignaturePlugin from "./index.js";
 
@@ -148,99 +144,6 @@ test("lays per-message reactions sequentially in canonical order", async () => {
     observed.push(name);
   });
   assert.deepEqual(observed, ["m_gpt_sol", "h_codex", "think_high"]);
-});
-
-// --- the status-tile planner ---
-
-const SPEC = { sendingBotId: "ULIV", botUserIds: new Set(["ULIV", "UMAX"]) };
-const ownTile = (name) => ({ name, users: ["ULIV"] });
-const addNames = (plan) => plan.add.map((item) => item.name);
-const removeNames = (plan) => plan.remove.map((item) => item.name);
-
-test("first send lays exactly one tile: the lifecycle status", () => {
-  const plan = planStatusTile([], { ...SPEC, lifecycle: "raised_hand" });
-  assert.deepEqual(addNames(plan), ["raised_hand"]);
-  assert.deepEqual(plan.remove, []);
-});
-
-test("an admitted turn deterministically lays the working tile", () => {
-  assert.equal(ADMITTED_STATUS, "working");
-  const lifecycle = resolveStatusTile(ADMITTED_STATUS, [], SPEC.botUserIds);
-  assert.deepEqual(addNames(planStatusTile([], { ...SPEC, lifecycle })), ["arrows_counterclockwise"]);
-});
-
-test("a correct status tile is a strict no-op", () => {
-  const plan = planStatusTile([ownTile("raised_hand")], { ...SPEC, lifecycle: "raised_hand" });
-  assert.equal(plan.unchanged, true);
-  assert.deepEqual(plan.add, []);
-  assert.deepEqual(plan.remove, []);
-});
-
-test("a lifecycle transition swaps the one tile", () => {
-  const plan = planStatusTile([ownTile("arrows_counterclockwise")], { ...SPEC, lifecycle: "raised_hand" });
-  assert.deepEqual(removeNames(plan), ["arrows_counterclockwise"]);
-  assert.deepEqual(addNames(plan), ["raised_hand"]);
-});
-
-test("a run ending on a closed thread keeps ✅: ✋ never replaces a bot-held ✅, 🔄 does", () => {
-  const closed = [ownTile("white_check_mark")];
-  const act = planStatusTile(closed, { ...SPEC, lifecycle: "raised_hand" });
-  assert.equal(act.unchanged, true);
-  assert.equal(act.effective, "white_check_mark");
-  const working = planStatusTile(closed, { ...SPEC, lifecycle: "arrows_counterclockwise" });
-  assert.deepEqual(working.remove.map(r => r.name), ["white_check_mark"]);
-  assert.equal(working.effective, "arrows_counterclockwise");
-});
-
-test("done replaces a stale working tile", () => {
-  const plan = planStatusTile([ownTile("arrows_counterclockwise")], { ...SPEC, lifecycle: "white_check_mark" });
-  assert.deepEqual(removeNames(plan), ["arrows_counterclockwise"]);
-  assert.deepEqual(addNames(plan), ["white_check_mark"]);
-});
-
-test("human reactions neither override nor suppress the bot projection", () => {
-  const observed = [{name: "white_check_mark", users: ["UHUMAN"]}, {name: "calendar", users: ["UMAX"]}];
-  const plan = planStatusTile(observed, {...SPEC, lifecycle: "raised_hand"});
-  assert.deepEqual(plan.remove, [{name: "calendar", holders: ["UMAX"]}]);
-  assert.deepEqual(addNames(plan), ["raised_hand"]);
-  assert.equal(resolveStatusTile("act", observed, SPEC.botUserIds), "raised_hand");
-});
-
-test("steady-state projection leaves noncanonical and human reactions untouched", () => {
-  const plan = planStatusTile([{name: "m_fable", users: ["ULIV"]}, {name: "question", users: ["ULIV"]}], {...SPEC, lifecycle: "raised_hand"});
-  assert.deepEqual(plan.remove, []);
-});
-
-test("a human-held provenance tile is never touched", () => {
-  const observed = [
-    { name: "butterfly", users: ["UHUMAN"] },
-    { name: "raised_hand", users: ["ULIV"] },
-  ];
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "raised_hand" });
-  assert.equal(plan.unchanged, true);
-});
-
-test("reactions outside the strip vocabulary never affect the plan", () => {
-  const observed = [
-    { name: "hourglass_flowing_sand", users: ["ULIV"] },
-    { name: "thumbsup", users: ["UHUMAN"] },
-    ownTile("raised_hand"),
-  ];
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "raised_hand" });
-  assert.equal(plan.unchanged, true);
-});
-
-test("reads Slack's canonical name for the aliased ✋ tile", () => {
-  const observed = normalizeReactions([{ name: "hand", users: ["ULIV"] }]);
-  const plan = planStatusTile(observed, { ...SPEC, lifecycle: "raised_hand" });
-  assert.equal(plan.unchanged, true);
-});
-
-test("the other agent's ✅ is a bot status, not the human's", () => {
-  const maxDone = [{ name: "white_check_mark", users: ["UMAX"] }];
-  assert.equal(resolveStatusTile("act", maxDone, new Set(["ULIV", "UMAX"])), "raised_hand");
-  const humanDone = [{ name: "white_check_mark", users: ["UHUMAN"] }];
-  assert.equal(resolveStatusTile("act", humanDone, new Set(["ULIV", "UMAX"])), "raised_hand");
 });
 
 // --- infrastructure ---
