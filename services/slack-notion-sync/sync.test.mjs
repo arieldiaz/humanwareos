@@ -3,11 +3,16 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 
 import {
+  buildRowFromRoot,
+  discoverSlackRoots,
   existingRowFromPage,
   isoFromSlackTs,
   isMainModule,
+  isSlackMessageRoot,
   notionProperties,
+  rootFingerprint,
   sessionStats,
+  slackPermalink,
   statusFromRoot,
   titleFromSlackText,
   validateInput,
@@ -26,6 +31,72 @@ test("builds a bounded title without Slack mentions or links", () => {
   );
   assert.equal(titleFromSlackText("<@U123> <https://example.com>"), "Untitled Slack thread");
   assert.equal(titleFromSlackText("x".repeat(100)).length, 80);
+});
+
+test("discovers every message root across paginated member channels", async () => {
+  const responses = new Map([
+    ["auth.test:", { url: "https://workspace.slack.com/" }],
+    ["conversations.list:", {
+      channels: [
+        { id: "C1", name: "work", is_member: true },
+        { id: "C2", name: "outside", is_member: false },
+      ],
+      response_metadata: { next_cursor: "next" },
+    }],
+    ["conversations.list:next", {
+      channels: [{ id: "C3", name: "private", is_member: true }],
+      response_metadata: { next_cursor: "" },
+    }],
+    ["conversations.history:C1", {
+      messages: [
+        { ts: "2.0", text: "Second", reply_count: 0 },
+        { ts: "1.0", text: "First", reply_count: 1 },
+        { ts: "0.5", thread_ts: "1.0", text: "Reply" },
+        { ts: "0.1", subtype: "channel_join", text: "joined" },
+      ],
+      response_metadata: { next_cursor: "" },
+    }],
+    ["conversations.history:C3", {
+      messages: [{ ts: "3.0", subtype: "bot_message", text: "Bot root" }],
+      response_metadata: { next_cursor: "" },
+    }],
+  ]);
+  const calls = [];
+  const fakeSlack = async (method, query = {}) => {
+    calls.push([method, query]);
+    const key = method === "conversations.list"
+      ? `${method}:${query.cursor || ""}`
+      : method === "conversations.history"
+        ? `${method}:${query.channel}`
+        : `${method}:`;
+    return responses.get(key);
+  };
+  const result = await discoverSlackRoots(fakeSlack);
+  assert.equal(result.channels, 2);
+  assert.deepEqual(result.roots.map((item) => item.channelId), ["C1", "C1", "C3"]);
+  assert.equal(result.roots[0].slackLink, "https://workspace.slack.com/archives/C1/p20");
+  assert.equal(calls.find(([method]) => method === "conversations.list")[1].exclude_archived, "false");
+  assert.equal(calls.some(([method, query]) => method === "conversations.history" && query.channel === "C2"), false);
+});
+
+test("classifies message roots and builds rows without session enrichment", () => {
+  assert.equal(isSlackMessageRoot({ ts: "1.0", text: "hello" }), true);
+  assert.equal(isSlackMessageRoot({ ts: "1.0", subtype: "bot_message", text: "hello" }), true);
+  assert.equal(isSlackMessageRoot({ ts: "1.1", thread_ts: "1.0", text: "reply" }), false);
+  assert.equal(isSlackMessageRoot({ ts: "1.0", subtype: "channel_join" }), false);
+  assert.equal(slackPermalink("https://workspace.slack.com/", "C1", "1.002"), "https://workspace.slack.com/archives/C1/p1002");
+  const discovered = {
+    channelId: "C1",
+    channelName: "work",
+    slackLink: "https://workspace.slack.com/archives/C1/p1002",
+    root: { ts: "1.002", text: "A root", reply_count: 0 },
+  };
+  const row = buildRowFromRoot(discovered, null, "2026-10-15T12:00:00Z");
+  assert.equal(row.threadKey, "C1:1.002");
+  assert.equal(row.sessionStats, null);
+  assert.equal(row.sessionSummary, null);
+  assert.equal(rootFingerprint("work", discovered.root), rootFingerprint("work", discovered.root));
+  assert.notEqual(rootFingerprint("work", discovered.root), rootFingerprint("work", { ...discovered.root, reply_count: 1 }));
 });
 
 test("uses the first root reaction and leaves only absent reactions blank", () => {

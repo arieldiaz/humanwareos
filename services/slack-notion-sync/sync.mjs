@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const DATA_ROOT = process.env.HUMANWARE_DATA_ROOT || null;
@@ -17,6 +18,7 @@ const NOTION_DATA_SOURCE_ID = process.env.NOTION_DATA_SOURCE_ID || null;
 const NOTION_API_VERSION = process.env.NOTION_API_VERSION || "2026-03-11";
 const MAX_INPUT_AGE_MS = Number(process.env.SLACK_NOTION_MAX_INPUT_AGE_MS ?? 300_000);
 const FULL_SYNC_INTERVAL_MS = Number(process.env.SLACK_NOTION_FULL_SYNC_INTERVAL_MS ?? 21_600_000);
+const NOTION_WRITE_DELAY_MS = Number(process.env.SLACK_NOTION_WRITE_DELAY_MS ?? 350);
 
 const STATUS_BY_REACTION = {
   arrows_counterclockwise: "🔄 Working",
@@ -34,6 +36,28 @@ const GLYPH_BY_REACTION = {
   heart: "❤️",
   fire: "🔥",
 };
+const NON_MESSAGE_ROOT_SUBTYPES = new Set([
+  "channel_archive",
+  "channel_convert_to_public",
+  "channel_join",
+  "channel_leave",
+  "channel_name",
+  "channel_posting_permissions",
+  "channel_purpose",
+  "channel_topic",
+  "channel_unarchive",
+  "group_archive",
+  "group_join",
+  "group_leave",
+  "group_name",
+  "group_purpose",
+  "group_topic",
+  "group_unarchive",
+  "message_deleted",
+  "message_changed",
+  "tabbed_canvas_updated",
+  "tombstone",
+]);
 
 export function missingRequiredConfig({ dryRun = false } = {}) {
   const missing = [];
@@ -49,6 +73,28 @@ export function missingRequiredConfig({ dryRun = false } = {}) {
 
 export function isMainModule(moduleUrl, entrypoint) {
   return Boolean(entrypoint) && moduleUrl === pathToFileURL(entrypoint).href;
+}
+
+export function isSlackMessageRoot(message) {
+  return Boolean(message?.ts)
+    && (!message.thread_ts || message.thread_ts === message.ts)
+    && !NON_MESSAGE_ROOT_SUBTYPES.has(message.subtype);
+}
+
+export function slackPermalink(workspaceUrl, channelId, threadTs) {
+  const base = String(workspaceUrl || "").replace(/\/$/, "");
+  return `${base}/archives/${channelId}/p${String(threadTs).replace(".", "")}`;
+}
+
+export function rootFingerprint(channelName, root) {
+  const relevant = {
+    channelName,
+    text: root.text || "",
+    replyCount: Number(root.reply_count || 0),
+    latestReply: root.latest_reply || root.ts,
+    firstReaction: root.reactions?.[0]?.name || null,
+  };
+  return createHash("sha256").update(JSON.stringify(relevant)).digest("hex");
 }
 
 function decodeEntities(value) {
@@ -204,7 +250,56 @@ async function slack(method, query = {}) {
   return apiJson(url, { headers: { Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}` } }, `Slack ${method}`);
 }
 
+export async function discoverSlackRoots(callSlack = slack) {
+  const authentication = await callSlack("auth.test");
+  const workspaceUrl = authentication.url;
+  if (!workspaceUrl) throw new Error("Slack auth.test did not return a workspace URL");
+  const channels = [];
+  let cursor = null;
+  do {
+    const page = await callSlack("conversations.list", {
+      types: "public_channel,private_channel",
+      exclude_archived: "false",
+      limit: "200",
+      ...(cursor ? { cursor } : {}),
+    });
+    channels.push(...(page.channels || []).filter((channel) => channel.is_member));
+    cursor = page.response_metadata?.next_cursor || null;
+  } while (cursor);
+
+  const roots = [];
+  for (const channel of channels) {
+    cursor = null;
+    do {
+      const page = await callSlack("conversations.history", {
+        channel: channel.id,
+        limit: "200",
+        inclusive: "true",
+        ...(cursor ? { cursor } : {}),
+      });
+      for (const root of page.messages || []) {
+        if (!isSlackMessageRoot(root)) continue;
+        roots.push({
+          channelId: channel.id,
+          channelName: channel.name || channel.id,
+          root,
+          slackLink: slackPermalink(workspaceUrl, channel.id, root.ts),
+        });
+      }
+      cursor = page.response_metadata?.next_cursor || null;
+    } while (cursor);
+  }
+  return { channels: channels.length, roots };
+}
+
+let nextNotionWriteAt = 0;
 async function notion(endpoint, { method = "GET", body } = {}) {
+  const isWrite = method === "PATCH" || (method === "POST" && endpoint === "pages");
+  if (isWrite && NOTION_WRITE_DELAY_MS > 0) {
+    const wait = Math.max(0, nextNotionWriteAt - Date.now());
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    nextNotionWriteAt = Date.now() + NOTION_WRITE_DELAY_MS;
+  }
   return apiJson(`https://api.notion.com/v1/${endpoint}`, {
     method,
     headers: {
@@ -258,38 +353,27 @@ function statusChangedAt(session, status, now) {
   return status && expected === status ? session.workflow?.ts || now : now;
 }
 
-export async function buildRow(session, { channelCache = new Map(), now = new Date().toISOString() } = {}) {
-  const response = await slack("conversations.replies", { channel: session.channelId, ts: session.threadId, limit: "1" });
-  const root = response.messages?.[0];
-  if (!root) throw new Error(`Slack root not found: ${session.channelId}:${session.threadId}`);
-  let channel = channelCache.get(session.channelId);
-  if (!channel) {
-    const info = await slack("conversations.info", { channel: session.channelId });
-    channel = info.channel?.name || session.channelId;
-    channelCache.set(session.channelId, channel);
-  }
-  let slackLink = session.slackUrl;
-  if (!slackLink) {
-    const permalink = await slack("chat.getPermalink", { channel: session.channelId, message_ts: session.threadId });
-    slackLink = permalink.permalink;
-  }
-  const record = session.record ? readJson(path.join(RECORDS_ROOT, session.record), {}) : {};
+export function buildRowFromRoot(discovered, session = null, now = new Date().toISOString()) {
+  const { channelId, channelName, root, slackLink } = discovered;
+  const record = session?.record ? readJson(path.join(RECORDS_ROOT, session.record), {}) : {};
   const replyCount = Number(root.reply_count || 0);
   const status = statusFromRoot(root);
-  const summaryName = path.basename(session.summaryMarkdown || (session.record || "").replace(/\.json$/, ".md"));
+  const summaryName = session
+    ? path.basename(session.summaryMarkdown || (session.record || "").replace(/\.json$/, ".md"))
+    : null;
   return {
     title: titleFromSlackText(root.text),
     status,
     slackLink,
-    channel,
-    channelId: session.channelId,
-    started: isoFromSlackTs(root.ts || session.threadId),
-    lastActivity: isoFromSlackTs(root.latest_reply || root.ts || session.threadId),
+    channel: channelName,
+    channelId,
+    started: isoFromSlackTs(root.ts),
+    lastActivity: isoFromSlackTs(root.latest_reply || root.ts),
     replies: replyCount,
-    statusChanged: statusChangedAt(session, status, now),
-    sessionStats: sessionStats(session, replyCount, record),
-    sessionSummary: `${SUMMARY_BASE_URL}/${encodeURIComponent(summaryName)}`,
-    threadKey: `${session.channelId}:${session.threadId}`,
+    statusChanged: session ? statusChangedAt(session, status, now) : now,
+    sessionStats: session ? sessionStats(session, replyCount, record) : null,
+    sessionSummary: summaryName ? `${SUMMARY_BASE_URL}/${encodeURIComponent(summaryName)}` : null,
+    threadKey: `${channelId}:${root.ts}`,
   };
 }
 
@@ -322,7 +406,14 @@ async function main() {
   const now = new Date();
   const sessions = validateInput(readJson(INPUT_PATH), now);
   if (dryRun) {
-    process.stdout.write(`${JSON.stringify({ event: "slack_notion_sync_validated", sessions: sessions.length, input: INPUT_PATH })}\n`);
+    const discovered = process.env.SLACK_BOT_TOKEN ? await discoverSlackRoots() : null;
+    process.stdout.write(`${JSON.stringify({
+      event: "slack_notion_sync_validated",
+      sessions: sessions.length,
+      input: INPUT_PATH,
+      channels: discovered?.channels ?? null,
+      roots: discovered?.roots.length ?? null,
+    })}\n`);
     return;
   }
   const state = readJson(STATE_PATH, { schemaVersion: 1, threads: {}, lastFullSyncAt: null });
@@ -330,22 +421,27 @@ async function main() {
   const ensureChannelOption = await notionSelectOptionWriter("Channel");
   const ensureStatusOption = await notionSelectOptionWriter("Status");
   const fullSync = !state.lastFullSyncAt || now.getTime() - new Date(state.lastFullSyncAt).getTime() >= FULL_SYNC_INTERVAL_MS;
-  const channelCache = new Map();
+  const sessionByThread = new Map(sessions.map((session) => [
+    `${session.channelId}:${session.threadId}`,
+    session,
+  ]));
+  const discovered = await discoverSlackRoots();
   const totals = { created: 0, updated: 0, skipped: 0, failed: 0 };
-  for (const session of sessions) {
-    const threadKey = `${session.channelId}:${session.threadId}`;
+  for (const item of discovered.roots) {
+    const threadKey = `${item.channelId}:${item.root.ts}`;
+    const fingerprint = rootFingerprint(item.channelName, item.root);
     const observed = state.threads[threadKey];
-    if (!fullSync && existing.has(threadKey) && observed === session.updatedAt) {
+    if (!fullSync && existing.has(threadKey) && observed?.fingerprint === fingerprint) {
       totals.skipped += 1;
       continue;
     }
     try {
-      const row = await buildRow(session, { channelCache, now: now.toISOString() });
+      const row = buildRowFromRoot(item, sessionByThread.get(threadKey), now.toISOString());
       await ensureChannelOption(row.channel);
       await ensureStatusOption(row.status);
       const result = await upsertRow(row, existing.get(threadKey), now.toISOString());
       totals[result] += 1;
-      state.threads[threadKey] = session.updatedAt || now.toISOString();
+      state.threads[threadKey] = { fingerprint };
     } catch (error) {
       totals.failed += 1;
       delete state.threads[threadKey];
@@ -354,8 +450,9 @@ async function main() {
   }
   if (fullSync) state.lastFullSyncAt = now.toISOString();
   state.updatedAt = now.toISOString();
+  state.schemaVersion = 2;
   atomicJson(STATE_PATH, state);
-  process.stdout.write(`${JSON.stringify({ event: "slack_notion_sync_completed", input: INPUT_PATH, fullSync, ...totals })}\n`);
+  process.stdout.write(`${JSON.stringify({ event: "slack_notion_sync_completed", input: INPUT_PATH, channels: discovered.channels, roots: discovered.roots.length, fullSync, ...totals })}\n`);
   if (totals.failed) process.exitCode = 1;
 }
 
