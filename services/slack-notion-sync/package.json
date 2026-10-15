@@ -1,0 +1,9 @@
+{
+  "name": "@humanwareos/slack-notion-sync",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "node-emoji": "2.2.0"
+  },
+  "humanwareRuntime": true
+}

@@ -2,7 +2,7 @@
 
 This one-way scheduled projector upserts every human or bot message root from every Slack channel the configured bot has joined, including archived channels. Slack remains authoritative. The Notion `Thread key` (`channel_id:thread_ts`) is the idempotency key; edits to projected properties are overwritten on the next changed or six-hour full sync and never flow back to Slack. Page body blocks, comments, and additional Notion-only properties are not part of the update request and remain untouched.
 
-Slack channel history is the row inventory. The optional `<data-root>/generated/sessions/current.json` projection enriches matching roots with session stats, session-summary URLs, and workflow timestamps; those fields stay blank for ordinary Slack threads. Slack system events such as joins, renames, tombstones, and canvas updates are not message roots and are excluded. Unknown or absent first reactions leave Status blank.
+Slack channel history is the row inventory. The optional `<data-root>/generated/sessions/current.json` projection enriches matching roots with session stats, session-summary URLs, and workflow timestamps; those fields stay blank for ordinary Slack threads. Slack system events such as joins, renames, tombstones, and canvas updates are not message roots and are excluded. Standard first reactions render as Unicode emoji; workspace-specific image emoji use a `🧩` marker because Notion select labels cannot embed Slack-hosted images. An absent first reaction leaves Status blank.
 
 ## Configuration
 

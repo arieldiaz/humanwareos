@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { get as emojiForName, has as hasEmoji } from "node-emoji";
 
 const DATA_ROOT = process.env.HUMANWARE_DATA_ROOT || null;
 const INPUT_PATH = process.env.SLACK_NOTION_INPUT
@@ -28,14 +29,12 @@ const STATUS_BY_REACTION = {
   white_check_mark: "✅ Closed",
   warning: "⚠️ Error",
 };
-const GLYPH_BY_REACTION = {
-  eyes: "👀",
-  thumbsup: "👍",
-  "+1": "👍",
-  tada: "🎉",
-  heart: "❤️",
-  fire: "🔥",
+const SLACK_EMOJI_ALIASES = {
+  hand: "✋",
+  melting_face: "🫠",
+  spiral_calendar_pad: "🗓️",
 };
+const CUSTOM_EMOJI_MARKER = "🧩";
 const NON_MESSAGE_ROOT_SUBTYPES = new Set([
   "channel_archive",
   "channel_convert_to_public",
@@ -92,7 +91,7 @@ export function rootFingerprint(channelName, root) {
     text: root.text || "",
     replyCount: Number(root.reply_count || 0),
     latestReply: root.latest_reply || root.ts,
-    firstReaction: root.reactions?.[0]?.name || null,
+    firstReaction: statusFromRoot(root),
   };
   return createHash("sha256").update(JSON.stringify(relevant)).digest("hex");
 }
@@ -125,7 +124,8 @@ export function statusFromRoot(root) {
   if (!name) return null;
   if (STATUS_BY_REACTION[name]) return STATUS_BY_REACTION[name];
   const word = name.split(/[_-]+/).filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(" ") || name;
-  return `${GLYPH_BY_REACTION[name] || `:${name}:`} ${word}`;
+  const glyph = SLACK_EMOJI_ALIASES[name] || (hasEmoji(name) ? emojiForName(name) : CUSTOM_EMOJI_MARKER);
+  return `${glyph} ${word}`;
 }
 
 export function isoFromSlackTs(ts) {
