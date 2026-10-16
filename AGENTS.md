@@ -41,6 +41,7 @@ Memory stores facts, decisions, and project state, never behavioral rules. Apply
 - `docs/runtime.md` — immutable builds, activation, rollback, and restart safety.
 - `docs/versioning.md` — versioned content items, version URLs, footer, and history.
 - `docs/design-agent.md` — visual and interface work.
+- `docs/figure-style.md` — decks, slides, and figures.
 - `docs/domain-surface.md` — public and private domain surfaces.
 - `docs/calendar-service.md` — canonical calendar store, mutations, and feeds.
 - `docs/email-intake.md` — email intake contract, correlation, and effects.
