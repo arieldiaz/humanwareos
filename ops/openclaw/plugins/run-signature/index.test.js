@@ -146,6 +146,12 @@ test("lays per-message reactions sequentially in canonical order", async () => {
   assert.deepEqual(observed, ["m_gpt_sol", "h_codex", "think_high"]);
 });
 
+test("constructs the serializer used by the per-message reaction hook", () => {
+  const source = readFileSync(new URL("./plugin-runtime.mjs", import.meta.url), "utf8");
+  assert.match(source, /const serializeRunStrip = createKeyedSerialQueue\(\);/);
+  assert.match(source, /await serializeRunStrip\(`/);
+});
+
 // --- infrastructure ---
 
 test("serializes concurrent run-strip writes for the same root", async () => {
