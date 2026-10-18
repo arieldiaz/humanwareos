@@ -1,0 +1,27 @@
+{
+  "id": "voice-slack",
+  "name": "Voice Slack workspace",
+  "description": "Session-scoped Slack workspace operations for the authenticated Liv voice interface.",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": ["slack_workspace"]
+  },
+  "configSchema": {
+    "type": "object",
+    "required": ["sessionKey", "agentId", "slackAccount", "humanStatusActors"],
+    "properties": {
+      "sessionKey": {"const": "agent:liv:voice-chief-of-staff"},
+      "agentId": {"const": "liv"},
+      "slackAccount": {"const": "liv"},
+      "humanStatusActors": {
+        "type": "array",
+        "items": {"type": "string", "pattern": "^[A-Z0-9]+$"},
+        "minItems": 1,
+        "uniqueItems": true
+      }
+    },
+    "additionalProperties": false
+  }
+}

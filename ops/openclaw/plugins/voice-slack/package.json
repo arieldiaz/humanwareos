@@ -1,0 +1,15 @@
+{
+  "name": "@humanwareos/openclaw-voice-slack",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "peerDependencies": {
+    "openclaw": ">=2026.9.8"
+  },
+  "openclaw": {
+    "extensions": ["./index.js"]
+  },
+  "scripts": {
+    "test": "node --test *.test.mjs"
+  }
+}

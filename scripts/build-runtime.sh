@@ -84,7 +84,7 @@ cp "$FRAMEWORK_DIR/scripts/materialize-openclaw-workspaces.mjs" "$BUILD_DIR/fram
 cp "$FRAMEWORK_DIR/scripts/apply-openclaw-patches.sh" "$BUILD_DIR/framework/scripts/apply-openclaw-patches.sh"
 cp "$FRAMEWORK_DIR/scripts/runtime-restart-guard.sh" "$BUILD_DIR/framework/scripts/runtime-restart-guard.sh"
 cp "$FRAMEWORK_DIR/scripts/document-workspace-server.mjs" "$BUILD_DIR/framework/scripts/document-workspace-server.mjs"
-for plugin in cursor-cli run-signature; do cp -R "$FRAMEWORK_DIR/ops/openclaw/plugins/$plugin" "$BUILD_DIR/framework/ops/openclaw/plugins/$plugin"; done
+for plugin in cursor-cli run-signature voice-slack; do cp -R "$FRAMEWORK_DIR/ops/openclaw/plugins/$plugin" "$BUILD_DIR/framework/ops/openclaw/plugins/$plugin"; done
 cp -R "$FRAMEWORK_DIR/ops/openclaw/patches/." "$BUILD_DIR/framework/ops/openclaw/patches/"
 cp -R "$FRAMEWORK_DIR/ops/openclaw/runtime/." "$BUILD_DIR/framework/ops/openclaw/runtime/"
 cp -R "$FRAMEWORK_DIR/ops/channels/." "$BUILD_DIR/framework/ops/channels/"
