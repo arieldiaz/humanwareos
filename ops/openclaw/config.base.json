@@ -103,7 +103,8 @@
     "load": {
       "paths": [
         "__HUMANWARE_RUNTIME_ROOT__/framework/ops/openclaw/plugins/cursor-cli",
-        "__HUMANWARE_RUNTIME_ROOT__/framework/ops/openclaw/plugins/run-signature"
+        "__HUMANWARE_RUNTIME_ROOT__/framework/ops/openclaw/plugins/run-signature",
+        "__HUMANWARE_RUNTIME_ROOT__/framework/ops/openclaw/plugins/voice-slack"
       ]
     },
     "entries": {
