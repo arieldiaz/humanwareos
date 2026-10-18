@@ -42,7 +42,7 @@ test("registers transport hooks without semantic collaboration hooks", () => {
   assert.ok(hooks.includes("message_sent"));
 });
 
-test("registers one atomic Slack work-thread tool with the normal high-reasoning path", () => {
+test("registers the Slack workflow tools with the normal high-reasoning path", () => {
   const tools = [];
   runSignaturePlugin.register({
     config: {},
@@ -51,7 +51,7 @@ test("registers one atomic Slack work-thread tool with the normal high-reasoning
       tools.push({ factory, options });
     },
   });
-  assert.deepEqual(tools.map(tool => tool.options.name), ["start_work_thread", "close_thread", "switch_model"]);
+  assert.deepEqual(tools.map(tool => tool.options.name), ["start_work_thread", "close_thread", "set_thread_status", "switch_model"]);
   const manifest = JSON.parse(readFileSync(new URL("./openclaw.plugin.json", import.meta.url), "utf8"));
   assert.deepEqual(manifest.contracts.tools, tools.map(tool => tool.options.name));
   assert.equal(tools[0].factory.contextVersion, 2);
