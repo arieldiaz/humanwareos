@@ -21,7 +21,7 @@ const toolContext = {messageChannel: 'slack', sessionKey: params.sessionKey, age
 
 test('the plugin no longer configures an owner principal', () => {
   assert.equal(manifest.configSchema.properties.ownerUserId, undefined);
-  assert.deepEqual(manifest.contracts.tools, ['start_work_thread', 'close_thread', 'switch_model']);
+  assert.deepEqual(manifest.contracts.tools, ['start_work_thread', 'close_thread', 'set_thread_status', 'switch_model']);
 });
 
 test('owner close during a run records closure and posts the report without a root reaction', async () => {

@@ -6,7 +6,7 @@
     "onStartup": true
   },
   "contracts": {
-    "tools": ["start_work_thread", "close_thread", "switch_model"]
+    "tools": ["start_work_thread", "close_thread", "set_thread_status", "switch_model"]
   },
   "configSchema": {
     "type": "object",

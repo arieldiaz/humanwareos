@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import {
   buildRowFromRoot,
   discoverSlackRoots,
+  effectiveStatusForThread,
   existingRowFromPage,
   isoFromSlackTs,
   isMainModule,
@@ -16,10 +17,14 @@ import {
   statusFromRoot,
   statusesFromRoot,
   migratedStatusForThread,
+  notionMigrationCommand,
   pendingStatusEvents,
+  pendingStatusCommands,
   hasUnprocessedStatusEvents,
+  humanClaimedStatus,
   titleFromSlackText,
   validateInput,
+  writeManagedBotStatus,
 } from "./sync.mjs";
 
 test("recognizes a runtime entrypoint whose path contains spaces", () => {
@@ -136,6 +141,70 @@ test("leaves conflicting human statuses blank instead of falling back to migrati
   assert.equal(migratedStatusForThread("C1:1.0", root, {"C1:1.0": "✋ Act"}, {}, new Set(["UOWNER"])), null);
 });
 
+test("uses a managed bot status until a human claims the thread", () => {
+  const root = {reactions: [{name: "calendar", users: ["UBOT"]}]};
+  assert.equal(effectiveStatusForThread(
+    "C1:1.0", root, {"C1:1.0": "✋ Act"}, {}, new Set(["UOWNER"]), new Set(["UBOT"]),
+  ), "🗓️ Scheduled");
+  const humanRoot = {reactions: [
+    {name: "calendar", users: ["UBOT"]},
+    {name: "white_check_mark", users: ["UOWNER"]},
+  ]};
+  assert.equal(effectiveStatusForThread(
+    "C1:1.0", humanRoot, {"C1:1.0": "✋ Act"}, {}, new Set(["UOWNER"]), new Set(["UBOT"]),
+  ), "✅ Closed");
+});
+
+test("a human removal clears status even while the fetched root still contains the bot reaction being removed", () => {
+  const root = {reactions: [{name: "hand", users: ["UBOT"]}]};
+  assert.equal(humanClaimedStatus(root, new Set(["UOWNER"])), null);
+});
+
+test("accepts Notion commands only for unclaimed migrated roots", () => {
+  const baseline = {"C1:1.0": "✋ Act"};
+  const observed = {projectedStatus: "✋ Act"};
+  assert.deepEqual(notionMigrationCommand("C1:1.0", "✅ Closed", observed, baseline), {status: "✅ Closed"});
+  assert.deepEqual(notionMigrationCommand("C1:1.0", null, observed, baseline), {status: null});
+  assert.equal(notionMigrationCommand("C1:1.0", "✋ Act", observed, baseline), null);
+  assert.equal(notionMigrationCommand("C1:1.0", "✅ Closed", observed, baseline, {"C1:1.0": "claimed"}), null);
+  assert.equal(notionMigrationCommand("C2:2.0", "✅ Closed", observed, baseline), null);
+  assert.equal(notionMigrationCommand("C1:1.0", "✅ Closed", observed, baseline, {}, {}, ["raised_hand"]), null);
+});
+
+test("replaces or clears only managed bot status reactions", async () => {
+  const bots = [
+    {name: "primary", token: "p", userId: "UP"},
+    {name: "secondary", token: "s", userId: "US"},
+  ];
+  const root = {reactions: [
+    {name: "hand", users: ["US"]},
+    {name: "eyes", users: ["UP"]},
+    {name: "white_check_mark", users: ["UOWNER"]},
+  ]};
+  const calls = [];
+  const selected = await writeManagedBotStatus(root, "C1", "1.0", "🗓️ Scheduled", bots, null,
+    async (token, method, query) => calls.push({token, method, query}));
+  assert.equal(selected, "secondary");
+  assert.deepEqual(calls, [
+    {token: "s", method: "reactions.remove", query: {channel: "C1", timestamp: "1.0", name: "hand"}},
+    {token: "s", method: "reactions.add", query: {channel: "C1", timestamp: "1.0", name: "calendar"}},
+  ]);
+  calls.length = 0;
+  await writeManagedBotStatus(root, "C1", "1.0", null, bots, null,
+    async (token, method, query) => calls.push({token, method, query}));
+  assert.deepEqual(calls, [
+    {token: "s", method: "reactions.remove", query: {channel: "C1", timestamp: "1.0", name: "hand"}},
+  ]);
+
+  calls.length = 0;
+  const requested = await writeManagedBotStatus({reactions: []}, "C1", "1.0", "✋ Act", bots, "secondary",
+    async (token, method, query) => calls.push({token, method, query}));
+  assert.equal(requested, "secondary");
+  assert.deepEqual(calls, [
+    {token: "s", method: "reactions.add", query: {channel: "C1", timestamp: "1.0", name: "raised_hand"}},
+  ]);
+});
+
 test("includes the effective migrated status in the workflow fingerprint", () => {
   const root = {ts: "1.0", text: "A root", reactions: []};
   assert.notEqual(rootFingerprint("work", root, "✋ Act"), rootFingerprint("work", root, null));
@@ -161,6 +230,15 @@ test("debounces and deduplicates structured status events by thread", () => {
   assert.equal(hasUnprocessedStatusEvents(text, {processedEvents: {a: "done"}}), true);
   assert.equal(hasUnprocessedStatusEvents(text, {processedEvents: {a: "done", b: "done"}}), false);
   assert.doesNotThrow(() => pendingStatusEvents(`${JSON.stringify(first)}\n{`, {processedEvents: {}}, new Date("2026-10-15T12:00:04Z")));
+});
+
+test("reads idempotent explicit bot status commands", () => {
+  const first = {id: "a", channelId: "C1", messageTs: "1.0", status: "✋ Act"};
+  const clear = {id: "b", channelId: "C2", messageTs: "2.0", status: null};
+  const invalid = {id: "c", channelId: "C3", messageTs: "3.0", status: "Other"};
+  const text = `${JSON.stringify(first)}\n${JSON.stringify(clear)}\n${JSON.stringify(invalid)}\n`;
+  assert.deepEqual(pendingStatusCommands(text, {processedCommands: {a: "done"}}), [clear]);
+  assert.doesNotThrow(() => pendingStatusCommands(`${JSON.stringify(first)}\n{`, {processedCommands: {}}));
 });
 
 test("formats timestamps and session stats from primary sources", () => {

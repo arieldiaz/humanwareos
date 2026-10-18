@@ -15,10 +15,12 @@ import {registerThreadLead} from "./thread-lead.mjs";
 import {registerSwitchModelTool} from "./switch-model-tool.mjs";
 import {installHumanStatusEventBridge} from "./human-status-events.mjs";
 import {resolveSlackChannel, slackRouteFromSessionKey} from "./slack-route.mjs";
+import {setThreadStatusTool} from "./status-command.mjs";
 
 export {slackRouteFromSessionKey};
 
 export {closeThreadTool} from "./host-close.mjs";
+export {setThreadStatusTool} from "./status-command.mjs";
 export {allowedModels, applySessionSelection, resolveRequestedModel, switchModelTool} from "./switch-model-tool.mjs";
 
 export {
@@ -295,6 +297,7 @@ const plugin = {
     };
     registerWorkThreadTool(api, {resolveSlackRuntimeModule, retrySlackRateLimit, workThreadPosts});
     registerHostClose(api, {isExcludedChannel, recordRunLifecycle, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi});
+    api.registerTool?.({contextVersion: 2, create: context => setThreadStatusTool(context, {dataRoot})}, {name: "set_thread_status"});
     registerSwitchModelTool(api);
     registerThreadLead(api, {isExcludedChannel, botUserIds: slackBotUserIds});
 

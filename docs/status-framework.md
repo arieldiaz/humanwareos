@@ -1,6 +1,6 @@
 # Status framework
 
-Run lifecycle and human workflow status are separate facts. The host records run lifecycle; an instance-configured human controls Slack root status. Neither substitutes for the other.
+Run lifecycle and workflow status are separate facts. The host records run lifecycle; a human controls current Slack root status, with one bounded legacy-migration exception. Neither substitutes for the other.
 
 Budget: 900 words. Over it, consolidate.
 
@@ -14,7 +14,7 @@ Budget: 900 words. Over it, consolidate.
 
 The first model-start event admits a run as `working`; duplicate starts are idempotent, and the end of the latest admitted run records `act`. When the owner asks to close, the agent finishes the other requested work and calls `close_thread`. The host records `closed` and posts one measured close report. Closure remains soft: later sends, completions, scheduled wakes, and human messages proceed normally.
 
-Slack never renders run lifecycle as a root reaction. Run admission, completion, closure, acknowledgement, typing, work-thread creation, recovery, and sweeps may not add, replace, or remove reactions on a Slack root. Agent reaction tools may not write root reactions. This restriction does not affect per-message provenance reactions on delivered agent replies.
+Slack never renders run lifecycle as a root reaction. Run admission, completion, closure, acknowledgement, typing, work-thread creation, recovery, and sweeps may not add, replace, or remove reactions on a Slack root. The dedicated status tool may write a bot-owned root status only on the owner's explicit request; generic reaction tools remain blocked from canonical status emoji. This restriction does not affect per-message provenance reactions on delivered agent replies.
 
 ## Human Slack status
 
@@ -26,15 +26,15 @@ The canonical Slack root statuses are:
 - `closed`: ✅ (`white_check_mark`)
 - `unknown`: no accepted canonical reaction
 
-Only reactions held by an instance-configured human status actor count. Bot-held reactions, reactions from other people, and noncanonical emoji are social or provenance data and do not set status.
+An instance-configured human status actor is authoritative. Configured migration bots may retain one historical status only while that baseline root remains unclaimed. Reactions from other people and noncanonical emoji are social or provenance data and do not set status.
 
 Status is derived from the current root snapshot. Zero distinct canonical reactions held by configured actors means `unknown`; exactly one means that status; more than one is ambiguous, projects as `unknown`, and is journaled for manual review. Never resolve ambiguity by reaction order, first reaction, precedence, or inference.
 
-Human reactions are never removed or rewritten by the system. To change status, the human removes the old canonical reaction and adds the new one. A short per-root debounce may coalesce that pair before projection.
+Human reactions are never removed or rewritten by the system. To change status, the human removes the old canonical reaction and adds the new one. A short per-root debounce may coalesce that pair before projection. The first human canonical add or remove claims the root and removes its managed legacy bot status.
 
 ## Projection and recovery
 
-Slack is the source for human workflow status. Notion projects it one way and never writes back to Slack.
+Slack is the source for new and human-claimed workflow status. During an explicitly configured migration, a Status edit on an unclaimed baseline row may replace or clear only configured bots' canonical reaction on that root. This writeback cannot affect new roots, human-claimed roots, human reactions, or any other Notion property. The projector records ownership so clearing a migrated status does not resurrect the baseline.
 
 The Slack adapter consumes structured `reaction_added` and `reaction_removed` events for message items. It accepts only configured human actors and canonical status reactions, silently claims the event before ordinary agent dispatch, and never wakes a model or posts a reply. Prose rendering of a system event is not an authentication or parsing boundary.
 
@@ -44,7 +44,7 @@ Processing is idempotent. Deduplicate Slack retries by event ID and, when multip
 
 A periodic full reconciliation remains mandatory. It repairs dropped, delayed, duplicated, or out-of-order events and Notion write failures. Projection updates only owned Notion properties; page bodies, comments, and unrelated properties remain untouched.
 
-Cutover removes every agent-held root reaction, including canonical lifecycle reactions, while preserving every human-held reaction. Historical agent suggestions may be retained only as a manual-review artifact; they do not become human-authored status. Disable acknowledgement, typing, native status-reaction, and custom root-reaction writers before cleanup. Rollback may restore code but must not recreate agent-held root status.
+Cutover disables acknowledgement, typing, native status-reaction, and custom lifecycle writers before cleanup. An approved migration may restore one unambiguous historical bot status per unclaimed root. It remains visibly bot-owned, may be changed in bulk from Notion, and disappears when a human claims the root. Rollback may restore code but must not restart lifecycle-driven root reactions.
 
 ## Verification and release
 

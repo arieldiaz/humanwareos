@@ -15,6 +15,8 @@ const STATE_PATH = process.env.SLACK_NOTION_STATE
   || (DATA_ROOT ? path.join(DATA_ROOT, "operations/slack-notion-sync/state.json") : null);
 const EVENTS_PATH = process.env.SLACK_NOTION_EVENTS
   || (DATA_ROOT ? path.join(DATA_ROOT, "operations/slack-notion-sync/events.jsonl") : null);
+const COMMANDS_PATH = process.env.SLACK_NOTION_COMMANDS
+  || (DATA_ROOT ? path.join(DATA_ROOT, "operations/slack-notion-sync/commands.jsonl") : null);
 const REVIEW_PATH = process.env.SLACK_NOTION_REVIEW
   || (DATA_ROOT ? path.join(DATA_ROOT, "operations/slack-notion-sync/manual-review.jsonl") : null);
 const MIGRATION_BASELINE_PATH = process.env.SLACK_NOTION_MIGRATION_BASELINE
@@ -26,6 +28,7 @@ const MAX_INPUT_AGE_MS = Number(process.env.SLACK_NOTION_MAX_INPUT_AGE_MS ?? 300
 const FULL_SYNC_INTERVAL_MS = Number(process.env.SLACK_NOTION_FULL_SYNC_INTERVAL_MS ?? 21_600_000);
 const NOTION_WRITE_DELAY_MS = Number(process.env.SLACK_NOTION_WRITE_DELAY_MS ?? 350);
 const EVENT_DEBOUNCE_MS = Number(process.env.SLACK_NOTION_EVENT_DEBOUNCE_MS ?? 2_000);
+const MIGRATION_WRITEBACK = process.env.SLACK_NOTION_MIGRATION_WRITEBACK === "1";
 const HUMAN_STATUS_ACTORS = new Set(String(process.env.SLACK_HUMAN_STATUS_ACTORS || "")
   .split(",").map((value) => value.trim()).filter(Boolean));
 
@@ -65,11 +68,13 @@ export function missingRequiredConfig({ dryRun = false } = {}) {
   if (!RECORDS_ROOT) missing.push("HUMANWARE_DATA_ROOT or SLACK_NOTION_RECORDS_ROOT");
   if (!STATE_PATH) missing.push("HUMANWARE_DATA_ROOT or SLACK_NOTION_STATE");
   if (!EVENTS_PATH) missing.push("HUMANWARE_DATA_ROOT or SLACK_NOTION_EVENTS");
+  if (!COMMANDS_PATH) missing.push("HUMANWARE_DATA_ROOT or SLACK_NOTION_COMMANDS");
   if (!REVIEW_PATH) missing.push("HUMANWARE_DATA_ROOT or SLACK_NOTION_REVIEW");
   if (!SUMMARY_BASE_URL) missing.push("SLACK_NOTION_SUMMARY_BASE_URL");
   if (!NOTION_DATA_SOURCE_ID) missing.push("NOTION_DATA_SOURCE_ID");
   if (!HUMAN_STATUS_ACTORS.size) missing.push("SLACK_HUMAN_STATUS_ACTORS");
   if (!dryRun && !process.env.SLACK_BOT_TOKEN) missing.push("SLACK_BOT_TOKEN");
+  if (!dryRun && MIGRATION_WRITEBACK && !process.env.SLACK_NOTION_SECONDARY_BOT_TOKEN) missing.push("SLACK_NOTION_SECONDARY_BOT_TOKEN");
   if (!dryRun && !process.env.NOTION_TOKEN) missing.push("NOTION_TOKEN");
   return missing;
 }
@@ -138,11 +143,41 @@ export function statusFromRoot(root, actorIds = HUMAN_STATUS_ACTORS) {
   return statuses.length === 1 ? STATUS_BY_REACTION[statuses[0]] : null;
 }
 
+export function humanClaimedStatus(root, actorIds = HUMAN_STATUS_ACTORS) {
+  return statusFromRoot(root, actorIds);
+}
+
 export function migratedStatusForThread(threadKey, root, baselineStatuses = {}, migrationClaims = {}, actorIds = HUMAN_STATUS_ACTORS) {
   const statuses = statusesFromRoot(root, actorIds);
   if (statuses.length === 1) return STATUS_BY_REACTION[statuses[0]];
   if (statuses.length > 1 || migrationClaims[threadKey]) return null;
   return baselineStatuses[threadKey] ?? null;
+}
+
+export function effectiveStatusForThread(
+  threadKey,
+  root,
+  baselineStatuses = {},
+  migrationClaims = {},
+  humanActorIds = HUMAN_STATUS_ACTORS,
+  managedBotIds = new Set(),
+) {
+  const humanStatuses = statusesFromRoot(root, humanActorIds);
+  if (humanStatuses.length === 1) return STATUS_BY_REACTION[humanStatuses[0]];
+  if (humanStatuses.length > 1) return null;
+  const botStatuses = statusesFromRoot(root, managedBotIds);
+  if (botStatuses.length === 1) return STATUS_BY_REACTION[botStatuses[0]];
+  if (botStatuses.length > 1 || migrationClaims[threadKey]) return null;
+  return baselineStatuses[threadKey] ?? null;
+}
+
+export function notionMigrationCommand(threadKey, notionStatus, observed, baselineStatuses = {}, migrationClaims = {}, migrationOwners = {}, humanStatuses = []) {
+  if (!(threadKey in baselineStatuses) || humanStatuses.length) return null;
+  const owner = migrationOwners[threadKey] || (migrationClaims[threadKey] ? "human" : null);
+  if (owner === "human" || observed?.projectedStatus === undefined || notionStatus === observed.projectedStatus) return null;
+  const accepted = new Set([...Object.values(STATUS_BY_REACTION), null]);
+  if (!accepted.has(notionStatus)) return null;
+  return {status: notionStatus};
 }
 
 export function isoFromSlackTs(ts) {
@@ -267,6 +302,57 @@ async function slack(method, query = {}) {
   return apiJson(url, { headers: { Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}` } }, `Slack ${method}`);
 }
 
+async function slackWrite(token, method, query = {}) {
+  return apiJson(`https://slack.com/api/${method}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams(query),
+  }, `Slack ${method}`);
+}
+
+async function managedStatusBots() {
+  const candidates = [
+    {name: process.env.SLACK_NOTION_PRIMARY_BOT_NAME || "primary", token: process.env.SLACK_BOT_TOKEN},
+    {name: process.env.SLACK_NOTION_SECONDARY_BOT_NAME || "secondary", token: process.env.SLACK_NOTION_SECONDARY_BOT_TOKEN},
+  ].filter(({token}, index, all) => token && all.findIndex((item) => item.token === token) === index);
+  return Promise.all(candidates.map(async (candidate) => {
+    const authentication = await apiJson("https://slack.com/api/auth.test", {
+      headers: {Authorization: `Bearer ${candidate.token}`},
+    }, `Slack ${candidate.name} auth.test`);
+    return {...candidate, userId: authentication.user_id};
+  }));
+}
+
+function reactionForStatus(status) {
+  return Object.entries(STATUS_BY_REACTION).find(([name, label]) => name !== "hand" && label === status)?.[0] ?? null;
+}
+
+export async function writeManagedBotStatus(root, channelId, threadTs, status, bots, preferredName = null, callSlackWrite = slackWrite) {
+  const desired = reactionForStatus(status);
+  const held = [];
+  for (const bot of bots) {
+    for (const reaction of root.reactions ?? []) {
+      if (!STATUS_BY_REACTION[reaction.name] || !(reaction.users ?? []).includes(bot.userId)) continue;
+      held.push({bot, reaction: reaction.name});
+    }
+  }
+  const selected = held.find(({bot}) => bot.name === preferredName)?.bot
+    || held[0]?.bot
+    || bots.find(({name}) => name === preferredName)
+    || bots[0];
+  for (const item of held) {
+    if (item.bot === selected && STATUS_BY_REACTION[item.reaction] === status) continue;
+    await callSlackWrite(item.bot.token, "reactions.remove", {channel: channelId, timestamp: threadTs, name: item.reaction});
+  }
+  if (desired && !held.some(({bot, reaction}) => bot === selected && STATUS_BY_REACTION[reaction] === status)) {
+    await callSlackWrite(selected.token, "reactions.add", {channel: channelId, timestamp: threadTs, name: desired});
+  }
+  return selected?.name ?? null;
+}
+
 export async function discoverSlackRoots(callSlack = slack) {
   const authentication = await callSlack("auth.test");
   const workspaceUrl = authentication.url;
@@ -377,6 +463,26 @@ export function hasUnprocessedStatusEvents(text, state) {
     }
   }
   return false;
+}
+
+export function pendingStatusCommands(text, state) {
+  const processed = state.processedCommands ?? {};
+  const commands = [];
+  const source = String(text ?? "");
+  const lines = source.split("\n");
+  for (const [index, line] of lines.entries()) {
+    if (!line.trim()) continue;
+    try {
+      const command = JSON.parse(line);
+      if (!command.id || processed[command.id] || !command.channelId || !command.messageTs) continue;
+      if (![...Object.values(STATUS_BY_REACTION), null].includes(command.status)) continue;
+      commands.push(command);
+    } catch (error) {
+      if (index === lines.length - 1 && !source.endsWith("\n")) continue;
+      throw error;
+    }
+  }
+  return commands;
 }
 
 function readText(filePath, fallback = "") {
@@ -524,15 +630,19 @@ async function main() {
     })}\n`);
     return;
   }
-  const state = readJson(STATE_PATH, { schemaVersion: 4, threads: {}, processedEvents: {}, ambiguities: {}, migrationClaims: {}, lastFullSyncAt: null });
+  const state = readJson(STATE_PATH, { schemaVersion: 5, threads: {}, processedEvents: {}, processedCommands: {}, ambiguities: {}, migrationClaims: {}, migrationOwners: {}, lastFullSyncAt: null });
   state.threads ??= {};
   state.processedEvents ??= {};
+  state.processedCommands ??= {};
   state.ambiguities ??= {};
   state.migrationClaims ??= {};
+  state.migrationOwners ??= {};
   const migrationBaseline = MIGRATION_BASELINE_PATH
     ? readJson(MIGRATION_BASELINE_PATH, {schemaVersion: 1, statuses: {}, ambiguous: {}})
     : {schemaVersion: 1, statuses: {}, ambiguous: {}};
   const baselineStatuses = migrationBaseline?.statuses ?? {};
+  const statusBots = MIGRATION_WRITEBACK ? await managedStatusBots() : [];
+  const statusBotIds = new Set(statusBots.map(({userId}) => userId));
   const ensureChannelOption = await notionSelectOptionWriter("Channel");
   const ensureStatusOption = await notionSelectOptionWriter("Status");
   const fullSync = !state.lastFullSyncAt || now.getTime() - new Date(state.lastFullSyncAt).getTime() >= FULL_SYNC_INTERVAL_MS;
@@ -548,12 +658,49 @@ async function main() {
     pendingEvents = pendingStatusEvents(eventText, state, new Date());
   }
   const totals = { created: 0, updated: 0, skipped: 0, failed: 0 };
+  const pendingCommands = pendingStatusCommands(readText(COMMANDS_PATH), state);
+  for (const command of pendingCommands) {
+    const threadKey = `${command.channelId}:${command.messageTs}`;
+    try {
+      if (!MIGRATION_WRITEBACK) throw new Error("bot-owned status commands are disabled");
+      const item = await discoverSlackRoot(command.channelId, command.messageTs);
+      if (!item) throw new Error("status target is not a Slack message root");
+      if (statusesFromRoot(item.root).length) throw new Error("thread status is human-owned");
+      const managedStatusBot = await writeManagedBotStatus(item.root, item.channelId, item.root.ts, command.status, statusBots, command.requestedBy);
+      if (baselineStatuses[threadKey]) {
+        state.migrationClaims[threadKey] = command.observedAt ?? now.toISOString();
+        state.migrationOwners[threadKey] = "bot";
+      }
+      const row = buildRowFromRoot(item, sessionByThread.get(threadKey), now.toISOString(), command.observedAt ?? now.toISOString(), command.status);
+      await ensureChannelOption(row.channel);
+      await ensureStatusOption(row.status);
+      const previous = await existingNotionRow(threadKey);
+      const result = await upsertRow(row, previous, now.toISOString());
+      totals[result] += 1;
+      state.threads[threadKey] = {
+        fingerprint: rootFingerprint(item.channelName, item.root, command.status),
+        projectedStatus: command.status,
+        ...(managedStatusBot ? {managedStatusBot} : {}),
+      };
+      state.processedCommands[command.id] = now.toISOString();
+    } catch (error) {
+      totals.failed += 1;
+      if (/disabled|human-owned|not a Slack message root/.test(error.message)) {
+        state.processedCommands[command.id] = now.toISOString();
+      }
+      process.stderr.write(`${JSON.stringify({event: "slack_notion_command_failed", threadKey, commandId: command.id, error: error.message})}\n`);
+    }
+  }
   if (pendingEvents.length) {
     for (const pending of pendingEvents) {
       try {
-        state.migrationClaims[pending.threadKey] = pending.event.observedAt ?? now.toISOString();
         const item = await discoverSlackRoot(pending.event.channelId, pending.event.messageTs);
         if (!item) throw new Error("reaction target is not a Slack message root");
+        state.migrationClaims[pending.threadKey] = pending.event.observedAt ?? now.toISOString();
+        state.migrationOwners[pending.threadKey] = "human";
+        if (MIGRATION_WRITEBACK) {
+          await writeManagedBotStatus(item.root, item.channelId, item.root.ts, null, statusBots);
+        }
         const statuses = statusesFromRoot(item.root);
         if (statuses.length > 1) {
           const fingerprint = statuses.join(",");
@@ -565,14 +712,14 @@ async function main() {
           delete state.ambiguities[pending.threadKey];
         }
         const statusObservedAt = isoFromSlackTs(pending.event.eventTs) ?? pending.event.observedAt ?? now.toISOString();
-        const status = migratedStatusForThread(pending.threadKey, item.root, baselineStatuses, state.migrationClaims);
+        const status = humanClaimedStatus(item.root);
         const row = buildRowFromRoot(item, sessionByThread.get(pending.threadKey), now.toISOString(), statusObservedAt, status);
         await ensureChannelOption(row.channel);
         await ensureStatusOption(row.status);
         const previous = await existingNotionRow(pending.threadKey);
         const result = await upsertRow(row, previous, now.toISOString());
         totals[result] += 1;
-        state.threads[pending.threadKey] = {fingerprint: rootFingerprint(item.channelName, item.root, status)};
+        state.threads[pending.threadKey] = {fingerprint: rootFingerprint(item.channelName, item.root, status), projectedStatus: status};
         for (const id of pending.ids) state.processedEvents[id] = now.toISOString();
       } catch (error) {
         totals.failed += 1;
@@ -587,11 +734,29 @@ async function main() {
       const humanStatuses = statusesFromRoot(item.root);
       if (humanStatuses.length && baselineStatuses[threadKey] && !state.migrationClaims[threadKey]) {
         state.migrationClaims[threadKey] = now.toISOString();
+        state.migrationOwners[threadKey] = "human";
+        if (MIGRATION_WRITEBACK) {
+          await writeManagedBotStatus(item.root, item.channelId, item.root.ts, null, statusBots);
+        }
       }
-      const status = migratedStatusForThread(threadKey, item.root, baselineStatuses, state.migrationClaims);
-      const fingerprint = rootFingerprint(item.channelName, item.root, status);
       const observed = state.threads[threadKey];
-      if (!fullSync && existing.has(threadKey) && observed?.fingerprint === fingerprint) {
+      const previous = existing.get(threadKey);
+      const command = MIGRATION_WRITEBACK
+        ? notionMigrationCommand(threadKey, previous?.status ?? null, observed, baselineStatuses, state.migrationClaims, state.migrationOwners, humanStatuses)
+        : null;
+      let status;
+      let managedStatusBot = observed?.managedStatusBot ?? null;
+      if (command) {
+        managedStatusBot = await writeManagedBotStatus(item.root, item.channelId, item.root.ts, command.status, statusBots, managedStatusBot);
+        state.migrationClaims[threadKey] = now.toISOString();
+        state.migrationOwners[threadKey] = "notion";
+        status = command.status;
+      } else {
+        status = effectiveStatusForThread(threadKey, item.root, baselineStatuses, state.migrationClaims, HUMAN_STATUS_ACTORS, statusBotIds);
+      }
+      const fingerprint = rootFingerprint(item.channelName, item.root, status);
+      if (!fullSync && !command && existing.has(threadKey) && observed?.fingerprint === fingerprint) {
+        state.threads[threadKey] = {...observed, projectedStatus: status};
         totals.skipped += 1;
         continue;
       }
@@ -599,9 +764,9 @@ async function main() {
         const row = buildRowFromRoot(item, sessionByThread.get(threadKey), now.toISOString(), now.toISOString(), status);
         await ensureChannelOption(row.channel);
         await ensureStatusOption(row.status);
-        const result = await upsertRow(row, existing.get(threadKey), now.toISOString());
+        const result = await upsertRow(row, previous, now.toISOString());
         totals[result] += 1;
-        state.threads[threadKey] = { fingerprint };
+        state.threads[threadKey] = {fingerprint, projectedStatus: status, ...(managedStatusBot ? {managedStatusBot} : {})};
       } catch (error) {
         totals.failed += 1;
         delete state.threads[threadKey];
@@ -623,10 +788,12 @@ async function main() {
   }
   const processedEntries = Object.entries(state.processedEvents).sort((a, b) => String(b[1]).localeCompare(String(a[1]))).slice(0, 10_000);
   state.processedEvents = Object.fromEntries(processedEntries);
+  const processedCommands = Object.entries(state.processedCommands).sort((a, b) => String(b[1]).localeCompare(String(a[1]))).slice(0, 10_000);
+  state.processedCommands = Object.fromEntries(processedCommands);
   state.updatedAt = now.toISOString();
-  state.schemaVersion = 4;
+  state.schemaVersion = 5;
   atomicJson(STATE_PATH, state);
-  process.stdout.write(`${JSON.stringify({ event: "slack_notion_sync_completed", input: INPUT_PATH, mode: pendingEvents.length ? "targeted" : "reconciliation", targeted: pendingEvents.length, fullSync, ...totals })}\n`);
+  process.stdout.write(`${JSON.stringify({ event: "slack_notion_sync_completed", input: INPUT_PATH, mode: pendingEvents.length || pendingCommands.length ? "targeted" : "reconciliation", targeted: pendingEvents.length + pendingCommands.length, fullSync, ...totals })}\n`);
   if (totals.failed) process.exitCode = 1;
 }
 
