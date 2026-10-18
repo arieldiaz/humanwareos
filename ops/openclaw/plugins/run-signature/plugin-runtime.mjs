@@ -275,6 +275,7 @@ const plugin = {
     const bySession = new Map();
     const byAgent = new Map();
     const botIdCache = new Map();
+    const serializeRunStrip = createKeyedSerialQueue();
     const dataRoot = resolveDataRoot(api.config, api.pluginConfig);
     const uninstallHumanStatusBridge = installHumanStatusEventBridge({
       dataRoot,
