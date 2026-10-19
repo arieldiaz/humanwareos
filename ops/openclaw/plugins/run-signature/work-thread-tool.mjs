@@ -1,5 +1,6 @@
 import {matchSlackChannel, startSlackWorkThread} from "../../slack-spin-out.mjs";
 import {resolveSlackChannel} from "./slack-route.mjs";
+import {createHash} from "node:crypto";
 
 async function listSlackChannels(token) {
   const channels = [];
@@ -12,6 +13,41 @@ async function listSlackChannels(token) {
     cursor = response.response_metadata?.next_cursor ?? "";
   } while (cursor);
   return channels;
+}
+
+function workSessionKey(agentId, operationId) {
+  const id = createHash("sha256").update(String(operationId)).digest("hex").slice(0, 20);
+  return `agent:${agentId}:subagent:work-thread-${id}`;
+}
+
+async function createWorkSession(api, params) {
+  const key = workSessionKey(params.agentId, params.idempotencyKey);
+  const thinking = await api.runtime.subagent.run({
+    sessionKey: key,
+    message: "/think high",
+    disableTools: true,
+    deliver: false,
+    idempotencyKey: `${params.idempotencyKey}:thinking`,
+  });
+  const configured = await api.runtime.subagent.waitForRun({runId: thinking.runId, timeoutMs: 30_000});
+  if (configured.status !== "ok") {
+    throw new Error(configured.error ?? `work session reasoning setup ${configured.status}`);
+  }
+  await api.runtime.agent.session.patchSessionEntry({
+    sessionKey: key,
+    update: () => ({
+      label: params.label,
+      displayName: params.label,
+      ...(params.category ? {category: params.category} : {}),
+    }),
+  });
+  const started = await api.runtime.subagent.run({
+    sessionKey: key,
+    message: params.task,
+    deliver: false,
+    idempotencyKey: params.idempotencyKey,
+  });
+  return {key: started.sessionKey ?? key, runId: started.runId, runStarted: true};
 }
 
 export function registerWorkThreadTool(api, {
@@ -58,6 +94,8 @@ export function registerWorkThreadTool(api, {
           const channel = args.channel?.trim()
             ? matchSlackChannel(args.channel, await listSlackChannels(token))
             : currentChannel;
+          const outbound = await api.runtime.channel.outbound.loadAdapter("slack");
+          if (!outbound?.sendText) throw new Error("Slack outbound text adapter is unavailable");
           const result = await startSlackWorkThread({
             accountId,
             agentId,
@@ -69,10 +107,17 @@ export function registerWorkThreadTool(api, {
             operationId: toolCallId,
             send: (params) => {
               workThreadPosts.add(String(params.message).trim());
-              return api.runtime.gateway.request("send", params);
+              return outbound.sendText({
+                cfg: api.config,
+                to: params.to,
+                text: params.message,
+                accountId,
+                threadId: params.threadId,
+                deliveryQueueId: params.idempotencyKey,
+              });
             },
             prepareScaffold: clearScaffold,
-            createSession: (params) => api.runtime.gateway.request("sessions.create", params),
+            createSession: (params) => createWorkSession(api, params),
           });
           return {content: [{type: "text", text: JSON.stringify(result)}], details: result};
         } catch (error) {
