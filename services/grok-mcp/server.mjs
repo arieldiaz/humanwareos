@@ -167,7 +167,7 @@ function formPage(params, error = "") {
 
 function text(res, status, body, headers = {}) {
   const content = Buffer.from(body);
-  res.writeHead(status, { "Cache-Control": "no-store", "Content-Type": "text/html; charset=utf-8", "Content-Length": String(content.length), "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'", "X-Content-Type-Options": "nosniff", ...headers });
+  res.writeHead(status, { "Cache-Control": "no-store", "Content-Type": "text/html; charset=utf-8", "Content-Length": String(content.length), "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'", "X-Content-Type-Options": "nosniff", ...headers });
   res.end(content);
 }
 
@@ -230,6 +230,7 @@ export function createBridgeHttpServer({ config, dataRoot, token, ownerPassword 
   const authorizationEndpoint = oauth ? `${issuer}${oauth.authorizePath}` : null;
   const tokenEndpoint = oauth ? `${issuer}${oauth.tokenPath}` : null;
   const protectedMetadataPath = `/.well-known/oauth-protected-resource${config.mountPath}`;
+  const protectedMetadataPaths = new Set(["/.well-known/oauth-protected-resource", protectedMetadataPath]);
 
   const server = createServer(async (req, res) => {
     const path = new URL(req.url ?? "/", "http://localhost").pathname;
@@ -242,11 +243,11 @@ export function createBridgeHttpServer({ config, dataRoot, token, ownerPassword 
       return;
     }
     if (!validateHost(req, res)) return;
-    if (oauth && path === "/.well-known/oauth-authorization-server" && req.method === "GET") {
+    if (oauth && ["/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"].includes(path) && req.method === "GET") {
       json(res, 200, { issuer, authorization_endpoint: authorizationEndpoint, token_endpoint: tokenEndpoint, response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"], scopes_supported: oauth.scopes });
       return;
     }
-    if (oauth && path === protectedMetadataPath && req.method === "GET") {
+    if (oauth && protectedMetadataPaths.has(path) && req.method === "GET") {
       json(res, 200, { resource: `${issuer}${config.mountPath}`, authorization_servers: [issuer], scopes_supported: oauth.scopes, bearer_methods_supported: ["header"] });
       return;
     }
@@ -284,14 +285,15 @@ export function createBridgeHttpServer({ config, dataRoot, token, ownerPassword 
     if (oauth && path === oauth.tokenPath && req.method === "POST") {
       try {
         const params = await readForm(req);
-        if (params.get("client_id") !== oauth.clientId) throw new Error("invalid_client");
+        const requestedClientId = params.get("client_id");
+        if (requestedClientId && requestedClientId !== oauth.clientId) throw new Error("invalid_client");
         const now = Math.floor(Date.now() / 1000);
         let scope;
         if (params.get("grant_type") === "authorization_code") {
           const codeValue = params.get("code");
           const entry = codes.get(codeValue);
           codes.delete(codeValue);
-          if (!entry || entry.expires < Date.now() || entry.redirectUri !== params.get("redirect_uri")) throw new Error("invalid_grant");
+          if (!entry || entry.clientId !== oauth.clientId || entry.expires < Date.now() || entry.redirectUri !== params.get("redirect_uri")) throw new Error("invalid_grant");
           const verifier = params.get("code_verifier") ?? "";
           const challenge = createHash("sha256").update(verifier).digest("base64url");
           if (!secureEqual(challenge, entry.codeChallenge)) throw new Error("invalid_grant");

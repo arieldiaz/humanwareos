@@ -64,10 +64,12 @@ test("supports OAuth authorization code with PKCE for Grok", async (t) => {
   const origin = new URL(url).origin;
   const verifier = "oauth-test-verifier-with-at-least-forty-three-characters-123456";
   const challenge = createHash("sha256").update(verifier).digest("base64url");
-  const params = new URLSearchParams({ response_type: "code", client_id: "grok-humanware", redirect_uri: "https://grok.com/oauth/callback", state: "test-state", code_challenge: challenge, code_challenge_method: "S256", scope: "humanware" });
+  const redirectUri = "https://grok.com/connectors-oauth-exchange-code/";
+  const params = new URLSearchParams({ response_type: "code", client_id: "grok-humanware", redirect_uri: redirectUri, state: "test-state", code_challenge: challenge, code_challenge_method: "S256", scope: "humanware" });
 
   const authorize = await fetch(`${origin}/oauth/authorize?${params}`);
   assert.equal(authorize.status, 200);
+  assert.doesNotMatch(authorize.headers.get("content-security-policy"), /form-action/);
   assert.match(await authorize.text(), /Authorize Grok/);
 
   params.set("password", OWNER_PASSWORD);
@@ -76,11 +78,15 @@ test("supports OAuth authorization code with PKCE for Grok", async (t) => {
   const callback = new URL(approved.headers.get("location"));
   assert.equal(callback.searchParams.get("state"), "test-state");
 
-  const exchanged = await fetch(`${origin}/oauth/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", client_id: "grok-humanware", redirect_uri: "https://grok.com/oauth/callback", code: callback.searchParams.get("code"), code_verifier: verifier }) });
+  const exchanged = await fetch(`${origin}/oauth/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", redirect_uri: redirectUri, code: callback.searchParams.get("code"), code_verifier: verifier }) });
   assert.equal(exchanged.status, 200);
   const tokens = await exchanged.json();
   assert.equal(tokens.token_type, "Bearer");
   assert.ok(tokens.refresh_token);
+
+  const wrongClient = await fetch(`${origin}/oauth/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", client_id: "other-client", refresh_token: tokens.refresh_token }) });
+  assert.equal(wrongClient.status, 400);
+  assert.deepEqual(await wrongClient.json(), { error: "invalid_client" });
 
   const client = await connected(url, tokens.access_token);
   t.after(() => client.close());
@@ -93,6 +99,12 @@ test("publishes OAuth metadata and rejects untrusted redirects", async (t) => {
   const origin = new URL(url).origin;
   const metadata = await fetch(`${origin}/.well-known/oauth-authorization-server`).then((response) => response.json());
   assert.equal(metadata.token_endpoint, "https://grok-mcp.example.com/oauth/token");
+  const openidMetadata = await fetch(`${origin}/.well-known/openid-configuration`).then((response) => response.json());
+  assert.equal(openidMetadata.authorization_endpoint, "https://grok-mcp.example.com/oauth/authorize");
+  for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/grok"]) {
+    const protectedMetadata = await fetch(`${origin}${path}`).then((response) => response.json());
+    assert.equal(protectedMetadata.resource, "https://grok-mcp.example.com/grok");
+  }
   const rejected = await fetch(`${origin}/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: "grok-humanware", redirect_uri: "https://evil.example/callback", state: "state", code_challenge: "a".repeat(43), code_challenge_method: "S256" })}`);
   assert.equal(rejected.status, 400);
 });
