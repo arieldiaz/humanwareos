@@ -12,7 +12,7 @@ The bridge exposes five tools:
 
 Every write requires a caller-supplied `operationId`. Retrying the same input is a replay; reusing an operation ID with different input fails. Returned locations are logical `data:` references rather than host paths.
 
-The service binds only to loopback. Put a named HTTPS tunnel in front of it, require a bearer token of at least 32 characters, and expose only the configured single-slug mount path plus the detail-free `/health` probe. The path selects a client policy profile; authentication still comes from the bearer token. Neither request bodies nor credentials are logged.
+The service binds only to loopback. Put a named HTTPS tunnel in front of it and expose only the configured MCP mount, OAuth endpoints, and standards-based OAuth metadata. When OAuth is configured, the bridge supports authorization code with mandatory PKCE S256, a public client, bounded redirect hosts, one-time five-minute codes, one-hour signed access tokens, and 180-day refresh tokens. The owner approves a connection with a separate high-entropy password. A stable bearer signing key of at least 32 characters also remains valid for private operational acceptance. Neither request bodies nor credentials are logged.
 
 Run its tests with:
 

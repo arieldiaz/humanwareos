@@ -21,6 +21,30 @@ export function validateConfig(config) {
   if (typeof config.mountPath !== "string" || !/^\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(config.mountPath)) {
     throw new Error("grok-mcp mountPath must be a single absolute URL slug");
   }
+  if (config.oauth !== undefined) {
+    if (typeof config.oauth !== "object" || config.oauth === null) {
+      throw new Error("grok-mcp oauth must be an object");
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(config.oauth.clientId ?? "")) {
+      throw new Error("grok-mcp oauth clientId is invalid");
+    }
+    for (const field of ["authorizePath", "tokenPath"]) {
+      if (typeof config.oauth[field] !== "string" || !/^\/oauth\/[a-z0-9-]+$/.test(config.oauth[field])) {
+        throw new Error(`grok-mcp oauth ${field} must be an /oauth path`);
+      }
+    }
+    if (config.oauth.authorizePath === config.oauth.tokenPath || config.oauth.authorizePath === config.mountPath || config.oauth.tokenPath === config.mountPath) {
+      throw new Error("grok-mcp oauth paths must be distinct");
+    }
+    if (!Array.isArray(config.oauth.allowedRedirectHosts) || config.oauth.allowedRedirectHosts.length === 0 ||
+        config.oauth.allowedRedirectHosts.some((host) => typeof host !== "string" || !/^[a-z0-9.-]+$/.test(host))) {
+      throw new Error("grok-mcp oauth allowedRedirectHosts must contain DNS hostnames");
+    }
+    if (!Array.isArray(config.oauth.scopes) || config.oauth.scopes.length === 0 ||
+        config.oauth.scopes.some((scope) => typeof scope !== "string" || !/^[a-z][a-z0-9:_-]{0,63}$/.test(scope))) {
+      throw new Error("grok-mcp oauth scopes are invalid");
+    }
+  }
   if (!Array.isArray(config.contextFiles) || config.contextFiles.length === 0) {
     throw new Error("grok-mcp requires at least one context file");
   }
