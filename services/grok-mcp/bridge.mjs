@@ -18,6 +18,9 @@ export function validateConfig(config) {
   if (origin.protocol !== "https:" || origin.pathname !== "/") {
     throw new Error("grok-mcp publicOrigin must be an HTTPS origin");
   }
+  if (typeof config.mountPath !== "string" || !/^\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(config.mountPath)) {
+    throw new Error("grok-mcp mountPath must be a single absolute URL slug");
+  }
   if (!Array.isArray(config.contextFiles) || config.contextFiles.length === 0) {
     throw new Error("grok-mcp requires at least one context file");
   }

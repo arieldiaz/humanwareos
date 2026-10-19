@@ -162,7 +162,7 @@ export function createBridgeHttpServer({ config, dataRoot, token }) {
       }
       return;
     }
-    if (path !== "/mcp") {
+    if (path !== config.mountPath) {
       json(res, 404, { error: "not found" });
       return;
     }

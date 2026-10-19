@@ -1,6 +1,6 @@
 # Grok MCP bridge
 
-Authenticated, stateless Streamable HTTP MCP bridge from Grok Bot into the Humanware OS data plane. The framework owns the protocol and storage mechanics; an instance supplies the listen address, public HTTPS origin, explicit context allowlist, data-root-relative destinations, launchd services, tunnel, and secret references.
+Authenticated, stateless Streamable HTTP MCP bridge from Grok Bot into the Humanware OS data plane. The framework owns the protocol and storage mechanics; an instance supplies the listen address, public HTTPS origin, client-specific mount path, explicit context allowlist, data-root-relative destinations, launchd services, tunnel, and secret references.
 
 The bridge exposes five tools:
 
@@ -12,7 +12,7 @@ The bridge exposes five tools:
 
 Every write requires a caller-supplied `operationId`. Retrying the same input is a replay; reusing an operation ID with different input fails. Returned locations are logical `data:` references rather than host paths.
 
-The service binds only to loopback. Put a named HTTPS tunnel in front of it, require a bearer token of at least 32 characters, and expose only `/mcp` plus the detail-free `/health` probe. Neither request bodies nor credentials are logged.
+The service binds only to loopback. Put a named HTTPS tunnel in front of it, require a bearer token of at least 32 characters, and expose only the configured single-slug mount path plus the detail-free `/health` probe. The path selects a client policy profile; authentication still comes from the bearer token. Neither request bodies nor credentials are logged.
 
 Run its tests with:
 

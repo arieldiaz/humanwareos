@@ -23,6 +23,7 @@ async function fixture() {
     enabled: true,
     listen: "127.0.0.1:0",
     publicOrigin: "https://grok-mcp.example.com",
+    mountPath: "/grok",
     contextFiles: [
       { id: "strategy", label: "Strategy", path: "current/strategy/current.md", maxBytes: 1000 },
       { id: "memory", label: "Memory", path: "current/memory/index.md", maxBytes: 1000 },
@@ -35,7 +36,7 @@ async function fixture() {
   const server = createBridgeHttpServer({ config, dataRoot: root, token: TOKEN });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
-  const url = new URL(`http://127.0.0.1:${address.port}/mcp`);
+  const url = new URL(`http://127.0.0.1:${address.port}${config.mountPath}`);
   return { root, server, url };
 }
 
@@ -61,6 +62,17 @@ test("requires bearer auth and exposes five bounded tools", async (t) => {
   t.after(() => client.close());
   const listed = await client.listTools();
   assert.deepEqual(listed.tools.map((item) => item.name).sort(), ["get_context", "propose_memory", "record_turn", "save_work", "stage_artifact"]);
+});
+
+test("serves MCP only at the configured mount path", async (t) => {
+  const { server, url } = await fixture();
+  t.after(() => server.close());
+  const response = await fetch(new URL("/mcp", url), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } } }),
+  });
+  assert.equal(response.status, 404);
 });
 
 test("reads only configured context and makes write tools idempotent", async (t) => {
