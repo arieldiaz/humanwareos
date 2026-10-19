@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { createBridgeHttpServer } from "./server.mjs";
 
 const TOKEN = "test-token-with-at-least-thirty-two-characters";
+const OWNER_PASSWORD = "test-owner-password-with-enough-entropy";
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "humanware-grok-mcp-"));
@@ -24,6 +26,13 @@ async function fixture() {
     listen: "127.0.0.1:0",
     publicOrigin: "https://grok-mcp.example.com",
     mountPath: "/grok",
+    oauth: {
+      clientId: "grok-humanware",
+      authorizePath: "/oauth/authorize",
+      tokenPath: "/oauth/token",
+      allowedRedirectHosts: ["grok.com", "x.ai"],
+      scopes: ["humanware"],
+    },
     contextFiles: [
       { id: "strategy", label: "Strategy", path: "current/strategy/current.md", maxBytes: 1000 },
       { id: "memory", label: "Memory", path: "current/memory/index.md", maxBytes: 1000 },
@@ -33,21 +42,60 @@ async function fixture() {
     memoryProposalRoot: "evidence/memory/proposals/grok-bot",
     artifactStageRoot: "working/integrations/grok-bot/artifacts",
   };
-  const server = createBridgeHttpServer({ config, dataRoot: root, token: TOKEN });
+  const server = createBridgeHttpServer({ config, dataRoot: root, token: TOKEN, ownerPassword: OWNER_PASSWORD });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   const url = new URL(`http://127.0.0.1:${address.port}${config.mountPath}`);
   return { root, server, url };
 }
 
-async function connected(url) {
+async function connected(url, token = TOKEN) {
   const client = new Client({ name: "humanware-test", version: "1.0.0" });
   const transport = new StreamableHTTPClientTransport(url, {
-    requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } },
+    requestInit: { headers: { Authorization: `Bearer ${token}` } },
   });
   await client.connect(transport);
   return client;
 }
+
+test("supports OAuth authorization code with PKCE for Grok", async (t) => {
+  const { server, url } = await fixture();
+  t.after(() => server.close());
+  const origin = new URL(url).origin;
+  const verifier = "oauth-test-verifier-with-at-least-forty-three-characters-123456";
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const params = new URLSearchParams({ response_type: "code", client_id: "grok-humanware", redirect_uri: "https://grok.com/oauth/callback", state: "test-state", code_challenge: challenge, code_challenge_method: "S256", scope: "humanware" });
+
+  const authorize = await fetch(`${origin}/oauth/authorize?${params}`);
+  assert.equal(authorize.status, 200);
+  assert.match(await authorize.text(), /Authorize Grok/);
+
+  params.set("password", OWNER_PASSWORD);
+  const approved = await fetch(`${origin}/oauth/authorize`, { method: "POST", redirect: "manual", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: params });
+  assert.equal(approved.status, 302);
+  const callback = new URL(approved.headers.get("location"));
+  assert.equal(callback.searchParams.get("state"), "test-state");
+
+  const exchanged = await fetch(`${origin}/oauth/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", client_id: "grok-humanware", redirect_uri: "https://grok.com/oauth/callback", code: callback.searchParams.get("code"), code_verifier: verifier }) });
+  assert.equal(exchanged.status, 200);
+  const tokens = await exchanged.json();
+  assert.equal(tokens.token_type, "Bearer");
+  assert.ok(tokens.refresh_token);
+
+  const client = await connected(url, tokens.access_token);
+  t.after(() => client.close());
+  assert.equal((await client.listTools()).tools.length, 5);
+});
+
+test("publishes OAuth metadata and rejects untrusted redirects", async (t) => {
+  const { server, url } = await fixture();
+  t.after(() => server.close());
+  const origin = new URL(url).origin;
+  const metadata = await fetch(`${origin}/.well-known/oauth-authorization-server`).then((response) => response.json());
+  assert.equal(metadata.token_endpoint, "https://grok-mcp.example.com/oauth/token");
+  const rejected = await fetch(`${origin}/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: "grok-humanware", redirect_uri: "https://evil.example/callback", state: "state", code_challenge: "a".repeat(43), code_challenge_method: "S256" })}`);
+  assert.equal(rejected.status, 400);
+});
 
 test("requires bearer auth and exposes five bounded tools", async (t) => {
   const { server, url } = await fixture();
