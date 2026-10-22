@@ -2,7 +2,7 @@
 
 `artifact_manager.py` is the only writer of the artifact registry, the immutable revision store, and the generated review projection under the instance data root. `publisher.py` mirrors an artifact's live content to the public site repository on request with an `artifact-publish.json` marker (`shell: "site"`, the live `version` number, `history_url`); the site build owns the public shell and footer. The model and URLs are in [`docs/versioning.md`](../../docs/versioning.md).
 
-In an assembled runtime both run from `<runtime>/current/framework/ops/artifacts/` and read the data root from `config/instance.json`. The instance supplies `config/services/artifacts.json` (`listen`, `publicOrigin`, `publicRepo`, `privateMarkers`, `legacyRoot`), its launchd and Caddy wiring, and optionally `surface/artifacts/theme.css`.
+In an assembled runtime both run from `<runtime>/current/framework/ops/artifacts/` and read the data root from `config/instance.json`. The instance supplies `config/services/artifacts.json` (`listen`, `publicOrigin`, `publicRepo`, `privateMarkers`, `legacyRoot`), its launchd and Caddy wiring, and optionally `surface/artifacts/theme.css` and `surface/artifacts/icons.json`, a map of project id to icon path; the library shows a monogram for any project without one.
 
 Promote a staged directory as the working session's artifact. The first promotion in a session creates artifact N; every later one in that session is its next version. The command prints the live URL.
 

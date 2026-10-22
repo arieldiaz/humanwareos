@@ -10,8 +10,11 @@
 </head>
 <body>
   <main class="shell">
-    <p class="count">Private source library</p>
-    <div class="grid" id="artifact-projects"></div>
+    <div class="libbar">
+      <p class="count" id="artifact-count">Private source library</p>
+      <input class="filter" id="artifact-filter" type="search" placeholder="Filter projects" aria-label="Filter projects">
+    </div>
+    <div class="grid project-grid" id="artifact-projects"></div>
   </main>
   <script src="/artifacts/registry.js"></script>
   <script src="/os-shell.js"></script>
