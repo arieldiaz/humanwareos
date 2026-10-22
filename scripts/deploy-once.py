@@ -17,7 +17,7 @@ import subprocess
 import sys
 import uuid
 
-PREFIX = 'com.humanwareos.cutover.'
+PREFIX = 'com.humanware.cutover.'
 OPENCLAW = os.environ.get('OPENCLAW_BIN') or shutil.which('openclaw') or '/opt/homebrew/bin/openclaw'
 DEPLOY = Path(__file__).resolve().with_name('openclaw-deploy.sh')
 

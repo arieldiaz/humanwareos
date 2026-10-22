@@ -6,7 +6,7 @@ Budget: 1,100 words. Over it, consolidate.
 
 ## Control plane
 
-OpenClaw owns identity routing, conversation state, adapters, tools, secrets, execution, delivery, and lifecycle. Slack, Campfire, Buzz, voice, and first-party applications are replaceable adapters. Campfire uses one native bot per identity and a private asynchronous bridge because its webhook response window is shorter than an agent turn. The first voice slice is defined in [voice-channel.md](voice-channel.md).
+OpenClaw owns identity routing, conversation state, adapters, tools, secrets, execution, delivery, and lifecycle. Slack, Campfire, voice, and first-party applications are replaceable adapters. Campfire uses one native bot per identity and a private asynchronous bridge because its webhook response window is shorter than an agent turn. The first voice slice is defined in [voice-channel.md](voice-channel.md).
 
 An adapter converts inbound events into canonical account, conversation, thread, sender, mention, attachment, timestamp, and delivery fields, then renders the canonical response and lifecycle state. Rendering never owns identity or memory.
 
@@ -60,7 +60,7 @@ The control plane verifies the profile's data and tool scopes before dispatch. S
 
 ## Delivery
 
-The adapter owns surface publication and appends provenance after confirmed delivery. An external harness does not independently call a Slack or Buzz send tool unless the profile explicitly declares that transport and prevents duplicate delivery.
+The adapter owns surface publication and appends provenance after confirmed delivery. An external harness does not independently call a Slack send tool unless the profile explicitly declares that transport and prevents duplicate delivery.
 
 ### Conversation lifecycle
 
