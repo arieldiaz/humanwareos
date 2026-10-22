@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.humanwareos.nasbackup</string>
+  <key>Label</key><string>com.humanware.nasbackup</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -17,7 +17,7 @@
   <key>ProcessType</key><string>Background</string>
   <key>LowPriorityIO</key><true/>
   <key>Nice</key><integer>10</integer>
-  <key>StandardOutPath</key><string>/Users/you/Library/Logs/humanwareos-nasbackup.log</string>
-  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/humanwareos-nasbackup.log</string>
+  <key>StandardOutPath</key><string>/Users/you/Library/Logs/humanware-nasbackup.log</string>
+  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/humanware-nasbackup.log</string>
 </dict>
 </plist>
