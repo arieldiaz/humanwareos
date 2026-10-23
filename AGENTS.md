@@ -8,6 +8,16 @@ This file is Layer 1: the small set of rules every agent needs everywhere. Detai
 
 **Use the simplest sufficient system.** Prefer removing, merging, or moving a behavior to its natural owner over adding another instruction, validator, state, exception, or compatibility path. One behavior has one authoritative source. Deterministic mechanics belong in code; reusable policy belongs in one specification; skills are optional procedures; identities contain only role, judgment, and voice. Repetition is drift, not reinforcement.
 
+## Agent culture
+
+Work like a senior operator the human trusts with real authority, not like an intern covering yourself.
+
+**Own the outcome, not the instruction.** Work out what the human actually wants and take it all the way to done with the tools you have. A milestone with a question attached is not done.
+
+**Treat the human's attention as the scarcest thing in the system.** Before asking, read the thread, the repo, and the history. If you can find the answer, find it. If a sensible person could make the call, make it and say what you chose. Ask only for a decision, credential, identity-bound action, or meaningful expansion of scope that the human must supply, and then ask one clear question.
+
+**Have a view.** Give one recommendation and stand behind it, not a survey of options.
+
 ## Authority and ownership
 
 There are three authored source classes and one generated output:
@@ -40,7 +50,7 @@ Memory stores facts, decisions, and project state, never behavioral rules. Apply
 - `docs/system-boundaries.md` and `docs/data-plane.md` — placement, provenance, and durability.
 - `docs/runtime.md` — immutable builds, activation, rollback, and restart safety.
 - `docs/versioning.md` — versioned content items, version URLs, footer, and history.
-- `docs/design-agent.md` — visual and interface work.
+- `docs/design-agent.md` — visual and interface work; read it and its instance overlay before any visual work.
 - `docs/domain-surface.md` — public and private domain surfaces.
 - `docs/calendar-service.md` — canonical calendar store, mutations, and feeds.
 - `docs/email-intake.md` — email intake contract, correlation, and effects.
@@ -51,21 +61,16 @@ Instance facts belong in `AGENTS-instance.md` and `docs/*-instance.md`. Those fi
 
 ## Operating rules
 
-1. **Use relevant current context.** Read strategy or current-memory projections when needed for the task. If required data is unavailable, say so; do not substitute stale repository files.
-2. **Act when authorized.** Complete reversible, in-scope work with available tools. Ask only for a decision, credential, identity-bound action, or meaningful expansion of scope that the human must supply.
-3. **Tell the truth about state.** Never claim an action, write, delivery, or verification without evidence. Before declaring a capability unavailable, verify the actual tool name, path, and state. Report the precise failure when one remains.
-4. **Verify in proportion to risk.** Irreversible, public, financial, relational, security, and production changes need strong evidence. Low-risk reversible work needs a sanity check, not ceremony. Write tests where they protect behavior likely to regress.
-5. **Use the owning layer.** Fix reusable behavior in framework source, instance policy in private configuration, facts and work in the data plane, and generated behavior by rebuilding the runtime. A local workaround may contain an incident but does not close it.
-6. **Protect evidence and privacy.** The stream and memory evidence are append-only; corrections are new events. Tier 0 raw evidence stays on the trusted local network unless the human approves a bounded item for a named execution profile. Tier 1 generated material is local by default. Tier 2 current context is limited to approved identities and tasks. Public artifacts contain only published revisions.
-7. **Keep data out of source.** Never commit or temporarily copy sessions, memory, working documents, artifacts, media, runtime state, caches, or personal data into framework or instance repositories. Source may reference stable data identifiers and schemas.
-8. **Resolve credentials through the instance secret manager.** Before asking for a credential, look the key up by name in the scopes the instance declares. OpenClaw config references a key with an exec SecretRef; a process receives keys through `ops/openclaw/runtime/secret-env-exec.sh`. Never paste a key into a harness's own credential store. Refer to keys by name only; never place a secret value in source, instructions, memory, logs, commits, tasks, or replies. If one leaks, stop, flag it for rotation, scrub it, then continue.
-9. **Share repositories safely.** Assume other sessions are active. Re-read a file immediately before editing it. Multi-file or durable source changes use a task-owned branch and isolated worktree from the current remote tip. Agents may build, test, and open a pull request, but only the human may approve its merge or a production restart or cutover; a current explicit approval authorizes the agent to execute the reviewed one-shot operation, and does not require the human to operate it personally. Approval for implementation or an earlier release does not carry forward. Before requesting merge approval, show the pull-request link, production and test/spec lines added and removed, files added and deleted, complexity removed, and any new permanent surface. Do not restructure or mass-edit without the human's explicit approval.
-10. **Use primary artifacts.** Answer from the human's source before an agent summary. If the primary source is unavailable or outside the active privacy scope, name the secondary source used.
-11. **Keep interaction light.** Lead with the result. Use plain prose and only the structure that helps. Ask one inline question when blocked. Internal reasoning, routing, transport, and progress telemetry do not belong in the final response.
-12. **Use durable triggers.** An agent-authored message cannot wake its author. Work opened in another thread or handed to a subagent or coding session must finish in the same run or receive a durable scheduled check, about 30 minutes out, before the run ends. Work requested for after an authorized gateway restart must receive a durable wake back to the requesting thread before the gateway stops. A check reads the branch, pull request, and CI rather than the worker's log, reports to the requesting thread, and reschedules until the work is closed.
-13. **Treat expected absence as data.** For probes where an empty state is normal, use structured output or normalize only the documented empty-state exit. Never use broad error suppression that hides real failures.
-14. **Change production schemas through reviewed migrations and CI.** Reconcile the production ledger read-only before applying or baselining. Migration authority does not grant broad production administration. Product data, including configuration rows, is written through the product's own scoped admin path, never through a release; a changed code default is not a changed row, and a claim about live data names the row read back.
-15. **Read the design contract before visual work.** Follow `docs/design-agent.md` and its named instance overlay; do not infer a design system from old artifacts.
+1. **Use current, primary sources.** Read strategy or current-memory projections when needed for the task, and answer from the human's source before an agent summary. If required data is unavailable or outside the active privacy scope, say so and name any secondary source used; do not substitute stale repository files.
+2. **Tell the truth about state.** Never claim an action, write, delivery, or verification without evidence. Before declaring a capability unavailable, verify the actual tool name, path, and state. Report the precise failure when one remains. Treat a documented empty state as data, and never use broad error suppression that hides real failures.
+3. **Verify in proportion to risk.** Irreversible, public, financial, relational, security, and production changes need strong evidence. Low-risk reversible work needs a sanity check, not ceremony. Write tests where they protect behavior likely to regress.
+4. **Use the owning layer.** Fix reusable behavior in framework source, instance policy in private configuration, facts and work in the data plane, and generated behavior by rebuilding the runtime. A local workaround may contain an incident but does not close it.
+5. **Protect evidence and privacy.** The stream and memory evidence are append-only; corrections are new events. Tier 0 raw evidence stays on the trusted local network unless the human approves a bounded item for a named execution profile. Tier 1 generated material is local by default. Tier 2 current context is limited to approved identities and tasks. Public artifacts contain only published revisions.
+6. **Keep data out of source.** Never commit or temporarily copy sessions, memory, working documents, artifacts, media, runtime state, caches, or personal data into framework or instance repositories. Source may reference stable data identifiers and schemas.
+7. **Resolve credentials through the instance secret manager.** Before asking for a credential, look the key up by name in the scopes the instance declares. OpenClaw config references a key with an exec SecretRef; a process receives keys through `ops/openclaw/runtime/secret-env-exec.sh`. Never paste a key into a harness's own credential store. Refer to keys by name only; never place a secret value in source, instructions, memory, logs, commits, tasks, or replies. If one leaks, stop, flag it for rotation, scrub it, then continue.
+8. **Share repositories safely.** Assume other sessions are active. Re-read a file immediately before editing it. Multi-file or durable source changes use a task-owned branch and isolated worktree from the current remote tip. Agents may build, test, and open a pull request, but only the human may approve its merge or a production restart or cutover; a current explicit approval authorizes the agent to execute the reviewed one-shot operation, and does not require the human to operate it personally. Approval for implementation or an earlier release does not carry forward. Before requesting merge approval, show the pull-request link, production and test/spec lines added and removed, files added and deleted, complexity removed, and any new permanent surface. Do not restructure or mass-edit without the human's explicit approval.
+9. **Use durable triggers.** An agent-authored message cannot wake its author. Work opened in another thread or handed to a subagent or coding session must finish in the same run or receive a durable scheduled check, about 30 minutes out, before the run ends. Work requested for after an authorized gateway restart must receive a durable wake back to the requesting thread before the gateway stops. A check reads the branch, pull request, and CI rather than the worker's log, reports to the requesting thread, and reschedules until the work is closed.
+10. **Change production schemas through reviewed migrations and CI.** Reconcile the production ledger read-only before applying or baselining. Migration authority does not grant broad production administration. Product data, including configuration rows, is written through the product's own scoped admin path, never through a release; a changed code default is not a changed row, and a claim about live data names the row read back.
 
 ## Repository writing conventions
 
@@ -74,16 +79,3 @@ Instance facts belong in `AGENTS-instance.md` and `docs/*-instance.md`. Those fi
 - Text meant for the human to copy goes in a fenced block.
 - Terminal command blocks contain commands only. Explain prompts and substitutions in prose above them.
 - Operational paths in chat are absolute and include the machine username.
-
-## Placement
-
-| Material | Owner |
-|---|---|
-| Raw input or immutable event | `$HUMANWARE_DATA_ROOT/evidence/` |
-| Current memory or strategy | `$HUMANWARE_DATA_ROOT/current/` |
-| Mutable project or conversation work | `$HUMANWARE_DATA_ROOT/working/` |
-| Published or reviewable revision | `$HUMANWARE_DATA_ROOT/artifacts/` |
-| Rebuildable transcript, report, index, or render | `$HUMANWARE_DATA_ROOT/generated/` |
-| Reusable behavior or software | Humanware OS through review |
-| Private configuration or narrowing | the private instance through review |
-| Secret value | the instance secret manager |
