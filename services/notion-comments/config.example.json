@@ -1,0 +1,25 @@
+{
+  "ownerUserId": "00000000-0000-4000-8000-000000000001",
+  "agents": {
+    "liv": {
+      "aliases": ["liv"],
+      "secrets": {
+        "notionToken": "agents/NOTION_LIV_COMMENTS_TOKEN",
+        "verificationToken": "agents/NOTION_LIV_COMMENTS_VERIFICATION_TOKEN"
+      }
+    },
+    "max": {
+      "aliases": ["max"],
+      "secrets": {
+        "notionToken": "agents/NOTION_MAX_COMMENTS_TOKEN",
+        "verificationToken": "agents/NOTION_MAX_COMMENTS_VERIFICATION_TOKEN"
+      }
+    }
+  },
+  "port": 8797,
+  "notionVersion": "2026-03-11",
+  "maxReplyChars": 8000,
+  "waitSliceMs": 60000,
+  "waitPollMs": 5000,
+  "waitCeilingMs": 86400000
+}

@@ -43,7 +43,7 @@ Memory stores facts, decisions, and project state, never behavioral rules. Apply
 - `docs/design-agent.md` — visual and interface work.
 - `docs/domain-surface.md` — public and private domain surfaces.
 - `docs/calendar-service.md` — canonical calendar store, mutations, and feeds.
-- `docs/email-intake.md` — email intake contract, correlation, and effects.
+- `docs/email-intake.md` and `docs/notion-comments.md` — email and Notion comment ingress.
 - `docs/document-workspace.md` — read-only document workspace and proposals.
 - `docs/traceable-activity-index-spec.md` — activity events, index, and session trace.
 
