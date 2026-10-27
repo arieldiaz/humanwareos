@@ -38,12 +38,8 @@ export class NotionClient {
   me() { return this.request('GET', 'users/me'); }
   comment(id) { return this.request('GET', `comments/${encodeURIComponent(id)}`); }
   page(id) { return this.request('GET', `pages/${encodeURIComponent(id)}`); }
-  reply({discussionId, markdown, displayName}) {
-    return this.request('POST', 'comments', {
-      discussion_id: discussionId, markdown,
-      ...(displayName ? {display_name: {type: 'custom', custom: {name: displayName}}} : {}),
-    });
-  }
+  // Posted with the agent's own connection token, so the author is that agent's bot user.
+  reply({discussionId, markdown}) { return this.request('POST', 'comments', {discussion_id: discussionId, markdown}); }
 }
 
 export function plainText(richText = []) {
