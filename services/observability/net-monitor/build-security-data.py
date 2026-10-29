@@ -40,6 +40,7 @@ DATA_ROOT = os.environ.get("HUMANWARE_DATA_ROOT", "")
 SECURITY_DATA = os.path.join(DATA_ROOT, "generated", "reports", "security")
 HISTORY = os.path.join(SECURITY_DATA, "connections.jsonl")
 OUT = os.path.join(SECURITY_DATA, "current.json")
+CREDENTIALS = os.path.join(SECURITY_DATA, "credentials-current.json")
 # Same location host-audit.py writes to.
 AUDIT_DIR = os.environ.get("HUMANWARE_SECURITY_AUDIT_DIR",
                            os.path.expanduser("~/Library/Logs/humanware-security"))
@@ -95,6 +96,30 @@ def latest_audit():
             return json.load(f)
     except (OSError, ValueError):
         return None
+
+
+def latest_credential_posture(path=None, now=None):
+    """Load the independent credential collector's latest atomic snapshot.
+
+    Old data remains visible but can never look healthy. The collector owns its
+    own staleness threshold because provider and host telemetry have different
+    schedules.
+    """
+    path = path or CREDENTIALS
+    now = now or datetime.now(timezone.utc)
+    try:
+        with open(path) as handle:
+            payload = json.load(handle)
+        generated = parse_ts(payload["generatedAt"])
+        stale_after = float(payload.get("staleAfterHours", 26))
+        age_hours = max(0, (now - generated).total_seconds() / 3600)
+        return {
+            "state": "stale" if age_hours > stale_after else "current",
+            "ageHours": round(age_hours, 1),
+            "data": payload,
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"state": "unavailable", "ageHours": None, "data": None}
 
 
 def previous_audit(latest):
@@ -344,6 +369,7 @@ def main():
         "history_hours": round(span_hours, 1),
         "posture": build_posture(samples, audit),
         "audit_diff": audit_diff(audit, previous_audit(audit)),
+        "credential_posture": latest_credential_posture(),
     }
 
     base = audit_findings(audit)

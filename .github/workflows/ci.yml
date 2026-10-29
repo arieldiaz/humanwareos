@@ -38,6 +38,7 @@ jobs:
           python3 -m unittest discover -s services/share-auth -p "test_*.py"
           python3 -m unittest discover -s services/ingest/server -p "test_*.py"
           python3 services/observability/token-tracking/test_build_dashboard.py
+          python3 services/observability/credential-posture/test_collector.py
           python3 services/observability/net-monitor/test_net_monitor.py
           python3 services/observability/heartbeat/test_heartbeat.py
       - name: macOS surface
