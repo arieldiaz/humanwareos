@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Synthetic fixtures for the net-monitor sampler parsing and security rollup."""
 import importlib.util
+import json
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -61,6 +63,32 @@ class BuilderTests(unittest.TestCase):
         before = {"launch_items": [{"label": "a"}], "listeners": []}
         after = {"launch_items": [{"label": "a"}, {"label": "b"}], "listeners": []}
         self.assertEqual(builder.audit_diff(after, before), {"launch_items": {"added": ["b"], "removed": []}})
+
+    def test_credential_posture_distinguishes_current_stale_and_unavailable(self):
+        now = datetime(2026, 10, 29, 12, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "credentials.json"
+            path.write_text(json.dumps({
+                "generatedAt": "2026-10-29T10:00:00+00:00",
+                "staleAfterHours": 26,
+                "summary": {"status": "healthy"},
+            }))
+            self.assertEqual(builder.latest_credential_posture(path, now)["state"], "current")
+            later = now + timedelta(hours=30)
+            self.assertEqual(builder.latest_credential_posture(path, later)["state"], "stale")
+            self.assertEqual(
+                builder.latest_credential_posture(Path(directory) / "missing.json", now)["state"],
+                "unavailable")
+
+
+class SecuritySurfaceTests(unittest.TestCase):
+    def test_credentials_view_and_light_theme_are_present(self):
+        surface = (Path(__file__).parents[2] / ".." / "surfaces" / "domain" /
+                   "security" / "index.html").resolve().read_text()
+        self.assertIn('data-view="credentials"', surface)
+        self.assertIn("renderCredentials", surface)
+        self.assertIn("prefers-color-scheme:light", surface)
+        self.assertNotIn("credential.value", surface)
 
 
 if __name__ == "__main__":

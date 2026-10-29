@@ -16,6 +16,13 @@
     --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
   }
+  @media(prefers-color-scheme:light){
+    :root{--bg:#f5f6f8;--panel:#fff;--panel-2:#edf0f4;--line:#d8dde5;
+      --ink:#171a1f;--muted:#5f6875;--faint:#7d8692;--ok:#187d35;--warn:#946200;
+      --bad:#c52f35;--unknown:#a94e00;--accent:#245cc7}
+    .topbar{background:rgba(245,246,248,.92)}
+    .fresh.stale{color:var(--bad)}
+  }
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font)}
   body{max-width:1240px;margin:0 auto;padding:26px 20px 80px;-webkit-font-smoothing:antialiased}
@@ -100,8 +107,9 @@
     </div>
     <div class="spacer"></div>
     <div class="tabs">
-      <button data-view="daily" class="active">Daily</button>
-      <button data-view="weekly">Weekly</button>
+      <button data-view="daily" class="active" aria-pressed="true">Daily</button>
+      <button data-view="weekly" aria-pressed="false">Weekly</button>
+      <button data-view="credentials" aria-pressed="false">Credentials</button>
     </div>
     <span class="fresh" id="fresh"><span class="dot"></span><span id="freshText">loading…</span></span>
   </header>
@@ -188,6 +196,79 @@ function findings(list) {
         ${f.action ? `<div class="act">→ ${esc(f.action)}</div>` : ''}
       </div>
     </div>`).join('')}</section>`;
+}
+
+function money(value) {
+  return value == null ? '—' : '$' + Number(value).toLocaleString(undefined, {maximumFractionDigits: 2});
+}
+
+function credentialBudget(row) {
+  const observed = row.observedBudget;
+  const declared = row.budget || {};
+  const budget = observed || declared;
+  if (!budget.kind || budget.kind === 'unknown') return 'unknown';
+  const amount = budget.amountUsd == null ? '' : ` · ${money(budget.amountUsd)}`;
+  const reset = budget.reset ? `/${esc(budget.reset)}` : '';
+  return `${esc(budget.kind.replace('_', ' '))}${amount}${reset}`;
+}
+
+function groupCredentialFindings(list) {
+  const groups = new Map();
+  for (const item of list || []) {
+    const key = `${item.severity}|${item.code || item.title}`;
+    const group = groups.get(key) || {...item, ids: [], count: 0};
+    group.count += 1;
+    if (item.credentialId) group.ids.push(item.credentialId);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map(group => {
+    if (!group.ids.length || group.count === 1) return group;
+    const shown = group.ids.slice(0, 6).join(', ');
+    const rest = group.ids.length > 6 ? `, +${group.ids.length - 6} more` : '';
+    return {...group, detail: `${group.count} credentials: ${shown}${rest}`};
+  });
+}
+
+function renderCredentials(wrapper) {
+  if (!wrapper || wrapper.state === 'unavailable' || !wrapper.data) {
+    return `<div class="empty"><strong>Credential posture unavailable.</strong><br>
+      The collector has not produced a valid snapshot. Existing network and host telemetry are unaffected.</div>`;
+  }
+  const d = wrapper.data, s = d.summary || {};
+  const stale = wrapper.state === 'stale';
+  const stateFinding = stale ? [{
+    severity: 'high', title: 'Credential audit is stale',
+    detail: `Last generated ${ago(d.generatedAt)}; the configured threshold is ${d.staleAfterHours || 26} hours.`,
+    action: 'Restore the collector before trusting the posture totals.'
+  }] : [];
+  return `
+    <section>
+      <h2>Credential posture · ${esc(wrapper.state)}</h2>
+      ${cards([
+        {k:'Discovered',v:num(s.discovered),n:'billable provider secrets'},
+        {k:'Registered',v:num(s.registered),n:'named consumers'},
+        {k:'Unregistered',v:num(s.unregistered),tone:s.unregistered?'bad':'ok',n:'needs ownership'},
+        {k:'Verified',v:num(s.verified),tone:s.verified===s.registered?'ok':'warn',n:'provider metadata checks'},
+        {k:'Bounded',v:num(s.bounded),tone:s.bounded===s.registered?'ok':'bad',n:'hard cap or prepaid'},
+        {k:'Posture',v:stale?'stale':(s.status||'unknown'),tone:stale||s.status==='critical'?'bad':s.status==='healthy'?'ok':'warn',n:`generated ${ago(d.generatedAt)}`},
+      ])}
+    </section>
+    ${findings([...stateFinding, ...groupCredentialFindings(d.findings)])}
+    <section><h2>Inventory</h2><div class="panel">${table(
+      [{label:'Provider'},{label:'Doppler locator'},{label:'Consumer'},{label:'Validation'},{label:'Budget'}],
+      d.credentials,
+      r => `<tr><td>${esc(r.provider)}</td>
+        <td class="mono">${esc(`${r.doppler?.project}/${r.doppler?.config}/${r.doppler?.secret}`)}</td>
+        <td>${esc(r.consumer || 'unregistered')}</td>
+        <td>${esc(r.validation || 'unknown')}</td>
+        <td>${credentialBudget(r)}</td></tr>`)}
+    </div></section>
+    <section><h2>Source health</h2><div class="panel">${table(
+      [{label:'Doppler scope'},{label:'State'},{label:'Credentials',num:true}],
+      d.sources?.doppler || [],
+      r => `<tr><td class="mono">${esc(`${r.project}/${r.config}`)}</td>
+        <td>${esc(r.state)}</td><td class="num">${num(r.credentialNames)}</td></tr>`)}
+    </div></section>`;
 }
 
 function renderWindow(d, key) {
@@ -291,12 +372,15 @@ fetch('/surface.json', { cache: 'no-store' })
   .catch(() => {});
 
 function draw() {
-  $('#root').innerHTML = renderWindow(data, view);
+  $('#root').innerHTML = view === 'credentials'
+    ? renderCredentials(data?.credential_posture)
+    : renderWindow(data, view);
 }
 
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
   b.classList.add('active');
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
   view = b.dataset.view;
   draw();
 }));

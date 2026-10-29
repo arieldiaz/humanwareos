@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "doppler": {
+    "bin": "/opt/homebrew/bin/doppler",
+    "scopes": [
+      {"project": "humanware-core", "configs": ["prd"]}
+    ]
+  },
+  "checks": [
+    {
+      "id": "openai-core-prd",
+      "provider": "openai",
+      "credentialEnv": "OPENAI_API_KEY"
+    }
+  ],
+  "staleAfterHours": 26
+}
