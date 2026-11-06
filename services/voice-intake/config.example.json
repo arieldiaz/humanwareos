@@ -1,0 +1,13 @@
+{
+  "agentId": "liv",
+  "slackChannel": "inbox",
+  "timeZone": "America/New_York",
+  "privateOrigin": "https://os.example.com",
+  "audioPath": "/voice-intake/audio/",
+  "capturePort": 8800,
+  "audioPort": 8801,
+  "maxBytes": 52428800,
+  "maxAttempts": 5,
+  "whisper": {"bin": "/opt/homebrew/bin/whisper", "model": "large-v3-turbo", "language": "en", "timeoutMs": 900000},
+  "summary": {"url": "http://127.0.0.1:11434", "model": "gemma3:27b", "timeoutMs": 120000}
+}
