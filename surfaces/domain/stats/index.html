@@ -143,7 +143,6 @@
       <button class="active" data-view="overview">Overview</button>
       <button data-view="tokens">Tokens</button>
       <button data-view="slack">Slack</button>
-      <button data-view="buzz">Buzz</button>
     </nav>
     <div class="headcontrols">
       <span class="sub">Monthly view · billing cycle</span>
@@ -158,28 +157,6 @@
 
 <section class="view" id="view-overview">
   <div class="overviewgrid" id="overview"></div>
-</section>
-
-<section class="section view" id="view-buzz" hidden>
-  <div class="sectionhead">
-    <div><div class="sectiontitle">Buzz ramp</div><div class="sub" id="buzzSub">Native activity after the Slack seed</div></div>
-    <div class="seg" id="buzzRange"></div>
-  </div>
-  <div class="overviewgrid" id="buzzCards"></div>
-  <div class="cols" style="margin-top:12px">
-    <div class="card">
-      <div class="lbl"><span>Messages · daily</span><span class="legend" id="buzzMessageLegend"></span></div>
-      <div class="chartwrap chartmedium"><canvas id="c-buzz-messages"></canvas></div>
-    </div>
-    <div class="card">
-      <div class="lbl"><span>Daily reach</span><span class="legend" id="buzzReachLegend"></span></div>
-      <div class="chartwrap chartmedium"><canvas id="c-buzz-reach"></canvas></div>
-    </div>
-    <div class="card">
-      <div class="lbl"><span>Reactions · daily</span></div>
-      <div class="chartwrap chartmedium"><canvas id="c-buzz-reactions"></canvas></div>
-    </div>
-  </div>
 </section>
 
 <section class="view" id="view-tokens" hidden>
@@ -231,7 +208,7 @@
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const ACCENT={claude:"#d97757",codex:"#10a37f"};
-let DATA=null,offset=0,slackRange=30,buzzRange=30,sessionChannelFilter="all",sessionStatusFilter="all";
+let DATA=null,offset=0,slackRange=30,sessionChannelFilter="all",sessionStatusFilter="all";
 const charts={};
 // Instance values from /surface.json (routes[id=stats]): people keyed as in
 // data.json (the human first, then each agent) and session groups (agents plus shared).
@@ -576,20 +553,6 @@ function stackedSets(values,series){
     borderWidth:1,borderRadius:3,stack:"total"
   }));
 }
-function drawBar(id,labels,data,colors,{horizontal=false}={}){
-  if(charts[id])charts[id].destroy();
-  const el=document.getElementById(id);if(!el)return;
-  charts[id]=new Chart(el,{type:"bar",data:{labels,datasets:[{
-    data,backgroundColor:colors,borderColor:colors,borderWidth:1,borderRadius:4
-  }]},options:{
-    indexAxis:horizontal?"y":"x",responsive:true,maintainAspectRatio:false,animation:{duration:220},
-    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmtTok(horizontal?c.parsed.x:c.parsed.y)}}},
-    scales:{
-      x:{grid:{color:chartColor("--line")},ticks:{color:chartColor("--faint"),font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8},beginAtZero:true},
-      y:{grid:{color:chartColor("--line")},ticks:{color:chartColor("--faint"),font:{size:9}},beginAtZero:true}
-    }
-  }});
-}
 function drawLifecycle(id,labels,datasets){
   if(charts[id])charts[id].destroy();
   const el=document.getElementById(id);if(!el)return;
@@ -786,51 +749,6 @@ function slackControls(){
   renderSeg("slackRange",rangeOptions,slackRange,v=>{slackRange=v==="all"?"all":Number(v);slackControls();renderSlack();});
 }
 
-function buzzPeriod(){
-  const today=new Date();today.setHours(12,0,0,0);
-  const baseline=DATA.buzz?.startedAt?new Date(DATA.buzz.startedAt):today;baseline.setHours(12,0,0,0);
-  let start=baseline;
-  if(buzzRange!=="all"){
-    const rolling=new Date(today);rolling.setDate(rolling.getDate()-buzzRange+1);
-    if(rolling>start)start=rolling;
-  }
-  return {start,end:today};
-}
-function buzzControls(){
-  const options=[[7,"7d"],[30,"30d"],[90,"90d"],["all","All"]],el=document.getElementById("buzzRange");
-  el.innerHTML=options.map(([v,l])=>`<button data-v="${v}" class="${String(buzzRange)===String(v)?"active":""}">${l}</button>`).join("");
-  el.querySelectorAll("button").forEach(button=>button.onclick=()=>{
-    buzzRange=button.dataset.v==="all"?"all":Number(button.dataset.v);buzzControls();renderBuzz();
-  });
-}
-function renderBuzz(){
-  const buzz=DATA.buzz||{},period=buzzPeriod(),byDate=Object.fromEntries((buzz.days||[]).map(row=>[row.date,row]));
-  const dates=[];for(let d=new Date(period.start);d<=period.end;d.setDate(d.getDate()+1))dates.push(new Date(d));
-  const rows=dates.map(date=>byDate[ymd(date)]||{date:ymd(date),messages:0,activeAuthors:0,activeChannels:0,agentMessages:0,humanMessages:0,reactions:0});
-  const total=field=>rows.reduce((sum,row)=>sum+(row[field]||0),0),peak=field=>Math.max(0,...rows.map(row=>row[field]||0));
-  const messages=total("messages"),human=total("humanMessages"),agent=total("agentMessages"),reactions=total("reactions");
-  const baseline=buzz.baseline||{};
-  document.getElementById("buzzSub").textContent=`Observed since ${new Date(buzz.startedAt).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} · Slack seed excluded`;
-  document.getElementById("buzzCards").innerHTML=`
-    <div class="card overviewcard"><div class="lbl">Native messages</div><div class="hero">${fmtTok(messages)}</div><div class="sub">${fmtTok(human)} human · ${fmtTok(agent)} agent</div><div class="rs" style="margin-top:10px">Baseline seed: ${fmtTok(baseline.seedMessages||0)} messages, not counted</div></div>
-    <div class="card overviewcard"><div class="lbl">Peak daily reach</div><div class="hero">${peak("activeAuthors")} authors</div><div class="sub">across ${peak("activeChannels")} active channels</div></div>
-    <div class="card overviewcard"><div class="lbl">Native reactions</div><div class="hero">${fmtTok(reactions)}</div><div class="sub">after instrumentation boundary</div></div>`;
-  const labels=dates.map(d=>`${MONTHS[d.getMonth()]} ${d.getDate()}`);
-  const [humanColor=ACCENT.claude,agentColor=ACCENT.codex]=Object.values(PEOPLE).map(p=>p.color);
-  const messageSeries={human:{name:"Human",color:humanColor},agent:{name:"Agents",color:agentColor}};
-  drawLifecycle("c-buzz-messages",labels,[
-    {label:"Human",data:rows.map(r=>r.humanMessages),backgroundColor:messageSeries.human.color+"cc",borderColor:messageSeries.human.color,borderWidth:1,stack:"messages",borderRadius:3},
-    {label:"Agents",data:rows.map(r=>r.agentMessages),backgroundColor:messageSeries.agent.color+"cc",borderColor:messageSeries.agent.color,borderWidth:1,stack:"messages",borderRadius:3}
-  ]);
-  drawChart("c-buzz-reach",labels,[
-    {label:"Active authors",data:rows.map(r=>r.activeAuthors),borderColor:"#62a0ea",borderWidth:2,fill:false,tension:.2,pointRadius:2},
-    {label:"Active channels",data:rows.map(r=>r.activeChannels),borderColor:"#b78be6",borderWidth:2,fill:false,tension:.2,pointRadius:2}
-  ],true);
-  drawBar("c-buzz-reactions",labels,rows.map(r=>r.reactions),labels.map(()=>"#55c08a"));
-  document.getElementById("buzzMessageLegend").innerHTML=Object.values(messageSeries).map(item=>`<span><i style="background:${item.color}"></i>${item.name}</span>`).join("");
-  document.getElementById("buzzReachLegend").innerHTML=`<span><i style="background:#62a0ea"></i>Authors</span><span><i style="background:#b78be6"></i>Channels</span>`;
-}
-
 function renderOverview(){
   const weekly=["claude","codex"].map(sub=>({sub,win:windowByMinutes(sub,10080)}));
   const cycles=["claude","codex"].map(sub=>{
@@ -856,7 +774,7 @@ function renderOverview(){
 }
 
 function setView(name){
-  const valid=["overview","tokens","slack","buzz"],view=valid.includes(name)?name:"overview";
+  const valid=["overview","tokens","slack"],view=valid.includes(name)?name:"overview";
   valid.forEach(v=>document.getElementById(`view-${v}`).hidden=v!==view);
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   history.replaceState(null,"",`#${view}`);
@@ -875,7 +793,6 @@ function render(){
   document.getElementById("next").disabled=offset>=0;
   renderOverview();
   renderSlack();
-  renderBuzz();
 }
 
 async function boot(){
@@ -887,13 +804,12 @@ async function boot(){
   document.title=`Stats · ${surface.name||"Humanware OS"}`;
   const gen=new Date(DATA.generatedAt);
   document.getElementById("sub").textContent="updated "+gen.toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
-  document.getElementById("foot").textContent=`${location.host}/stats · AI usage from CodexBar · Slack activity from OpenClaw · Buzz activity from the local relay · updated hourly`;
+  document.getElementById("foot").textContent=`${location.host}/stats · AI usage from CodexBar · Slack activity from OpenClaw · updated hourly`;
   if(DATA.warnings&&DATA.warnings.length)document.getElementById("warn").textContent="⚠ "+DATA.warnings.join(" · ");
   document.getElementById("prev").onclick=()=>{offset-=1;render();};
   document.getElementById("next").onclick=()=>{if(offset<0){offset+=1;render();}};
   document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>setView(b.dataset.view));
   slackControls();
-  buzzControls();
   render();
   setView(location.hash.slice(1)||"overview");
 }

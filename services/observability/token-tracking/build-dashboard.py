@@ -11,7 +11,6 @@ Inputs:
   - $HUMANWARE_DATA_ROOT/generated/reports/stats/daily.json   durable rollup
   - <instance config>/budgets.json   editable monthly pace budgets per sub
   - <instance config>/config.json    owner/agents/Slack workspace (see README)
-  - $HUMANWARE_DATA_ROOT/generated/observability/buzz-baseline.json (optional)
 
 <instance config> = $HUMANWARE_RUNTIME_ROOT/config/services/observability/
 token-tracking; the runtime root is derived from this file's location
@@ -76,7 +75,6 @@ DATA_DIR = os.path.join(DATA_ROOT, "generated", "reports", "stats")
 STORE = os.path.join(DATA_DIR, "daily.json")
 _CFG_DIR = instance_config_dir()
 BUDGETS = str(_CFG_DIR / "budgets.json") if _CFG_DIR else ""
-BUZZ_BASELINE = os.path.join(DATA_ROOT, "generated", "observability", "buzz-baseline.json")
 OUT = os.path.join(DATA_DIR, "current.json")
 CONFIG = load_instance_config()
 
@@ -125,81 +123,6 @@ HARNESSES = {
     "opencode": "OpenCode",
     "ollama": "Native",
 }
-
-
-def buzz_activity():
-    """Read aggregate-only adoption telemetry from the local Buzz relay.
-
-    Message bodies and identities never leave Postgres. The explicit baseline
-    excludes the Slack seed so this series measures native Buzz activity.
-    """
-    baseline = load_json(BUZZ_BASELINE, {})
-    started_at = baseline.get("startedAt")
-    if not started_at:
-        raise RuntimeError("Buzz baseline has no startedAt")
-    sql = f"""
-WITH raw_messages AS (
-  SELECT e.received_at, e.pubkey, e.channel_id, u.agent_type
-  FROM events e LEFT JOIN users u USING (community_id, pubkey)
-  WHERE e.kind = 9 AND e.deleted_at IS NULL
-    AND e.received_at >= '{started_at}'::timestamptz
-), messages AS (
-  SELECT (received_at AT TIME ZONE '{TIMEZONE}')::date AS day,
-         count(*) AS messages,
-         count(DISTINCT pubkey) AS active_authors,
-         count(DISTINCT channel_id) FILTER (WHERE channel_id IS NOT NULL) AS active_channels,
-         count(*) FILTER (WHERE agent_type IS NOT NULL) AS agent_messages,
-         count(*) FILTER (WHERE agent_type IS NULL) AS human_messages
-  FROM raw_messages
-  GROUP BY 1
-), raw_reactions AS (
-  SELECT created_at FROM reactions
-  WHERE removed_at IS NULL AND created_at >= '{started_at}'::timestamptz
-), reactions_by_day AS (
-  SELECT (created_at AT TIME ZONE '{TIMEZONE}')::date AS day,
-         count(*) AS reactions
-  FROM raw_reactions
-  GROUP BY 1
-), combined AS (
-  SELECT coalesce(m.day, r.day) AS day,
-         coalesce(messages, 0) AS messages,
-         coalesce(active_authors, 0) AS active_authors,
-         coalesce(active_channels, 0) AS active_channels,
-         coalesce(agent_messages, 0) AS agent_messages,
-         coalesce(human_messages, 0) AS human_messages,
-         coalesce(reactions, 0) AS reactions
-  FROM messages m FULL JOIN reactions_by_day r USING (day)
-)
-SELECT json_build_object(
-  'days', (SELECT coalesce(json_agg(json_build_object(
-    'date', day, 'messages', messages, 'activeAuthors', active_authors,
-    'activeChannels', active_channels, 'agentMessages', agent_messages,
-    'humanMessages', human_messages, 'reactions', reactions
-  ) ORDER BY day), '[]'::json) FROM combined),
-  'totals', (SELECT json_build_object(
-    'messages', count(*), 'activeAuthors', count(DISTINCT pubkey),
-    'activeChannels', count(DISTINCT channel_id) FILTER (WHERE channel_id IS NOT NULL),
-    'agentMessages', count(*) FILTER (WHERE agent_type IS NOT NULL),
-    'humanMessages', count(*) FILTER (WHERE agent_type IS NULL),
-    'reactions', (SELECT count(*) FROM raw_reactions)
-  ) FROM raw_messages)
-);
-"""
-    out = subprocess.run(
-        ["/opt/homebrew/bin/docker", "exec", "-i", "buzz-prod-postgres-1",
-         "sh", "-lc", 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At'],
-        input=sql, capture_output=True, text=True, timeout=30)
-    if out.returncode != 0:
-        err = (out.stderr or out.stdout or "no output").strip().splitlines()[-1]
-        raise RuntimeError(f"Buzz aggregate query failed: {err}")
-    activity = json.loads(out.stdout.strip() or '{}')
-    return {
-        "startedAt": started_at,
-        "baseline": {k: v for k, v in baseline.items() if k.startswith("seed")},
-        "days": activity.get("days", []),
-        "totals": activity.get("totals", {}),
-        "source": "Local Buzz relay aggregate event counts",
-    }
 
 
 def text_from_content(content):
@@ -892,7 +815,6 @@ def main():
         json.dump(store, f, indent=2, sort_keys=True)
 
     local = local_usage()
-    buzz = {"status": "paused", "startedAt": load_json(BUZZ_BASELINE, {}).get("startedAt"), "days": []}
     out = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "budgets": budgets,
@@ -906,7 +828,6 @@ def main():
         ],
         "windows": latest_windows(),
         "slack": slack_activity(),
-        "buzz": buzz,
         # Third-column sources, filled in as they come online:
         "metered": [],  # OpenRouter / opencode via OpenRouter (Phase 2/3)
         "directApi": {  # business API-key spend; needs admin-scoped keys in Doppler

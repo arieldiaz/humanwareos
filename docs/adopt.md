@@ -1,25 +1,25 @@
 # Adopting Humanware OS
 
-Humanware OS is a versioned framework consumed by a small private instance repository. Personal memory and work live in a separate data plane. The three systems do not share a Git history or change process.
+Humanware OS is a versioned framework consumed by a small private configuration repository, My Humanware. Personal memory and work live in Humanware Data, a separate local data root. The three systems do not share a Git history or change process.
 
 Budget: 1,200 words. Over it, consolidate.
 
 ## Reference layout
 
 ```text
-~/github/humanware-os/       public framework checkout
-~/github/my-humanware/       private instance configuration
-~/humanware-data/            private data plane, not a source repository
+~/github/humanwareos/         Humanware OS: public framework checkout
+~/github/my-humanware/        My Humanware: private configuration
+~/humanware-data/             Humanware Data: private data root, not a source repository
 ~/Library/Application Support/HumanwareOS/
-  runtime/<build-id>/        immutable generated runtime
-  current -> runtime/...     active build
+  runtime/<build-id>/         immutable generated runtime
+  current -> runtime/...      active build
 ```
 
 The instance does not pin or merge framework history. Each build takes the framework revision from the clean framework checkout and records it in the runtime manifest. Generic framework files are referenced from that checkout and copied only into generated runtime builds.
 
 ## Create an instance
 
-The installer clones or locates Humanware OS, initializes a new private instance from the instance template, creates the external data layout, and builds the first runtime:
+The installer clones or locates Humanware OS, initializes My Humanware from the instance template, creates the external data layout, and builds the first runtime:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/arieldiaz/humanwareos/main/install.sh | sh -s -- my-humanware --repo YOUR-GITHUB-USER/my-humanware
@@ -57,9 +57,9 @@ The instance validator fails expired or unreferenced compatibility patches.
 
 Humanware OS contains reusable rules, specs, agent templates, skills, schemas, adapters, builders, generic services, frontend components, and tests.
 
-The private instance contains agent overlays, runtime-profile selections, channel and account identifiers, secret references, domain routes, private integration configuration, branding, and truly private plugins.
+My Humanware contains agent overlays, runtime-profile selections, channel and account identifiers, secret references, domain routes, private integration configuration, branding, and truly private plugins.
 
-The data plane contains strategy, memory evidence and projections, sessions, working documents, artifacts, media, records, stream events, and derived indexes. Ordinary data writes do not use PRs.
+Humanware Data contains strategy, memory evidence and projections, sessions, working documents, artifacts, media, records, stream events, and derived indexes. Ordinary data writes do not use PRs.
 
 Generated runtime contains rendered instructions and configuration from the two source revisions. It contains no personal data or mutable state and is never edited by hand.
 
@@ -67,8 +67,8 @@ Generated runtime contains rendered instructions and configuration from the two 
 
 Machine and account configuration is typed instance data, not a copied `.example` file beside a live `.env`. Secret values live only in the configured secrets manager. Instance files reference a secret by provider and key identifier.
 
-Framework schemas define allowed fields and defaults. The private instance supplies values. A new generic configuration field changes its framework schema, template, validator, migration, and documentation together. A private value changes only the instance.
+Framework schemas define allowed fields and defaults. My Humanware supplies values. A new generic configuration field changes its framework schema, template, validator, migration, and documentation together. A private value changes only the instance.
 
 ## Data portability
 
-The data plane is not Git, but it is not opaque. Append-only events and artifact manifests use documented schemas. Current memory and strategy are plain readable projections. Large files are content-addressed. Search indexes are rebuildable. Encrypted snapshots and restore tests provide history without imposing code-review semantics on daily life.
+Humanware Data is not Git, but it is not opaque. Append-only events and artifact manifests use documented schemas. Current memory and strategy are plain readable projections. Large files are content-addressed. Search indexes are rebuildable. Encrypted snapshots and restore tests provide history without imposing code-review semantics on daily life.

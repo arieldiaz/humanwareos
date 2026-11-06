@@ -57,9 +57,6 @@ neutral defaults and add a warning to the feed.
 - `alerts.*` is required only if threshold alerts fire (they are paused:
   `ALERT_MILESTONES = ()` in `sample-windows.py`).
 
-Optional data-plane input: `$HUMANWARE_DATA_ROOT/generated/observability/buzz-baseline.json`
-(`startedAt`, `seed*`); missing is fine (Buzz section reports paused).
-
 ## Tests
 
 ```

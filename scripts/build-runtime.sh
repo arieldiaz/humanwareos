@@ -68,12 +68,11 @@ mkdir -p "$RUNTIME_ROOT/runtime"
 BUILD_DIR=$(mktemp -d "$RUNTIME_ROOT/runtime/.build-$BUILD_ID.XXXXXX")
 trap 'rm -rf "$BUILD_DIR"' EXIT HUP INT TERM
 
-mkdir -p "$BUILD_DIR/instructions" "$BUILD_DIR/config/openclaw" "$BUILD_DIR/framework/scripts" "$BUILD_DIR/framework/runtime" "$BUILD_DIR/framework/ops/openclaw/plugins" "$BUILD_DIR/framework/ops/openclaw/patches" "$BUILD_DIR/framework/ops/openclaw/runtime" "$BUILD_DIR/framework/ops/channels" "$BUILD_DIR/surface"
+mkdir -p "$BUILD_DIR/instructions/skills" "$BUILD_DIR/config/openclaw" "$BUILD_DIR/framework/scripts" "$BUILD_DIR/framework/runtime" "$BUILD_DIR/framework/ops/openclaw/plugins" "$BUILD_DIR/framework/ops/openclaw/patches" "$BUILD_DIR/framework/ops/openclaw/runtime" "$BUILD_DIR/framework/ops/channels" "$BUILD_DIR/surface"
 cp "$FRAMEWORK_DIR/AGENTS.md" "$BUILD_DIR/instructions/AGENTS.md"
 cp -R "$FRAMEWORK_DIR/docs" "$BUILD_DIR/instructions/docs"
 cp -R "$FRAMEWORK_DIR/agents" "$BUILD_DIR/instructions/agents"
-cp -R "$FRAMEWORK_DIR/skills" "$BUILD_DIR/instructions/skills"
-cp -R "$FRAMEWORK_DIR/commands" "$BUILD_DIR/instructions/commands"
+[ ! -d "$FRAMEWORK_DIR/skills" ] || cp -R "$FRAMEWORK_DIR/skills/." "$BUILD_DIR/instructions/skills/"
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-runtime-profiles.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-runtime-profiles.mjs"
 cp "$FRAMEWORK_DIR/scripts/render-openclaw-config.mjs" "$BUILD_DIR/framework/scripts/render-openclaw-config.mjs"
 cp "$FRAMEWORK_DIR/scripts/openclaw-agent-entries.mjs" "$BUILD_DIR/framework/scripts/openclaw-agent-entries.mjs"

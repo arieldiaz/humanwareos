@@ -13,8 +13,8 @@ This file is Layer 1: the small set of rules every agent needs everywhere. Detai
 There are three authored source classes and one generated output:
 
 - **Framework:** reusable rules, specifications, identity templates, skills, and software in Humanware OS.
-- **Instance:** private configuration, approved narrowings, identities, routes, and secret references.
-- **Data plane:** evidence, memory, strategy, sessions, work, artifacts, media, logs, and caches under `$HUMANWARE_DATA_ROOT`.
+- **Instance (My Humanware):** private configuration, approved narrowings, identities, routes, and secret references.
+- **Data plane (Humanware Data):** evidence, memory, strategy, sessions, work, artifacts, media, logs, and caches under `$HUMANWARE_DATA_ROOT`.
 - **Runtime:** an immutable generated assembly of framework plus instance. Never edit it as source.
 
 Agent context has four layers, in descending authority:

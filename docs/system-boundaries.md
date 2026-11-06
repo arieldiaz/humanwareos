@@ -14,13 +14,13 @@ A change belongs upstream when another installation could benefit from it. Frame
 
 ### Private instance
 
-The private instance owns one installation's selections and narrowings: framework revision, agent overlays, enabled runtime profiles, model preferences, channel/account identifiers, domain and route manifest, local-server service selection and host configuration, host inventory, secret key references, private integrations, branding, and truly instance-only plugins.
+My Humanware, the private instance, owns one installation's selections and narrowings: framework revision, agent overlays, enabled runtime profiles, model preferences, channel/account identifiers, domain and route manifest, local-server service selection and host configuration, host inventory, secret key references, private integrations, branding, and truly instance-only plugins.
 
 An instance must not copy generic framework files and edit them locally. It supplies typed overlays at declared extension points; framework release selection is an operator input recorded by the generated runtime. A local compatibility patch is temporary and records its upstream issue or PR, owner, reason, and removal condition. Instance deployment scripts and reusable service implementations are invalid ownership: generic mechanics belong here, while substantial private applications remain separate from the configuration repository. Launchd selection, Caddy routes, local ports, host paths, and secret references remain instance configuration.
 
 ### Data plane
 
-The data plane owns accumulated human and agent material: source events, memory evidence, current memory projections, strategy, conversations, working documents, artifacts, media, records, and derived indexes. It uses append, version, provenance, retention, and backup semantics rather than pull requests.
+Humanware Data, the data plane, owns accumulated human and agent material: source events, memory evidence, current memory projections, strategy, conversations, working documents, artifacts, media, records, and derived indexes. It uses append, version, provenance, retention, and backup semantics rather than pull requests.
 
 Data is never a hidden authority for agent rules. When accumulated evidence implies a behavioral change, an agent proposes a framework or instance diff through the corresponding reviewed path.
 
@@ -33,8 +33,8 @@ The runtime is a deterministic assembly of a framework revision and an instance 
 Every new file or field answers one question:
 
 1. Would it improve another installation? Put it in Humanware OS.
-2. Does it only configure this installation? Put it in the private instance.
-3. Was it observed, produced, accumulated, or worked on? Put it in the data plane.
+2. Does it only configure this installation? Put it in My Humanware.
+3. Was it observed, produced, accumulated, or worked on? Put it in Humanware Data.
 4. Can it be rebuilt from those sources? Put it only in generated runtime or cache.
 
 If a file answers more than one, split it. A reusable instruction plus local channel IDs is not one file. A frontend component plus generated artifact content is not one directory. A source config plus live session state is not one checkout.
