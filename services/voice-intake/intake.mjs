@@ -36,6 +36,7 @@ export async function normalizeCapture(form, {maxBytes, now = new Date()}) {
   if (!Number.isFinite(captured) || captured > now.getTime() + 5 * 60_000) throw invalid('invalid_captured_at');
   const audio = form.get('audio'), text = form.get('text');
   let kind, bytes, type;
+  if (typeof audio === 'string') throw invalid(audio ? 'audio_not_file' : 'empty_audio');
   if (audio && typeof audio === 'object' && text == null) {
     bytes = Buffer.from(await audio.arrayBuffer());
     if (!bytes.length) throw invalid('empty_audio');
@@ -45,7 +46,8 @@ export async function normalizeCapture(form, {maxBytes, now = new Date()}) {
     kind = 'audio';
   } else if (typeof text === 'string' && audio == null) {
     const value = text.trim();
-    if (!value || value.length > MAX_TEXT_CHARS) throw invalid('invalid_text');
+    if (!value) throw invalid('empty_text');
+    if (value.length > MAX_TEXT_CHARS) throw invalid('text_too_long');
     bytes = Buffer.from(value, 'utf8');
     type = {ext: 'txt', mediaType: 'text/plain; charset=utf-8'};
     kind = 'dictation';

@@ -21,38 +21,74 @@ const text = (...parts) => {
 };
 const field = (key, ...value) => ({WFItemType: 0, WFKey: text(key), WFValue: text(...value)});
 const fields = (items) => ({Value: {WFDictionaryFieldValueItems: items}, WFSerializationType: 'WFDictionaryFieldValue'});
-const action = (id, uuid, parameters = {}) => ({WFWorkflowActionIdentifier: `is.workflow.actions.${id}`, WFWorkflowActionParameters: {UUID: uuid, ...parameters}});
+const action = (id, uuid, parameters = {}) => ({WFWorkflowActionIdentifier: `is.workflow.actions.${id}`, WFWorkflowActionParameters: {...(uuid ? {UUID: uuid} : {}), ...parameters}});
 
+const named = (name) => ({Type: 'Variable', VariableName: name});
+const input = (value) => ({Type: 'Variable', Variable: attachment(value)});
 const ID = {clientId: 'A1F0C001-0000-4000-8000-000000000001', clientSecret: 'A1F0C001-0000-4000-8000-000000000002',
   date: 'A1F0C001-0000-4000-8000-000000000003', capture: 'A1F0C001-0000-4000-8000-000000000004',
   deviceName: 'A1F0C001-0000-4000-8000-000000000005', deviceModel: 'A1F0C001-0000-4000-8000-000000000006',
   capturedAt: 'A1F0C001-0000-4000-8000-000000000007', response: 'A1F0C001-0000-4000-8000-000000000008',
-  message: 'A1F0C001-0000-4000-8000-000000000009'};
+  message: 'A1F0C001-0000-4000-8000-000000000009', send: 'A1F0C001-0000-4000-8000-00000000000b'};
+const GROUP = {repeat: 'A1F0C001-0000-4000-8000-0000000000a1', pending: 'A1F0C001-0000-4000-8000-0000000000a2', menu: 'A1F0C001-0000-4000-8000-0000000000a3',
+  unsent: 'A1F0C001-0000-4000-8000-0000000000a4', reply: 'A1F0C001-0000-4000-8000-0000000000a5', access: 'A1F0C001-0000-4000-8000-0000000000a6'};
+const flow = (id, group, mode, parameters = {}) => ({WFWorkflowActionIdentifier: `is.workflow.actions.${id}`, WFWorkflowActionParameters: {GroupingIdentifier: group, WFControlFlowMode: mode, ...parameters}});
+const notify = (...body) => action('notification', undefined, {WFNotificationActionTitle: 'Voice intake', WFNotificationActionBody: text(...body), WFNotificationActionSound: false});
+export const MENU = ['Send', 'Re-record', 'Cancel'];
+const RERECORDS = 10;
 
 // mode 'record' captures full audio; 'dictate' is the fallback for a device whose
 // Shortcuts runtime cannot record audio and sends on-device dictation instead.
+// Shortcuts has no loop break, so Re-record is a bounded repeat that skips once
+// `Choice` is set; Cancel stops at once, and nothing is sent without Send.
 export function buildShortcut({url, mode = 'record'}) {
   if (!/^https:\/\/[^/\s]+\/capture$/.test(url)) throw new Error('capture url must be https://<host>/capture');
   const capture = mode === 'record'
     ? action('recordaudio', ID.capture, {WFRecordingCompression: 'Normal', WFRecordingStart: 'Immediately', WFRecordingEnd: 'On Tap'})
     : action('dictatetext', ID.capture, {WFDictateTextStopListening: 'On Tap'});
   const payload = mode === 'record'
-    ? {WFItemType: 5, WFKey: text('audio'), WFValue: {Value: ref(ID.capture, 'Recorded Audio'), WFSerializationType: 'WFTokenAttachmentParameterState'}}
-    : field('text', ref(ID.capture, 'Dictated Text'));
+    ? {WFItemType: 5, WFKey: text('audio'), WFValue: {Value: named('Recording'), WFSerializationType: 'WFTokenAttachmentParameterState'}}
+    : field('text', named('Recording'));
   const actions = [
     action('gettext', ID.clientId, {WFTextActionText: ''}),
     action('gettext', ID.clientSecret, {WFTextActionText: ''}),
+    flow('repeat.count', GROUP.repeat, 0, {WFRepeatCount: RERECORDS}),
+    flow('conditional', GROUP.pending, 0, {WFCondition: 101, WFInput: input(named('Choice'))}),
     action('date', ID.date, {WFDateActionMode: 'Current Date'}),
+    action('format.date', ID.capturedAt, {WFDate: text(ref(ID.date, 'Date')), WFDateFormatStyle: 'ISO 8601', WFISO8601IncludeTime: true}),
+    action('setvariable', undefined, {WFVariableName: 'Captured At', WFInput: attachment(ref(ID.capturedAt, 'Formatted Date'))}),
     capture,
+    action('setvariable', undefined, {WFVariableName: 'Recording', WFInput: attachment(ref(ID.capture, mode === 'record' ? 'Recorded Audio' : 'Dictated Text'))}),
+    flow('choosefrommenu', GROUP.menu, 0, {WFMenuPrompt: mode === 'record' ? 'Voice note' : 'Dictated note', WFMenuItems: MENU}),
+    flow('choosefrommenu', GROUP.menu, 1, {WFMenuItemTitle: 'Send'}),
+    action('gettext', ID.send, {WFTextActionText: 'Send'}),
+    action('setvariable', undefined, {WFVariableName: 'Choice', WFInput: attachment(ref(ID.send, 'Text'))}),
+    flow('choosefrommenu', GROUP.menu, 1, {WFMenuItemTitle: 'Re-record'}),
+    flow('choosefrommenu', GROUP.menu, 1, {WFMenuItemTitle: 'Cancel'}),
+    action('exit'),
+    flow('choosefrommenu', GROUP.menu, 2),
+    flow('conditional', GROUP.pending, 2),
+    flow('repeat.count', GROUP.repeat, 2),
+    flow('conditional', GROUP.unsent, 0, {WFCondition: 101, WFInput: input(named('Choice'))}),
+    action('exit'),
+    flow('conditional', GROUP.unsent, 2),
     action('getdevicedetails', ID.deviceName, {WFDeviceDetail: 'Device Name'}),
     action('getdevicedetails', ID.deviceModel, {WFDeviceDetail: 'Device Model'}),
-    action('format.date', ID.capturedAt, {WFDate: text(ref(ID.date, 'Date')), WFDateFormatStyle: 'ISO 8601', WFISO8601IncludeTime: true}),
     action('downloadurl', ID.response, {WFURL: url, WFHTTPMethod: 'POST', WFHTTPBodyType: 'Form', ShowHeaders: true,
       WFHTTPHeaders: fields([field('CF-Access-Client-Id', ref(ID.clientId, 'Text')), field('CF-Access-Client-Secret', ref(ID.clientSecret, 'Text'))]),
       WFFormValues: fields([payload, field('deviceName', ref(ID.deviceName, 'Device Name')), field('deviceModel', ref(ID.deviceModel, 'Device Model')),
-        field('capturedAt', ref(ID.capturedAt, 'Formatted Date'))])}),
+        field('capturedAt', named('Captured At'))])}),
+    // The service's JSON names every outcome; anything else came from the edge.
     action('getvalueforkey', ID.message, {WFInput: attachment(ref(ID.response, 'Contents of URL')), WFDictionaryKey: 'message', WFGetDictionaryValueType: 'Value'}),
-    action('notification', 'A1F0C001-0000-4000-8000-00000000000a', {WFNotificationActionTitle: 'Voice intake', WFNotificationActionBody: text(ref(ID.message, 'Dictionary Value')), WFNotificationActionSound: false}),
+    flow('conditional', GROUP.reply, 0, {WFCondition: 100, WFInput: input(ref(ID.message, 'Dictionary Value'))}),
+    notify(ref(ID.message, 'Dictionary Value')),
+    flow('conditional', GROUP.reply, 1),
+    flow('conditional', GROUP.access, 0, {WFCondition: 99, WFConditionalActionString: 'Cloudflare Access', WFInput: input(ref(ID.response, 'Contents of URL'))}),
+    notify('Blocked by Cloudflare: check token'),
+    flow('conditional', GROUP.access, 1),
+    notify('Mini unavailable'),
+    flow('conditional', GROUP.access, 2),
+    flow('conditional', GROUP.reply, 2),
   ];
   return {
     WFWorkflowClientVersion: '2607.0.2', WFWorkflowMinimumClientVersion: 900, WFWorkflowMinimumClientVersionString: '900',
