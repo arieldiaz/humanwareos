@@ -37,6 +37,7 @@ The artifact should make the requested decision easier:
 
 - show comparable options at comparable scale;
 - number every frame `N.S` — artifact number, dot, screen index, never zero-padded — at the start of its caption, so feedback can name a screen. Designed ordinal labels are never zero-padded; zero-padding belongs only to machine-sortable filenames or conventional data such as timestamps;
+- include an adjacent legend whenever color, shape, line style, or symbol carries meaning; never rely on color alone;
 - expose the region where options actually differ;
 - keep review chrome and headers minimal unless they are under review;
 - show required modes and breakpoints as visible evidence;
