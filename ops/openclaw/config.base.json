@@ -91,6 +91,9 @@
       }
     },
     "queue": {
+      "byChannel": {
+        "slack": "collect"
+      },
       "debounceMsByChannel": {
         "slack": 0
       }
