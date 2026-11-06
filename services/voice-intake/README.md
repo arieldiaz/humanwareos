@@ -4,7 +4,7 @@ Loopback service that turns one owner recording into one agent turn in the insta
 
 ## Listeners
 
-- Capture, `127.0.0.1:<capturePort>` (default 8800): `POST /capture` (multipart form) and `GET /health`. This is the only tunnel target. Form fields: `audio` (file) or `text` (dictation fallback), `deviceName`, `deviceModel`, `capturedAt` (ISO 8601). Responses are JSON with `status` (`accepted` 202, `duplicate` 200), `captureId`, and a short `message` the Shortcut shows as a notification.
+- Capture, `127.0.0.1:<capturePort>` (default 8800): `POST /capture` (multipart or urlencoded form) and `GET /health`. This is the only tunnel target. Form fields: `audio` (file) or `text` (dictation fallback), `deviceName`, `deviceModel`, `capturedAt` (ISO 8601). The multipart parser accepts any boundary, CRLF or LF framing, a missing closing delimiter, and RFC 5987 file names; size limits and the audio byte check still apply. Responses are JSON with `status` (`accepted` 202, `duplicate` 200) or `error`, `captureId`, `requestId`, and a short `message` the Shortcut shows as a notification. Every rejection writes one JSON line to stderr with `requestId`, `status`, `reason`, `contentType`, and `contentLength`, never the body or Access headers.
 - Audio, `127.0.0.1:<audioPort>` (default 8801): `GET /audio/<captureId>` with byte ranges, and `GET /health`. Route it only from the private domain, never from the tunnel.
 
 Health fails while Slack verification fails or any capture is held.
@@ -23,7 +23,7 @@ Data: audio evidence `$HUMANWARE_DATA_ROOT/evidence/voice/captures/YYYY/MM/<id>.
 node services/voice-intake/shortcut.mjs --url https://<ingress-host>/capture --out-dir <data-plane directory>
 ```
 
-Writes `Voice Intake` (Record Audio, starts immediately, finishes on tap) and `Voice Intake (Dictation)` as unsigned `.unsigned.shortcut` files, then signs each with `shortcuts sign --mode people-who-know-me`. Signing requires a macOS user signed in to iCloud; otherwise the command exits nonzero and leaves the unsigned files for a signed-in Mac. Import asks for the Access client ID and secret; neither is in the file. Write output to the data plane, never to Git.
+Writes `Voice Intake` (Record Audio, starts immediately, finishes on tap) and `Voice Intake (Dictation)` as unsigned `.unsigned.shortcut` files, then signs each with `shortcuts sign --mode people-who-know-me`. Signing requires a macOS user signed in to iCloud; otherwise the command exits nonzero and leaves the unsigned files for a signed-in Mac. After each capture a menu offers Send, Re-record (up to ten takes), or Cancel, which sends nothing. The notification shows the service's `message`; a page titled Cloudflare Access shows "Blocked by Cloudflare: check token", and any other non-JSON reply shows "Mini unavailable". Import asks for the Access client ID and secret; neither is in the file. Write output to the data plane, never to Git.
 
 ## Operation
 
