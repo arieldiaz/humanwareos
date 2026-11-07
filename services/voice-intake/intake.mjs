@@ -2,7 +2,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
-import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
+import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {promisify} from 'node:util';
@@ -202,18 +202,6 @@ export class Store {
   close() { this.db.close(); }
 }
 
-// Local Whisper CLI. Audio never leaves the host.
-export function whisperTranscriber({bin = 'whisper', model = 'large-v3-turbo', language = 'en', timeoutMs = 15 * 60_000} = {}) {
-  return async (path) => {
-    const out = await mkdtemp(join(dirname(path), '.whisper-'));
-    try {
-      await exec(bin, [path, '--model', model, '--language', language, '--output_format', 'json', '--output_dir', out, '--fp16', 'False', '--verbose', 'False'], {timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024});
-      const name = path.split('/').pop().replace(/\.[^.]+$/, '');
-      return JSON.parse(await readFile(join(out, `${name}.json`), 'utf8')).text.trim();
-    } finally { await rm(out, {recursive: true, force: true}); }
-  };
-}
-
 // Optional local summarizer (Ollama on loopback). Any failure uses the gist.
 export function ollamaSummarizer({url = 'http://127.0.0.1:11434', model, timeoutMs = 120_000} = {}) {
   return async (transcript) => {
@@ -230,10 +218,14 @@ export function ollamaSummarizer({url = 'http://127.0.0.1:11434', model, timeout
 }
 
 export class VoiceIntake {
-  constructor({store, config, evidenceRoot, requestsDir, transcribe, summarize, guard, slack, gateway, now = () => new Date()}) {
-    Object.assign(this, {store, config, evidenceRoot, requestsDir, transcribe, summarize, guard, slack, gateway, now});
+  constructor({store, config, evidenceRoot, requestsDir, transcribe, summarize, guard, slack, gateway, now = () => new Date(), log = (entry) => console.error(JSON.stringify(entry))}) {
+    Object.assign(this, {store, config, evidenceRoot, requestsDir, transcribe, summarize, guard, slack, gateway, now, log});
     this.serial = Promise.resolve();
+    this.retitles = new Set();
   }
+
+  // Resolves once the serial worker and every in-flight retitle have finished.
+  async idle() { await this.serial; await Promise.allSettled([...this.retitles]); }
 
   audioUrl(id) { return `${this.config.privateOrigin}${this.config.audioPath ?? '/voice-intake/audio/'}${id}`; }
 
@@ -263,17 +255,23 @@ export class VoiceIntake {
   async advance(id) {
     let row = this.store.get(id);
     const hold = (reason) => this.store.update(id, {state: 'held', reason});
+    const timing = {};
+    const timed = async (name, work) => { const started = Date.now(); try { return await work(); } finally { timing[name] = Date.now() - started; } };
     try {
       if (row.state === 'received') {
-        const transcript = row.kind === 'audio' ? await this.transcribe(row.evidence_path) : readFileSync(row.evidence_path, 'utf8');
+        // The root is titled with the transcript's first words so it posts as soon
+        // as transcription ends; the summarizer retitles it afterwards.
+        const transcript = row.kind === 'audio' ? await timed('transcribeMs', () => this.transcribe(row.evidence_path)) : readFileSync(row.evidence_path, 'utf8');
         if (!transcript) return hold('empty_transcript');
-        this.store.update(id, {state: 'transcribed', transcript, summary: trivialTranscript(transcript) ? gist(transcript) : await this.summarize(transcript)});
+        this.store.update(id, {state: 'transcribed', transcript, summary: gist(transcript)});
         row = this.store.get(id);
       }
       if (row.state === 'transcribed') {
-        const root = await this.slack.post({captureId: id, part: 'root', since: row.received_at, text: rootText(row, this.config.timeZone)});
+        const root = await timed('rootMs', () => this.slack.post({captureId: id, part: 'root', since: row.received_at, text: rootText(row, this.config.timeZone)}));
         this.store.update(id, {state: 'rooted', channel_id: root.channelId, root_ts: root.ts});
         row = this.store.get(id);
+        this.log({at: this.now().toISOString(), event: 'capture_rooted', captureId: id, ...timing, sinceReceivedMs: Date.now() - Date.parse(row.received_at)});
+        if (!trivialTranscript(row.transcript)) this.retitle(row);
       }
       if (row.state === 'rooted') {
         const reply = await this.slack.post({captureId: id, part: 'transcript', since: row.received_at, threadTs: row.root_ts, text: transcriptText(row, this.audioUrl(id))});
@@ -298,6 +296,22 @@ export class VoiceIntake {
       const attempts = row.attempts + 1;
       this.store.update(id, attempts >= (this.config.maxAttempts ?? 5) ? {attempts, state: 'held', reason: `${row.state}_failed`} : {attempts});
     }
+  }
+
+  // Replaces the root's provisional title with the summarizer's, off the critical
+  // path. Any failure leaves the first-words title, which is already correct.
+  retitle(row) {
+    const started = Date.now();
+    const work = (async () => {
+      const summary = await this.summarize(row.transcript);
+      if (!summary || summary === row.summary) return;
+      await this.slack.update({channelId: row.channel_id, ts: row.root_ts, text: rootText({...row, summary}, this.config.timeZone)});
+      this.store.update(row.id, {summary});
+      this.log({at: this.now().toISOString(), event: 'capture_retitled', captureId: row.id, summaryMs: Date.now() - started});
+    })().catch(error => this.log({at: this.now().toISOString(), event: 'retitle_failed', captureId: row.id, detail: String(error.message).slice(0, 200)}))
+      .finally(() => this.retitles.delete(work));
+    this.retitles.add(work);
+    return work;
   }
 
   sessionRequest(row) {
@@ -360,5 +374,11 @@ export class SlackPoster {
     }
     if (!result.ts || result.channel !== this.channel.channelId) throw new Error('slack_confirmation_missing');
     return {channelId: result.channel, ts: result.ts};
+  }
+  // Edits a post this poster made, with the token that made it.
+  async update({channelId, ts, text}) {
+    const result = await this.call('chat.update', this.userToken ?? this.token, {channel: channelId, ts, text});
+    if (result.ts !== ts) throw new Error('slack_confirmation_missing');
+    return {channelId, ts};
   }
 }

@@ -145,14 +145,19 @@ test('a retried upload is the same capture and evidence is written once, private
 });
 
 test('pipeline posts root and transcript as threaded replies, then admits one Liv turn', async () => {
-  const {intake, posts, calls} = fixture();
+  const {intake, posts, updates, calls, logs} = fixture();
   const {captureId} = await intake.accept(captureForm());
   await intake.drain();
+  await intake.idle();
   const row = intake.store.get(captureId);
   assert.equal(row.state, 'dispatched');
   assert.equal(posts[0].part, 'root');
   assert.equal(posts[0].threadTs, undefined);
-  assert.equal(posts[0].text, '📱 Ariel’s iPhone · Fri, Nov 6, 11:03 AM · Book vet for Pepe');
+  assert.equal(posts[0].text, '📱 Ariel’s iPhone · Fri, Nov 6, 11:03 AM · Remind me to book the vet for Pepe next week.', 'the root posts with the first words before the summarizer answers');
+  assert.deepEqual(updates, [{channelId: 'C0INBOX', ts: '1793.1', text: '📱 Ariel’s iPhone · Fri, Nov 6, 11:03 AM · Book vet for Pepe'}], 'the summarizer retitles the root in place');
+  assert.equal(row.summary, 'Book vet for Pepe');
+  assert.deepEqual(logs.map(entry => entry.event), ['capture_rooted', 'capture_retitled']);
+  assert.ok(logs[0].transcribeMs >= 0 && logs[0].rootMs >= 0 && logs[0].sinceReceivedMs >= 0, 'timings are logged for the ledger');
   assert.equal(posts[1].part, 'transcript');
   assert.equal(posts[1].threadTs, '1793.1');
   assert.match(posts[1].text, /^Remind me to book the vet/);
@@ -185,13 +190,40 @@ test('a trivial or hallucinated transcript becomes its own title without asking 
   assert.equal(trivialTranscript('Call the vet tomorrow'), false);
   assert.equal(trivialTranscript('Thank you for the vet referral'), false);
   let asked = 0;
-  const {intake, posts} = fixture({transcribe: async () => 'Thank you.'});
-  intake.summarize = async () => { asked++; return 'Please provide the voice note!'; };
+  const {intake, posts, updates} = fixture({transcribe: async () => 'Thank you.', summarize: async () => { asked++; return 'Please provide the voice note!'; }});
   const {captureId} = await intake.accept(captureForm());
   await intake.drain();
+  await intake.idle();
   assert.equal(asked, 0);
   assert.equal(intake.store.get(captureId).summary, 'Thank you.');
   assert.match(posts[0].text, / · Thank you\.$/);
+  assert.equal(updates.length, 0);
+});
+
+test('the root never waits for the summarizer, and a slow or failing summarizer leaves the first-words title', async () => {
+  let release;
+  const slow = fixture({summarize: () => new Promise(resolve => { release = resolve; })});
+  const {captureId} = await slow.intake.accept(captureForm());
+  await slow.intake.drain();
+  assert.equal(slow.intake.store.get(captureId).state, 'dispatched', 'transcript reply and admission do not wait for the title');
+  assert.equal(slow.updates.length, 0);
+  release('Book vet for Pepe');
+  await slow.intake.idle();
+  assert.equal(slow.updates.length, 1);
+
+  const failing = fixture({summarize: async () => { throw new Error('ollama down'); }});
+  const failed = await failing.intake.accept(captureForm());
+  await failing.intake.drain();
+  await failing.intake.idle();
+  assert.equal(failing.updates.length, 0);
+  assert.equal(failing.intake.store.get(failed.captureId).summary, 'Remind me to book the vet for Pepe next week.');
+  assert.deepEqual(failing.logs.at(-1), {...failing.logs.at(-1), event: 'retitle_failed', detail: 'ollama down'});
+
+  const same = fixture({summarize: async () => 'Remind me to book the vet for Pepe next week.'});
+  await same.intake.accept(captureForm());
+  await same.intake.drain();
+  await same.intake.idle();
+  assert.equal(same.updates.length, 0, 'an identical title is not re-sent');
 });
 
 test('transient failures retry, then hold with a bounded reason', async () => {
@@ -274,6 +306,15 @@ test('with a user token the poster posts as the owner, reads with the bot, and d
   const botOnly = new SlackPoster({channel: {channelId: 'C0INBOX', name: 'inbox'}, token: 'xoxb-bot', userToken: '', call: async (method, token) => { assert.equal(token, 'xoxb-bot'); return call(method, token, {}); }});
   await botOnly.verify();
   assert.equal(botOnly.posterUserId, 'ULIV', 'without a user token the bot posts, exactly as before');
+});
+
+test('Slack poster edits a root with the token that posted it and demands confirmation', async () => {
+  const edits = [];
+  const call = async (method, token, args) => { edits.push([method, token, args]); return {ok: true, channel: args.channel, ts: args.ts === '9.9' ? '9.9' : undefined}; };
+  const poster = new SlackPoster({channel: {channelId: 'C0INBOX', name: 'inbox'}, token: 'bot', call});
+  assert.deepEqual(await poster.update({channelId: 'C0INBOX', ts: '9.9', text: 'new title'}), {channelId: 'C0INBOX', ts: '9.9'});
+  assert.deepEqual(edits, [['chat.update', 'bot', {channel: 'C0INBOX', ts: '9.9', text: 'new title'}]]);
+  await assert.rejects(poster.update({channelId: 'C0INBOX', ts: '9.8', text: 'x'}), /slack_confirmation_missing/);
 });
 
 test('rendering escapes Slack markup and picks a device emoji', () => {
