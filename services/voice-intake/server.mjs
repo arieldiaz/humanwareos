@@ -144,11 +144,13 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   if (!config.agentId || !config.privateOrigin || !config.timeZone) throw new Error('voice-intake config requires agentId, privateOrigin, and timeZone');
   const token = process.env.VOICE_INTAKE_SLACK_BOT_TOKEN;
   if (!token) throw new Error('voice_intake_slack_token_missing');
+  // Optional owner token: root and transcript appear as the owner, never mentioning the agent.
+  const userToken = process.env.VOICE_INTAKE_SLACK_USER_TOKEN;
   const channel = JSON.parse(readFileSync(join(runtime, 'config/channels/slack.json'))).registry[config.slackChannel ?? 'inbox'];
   const {slackApi} = await import('../../ops/openclaw/plugins/run-signature/plugin-runtime.mjs');
   const stateDir = config.dataDir ?? join(data, 'working/projects/voice-intake');
   const store = new Store(join(stateDir, 'captures.sqlite3'));
-  const slack = new SlackPoster({channel, token, call: slackApi});
+  const slack = new SlackPoster({channel, token, userToken, call: slackApi});
   const intake = new VoiceIntake({store, config, slack, gateway: gatewayCall, requestsDir: join(stateDir, 'requests'),
     evidenceRoot: config.evidenceRoot ?? join(data, 'evidence/voice/captures'),
     transcribe: whisperTranscriber(config.whisper), summarize: ollamaSummarizer(config.summary), guard: audioGuard(config.audioGuard)});

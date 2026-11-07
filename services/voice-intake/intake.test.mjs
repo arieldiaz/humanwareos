@@ -4,8 +4,9 @@ import {execFileSync} from 'node:child_process';
 import {existsSync, mkdtempSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {M4A, NOW, captureForm, fixture} from './fixture.mjs';
-import {FFMPEG, SlackPoster, audioGuard, audioRejection, audioType, deviceEmoji, gist, normalizeCapture, parseVolumeDetect, rootText, transcriptText, trivialTranscript} from './intake.mjs';
+import {BROOKLYN, M4A, NOW, captureForm, fixture} from './fixture.mjs';
+import {FFMPEG, SlackPoster, Store, audioGuard, audioRejection, audioType, deviceEmoji, gist, normalizeCapture, normalizeLocation, parseVolumeDetect, rootText, transcriptText, trivialTranscript} from './intake.mjs';
+import {DatabaseSync} from 'node:sqlite';
 
 // CI runners carry ffmpeg at /usr/bin; the instance pins the Homebrew path.
 const ffmpeg = [process.env.FFMPEG, FFMPEG, '/usr/bin/ffmpeg'].find(path => path && existsSync(path));
@@ -73,6 +74,58 @@ test('the audio guard rejects silent and too-short clips, keeps speech, and skip
     assert.equal(await broken(silence, 'm4a'), null, 'a broken ffmpeg never blocks intake');
     assert.deepEqual([logs.length, logs[0].event, logs[0].detail], [1, 'audio_guard_skipped', 'ENOENT']);
     assert.equal(await audioGuard({ffmpeg})(M4A, 'm4a'), null, 'an undecodable clip is skipped, not rejected');
+  } finally { rmSync(dir, {recursive: true, force: true}); }
+});
+
+test('location is optional, never rejects, and keeps coordinates out of the label', async () => {
+  const form = (location) => captureForm({location});
+  assert.deepEqual(normalizeLocation(form(BROOKLYN)), {latitude: 40.678178, longitude: -73.944158, locationLabel: 'Brooklyn, NY'});
+  assert.deepEqual(normalizeLocation(form({})), {latitude: null, longitude: null, locationLabel: null});
+  assert.deepEqual(normalizeLocation(form({latitude: '', longitude: '', locationCity: '', locationState: '', locationName: ''})), {latitude: null, longitude: null, locationLabel: null});
+  assert.deepEqual(normalizeLocation(form({latitude: '0', longitude: '0'})), {latitude: 0, longitude: 0, locationLabel: null});
+  assert.deepEqual(normalizeLocation(form({latitude: 'abc', longitude: '-73.9', locationCity: 'Brooklyn'})), {latitude: null, longitude: null, locationLabel: 'Brooklyn'});
+  assert.deepEqual(normalizeLocation(form({latitude: '91', longitude: '-73.9', locationState: 'NY'})).locationLabel, 'NY');
+  assert.equal(normalizeLocation(form({locationName: 'Prospect\tPark'})).locationLabel, 'Prospect Park');
+  assert.equal(normalizeLocation(form({locationName: 'x'.repeat(200)})).locationLabel.length, 100);
+  const opts = {maxBytes: 1024, now: NOW};
+  const [plain, located] = await Promise.all([normalizeCapture(captureForm(), opts), normalizeCapture(form(BROOKLYN), opts)]);
+  assert.equal(plain.id, located.id, 'location never changes the capture id');
+  assert.equal(plain.latitude, null);
+});
+
+test('a located capture records coordinates in evidence and ledger, and only the label reaches the root post', async () => {
+  const {intake, posts, calls} = fixture();
+  const {captureId} = await intake.accept(captureForm({location: BROOKLYN}));
+  await intake.drain();
+  const row = intake.store.get(captureId);
+  assert.deepEqual([row.latitude, row.longitude, row.location_label], [40.678178, -73.944158, 'Brooklyn, NY']);
+  assert.deepEqual(JSON.parse(readFileSync(row.evidence_path.replace(/m4a$/, 'json'))).location, {latitude: 40.678178, longitude: -73.944158, label: 'Brooklyn, NY'});
+  assert.equal(posts[0].text, '📱 Ariel’s iPhone · Fri, Nov 6, 11:03 AM · Brooklyn, NY · Book vet for Pepe');
+  for (const post of posts) assert.ok(!post.text.includes('40.67') && !post.text.includes('73.94'), 'coordinates stay off Slack');
+  const requestPath = /request record at (\S+)\./.exec(calls[0][1].message)[1];
+  assert.deepEqual(JSON.parse(readFileSync(requestPath)).location, {latitude: 40.678178, longitude: -73.944158, label: 'Brooklyn, NY'});
+  const bare = fixture();
+  const bareId = (await bare.intake.accept(captureForm())).captureId;
+  assert.equal(JSON.parse(readFileSync(bare.intake.store.get(bareId).evidence_path.replace(/m4a$/, 'json'))).location, null);
+});
+
+test('a ledger created before location gains the columns in place', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'voice-intake-ledger-'));
+  try {
+    const path = join(dir, 'captures.sqlite3');
+    const old = new DatabaseSync(path);
+    old.exec(`CREATE TABLE voice_captures (id TEXT PRIMARY KEY, kind TEXT NOT NULL, device_name TEXT NOT NULL, device_model TEXT NOT NULL,
+      captured_at TEXT NOT NULL, received_at TEXT NOT NULL, updated_at TEXT NOT NULL, evidence_path TEXT NOT NULL, media_type TEXT NOT NULL,
+      bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, state TEXT NOT NULL, reason TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+      transcript TEXT, summary TEXT, channel_id TEXT, root_ts TEXT, transcript_ts TEXT, session_key TEXT, run_id TEXT);
+      INSERT INTO voice_captures (id, kind, device_name, device_model, captured_at, received_at, updated_at, evidence_path, media_type, bytes, sha256, state)
+      VALUES ('old', 'audio', 'Mac', 'Mac', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z', '/x', 'audio/mp4', 1, 'h', 'dispatched');`);
+    old.close();
+    const store = new Store(path);
+    assert.deepEqual([store.get('old').location_label, store.get('old').latitude], [null, null]);
+    assert.ok(store.insert({id: 'new', kind: 'audio', deviceName: 'Mac', deviceModel: 'Mac', capturedAt: '2026-11-02T00:00:00Z', mediaType: 'audio/mp4', bytes: Buffer.alloc(1), sha256: 'h2', latitude: 1.5, longitude: 2.5, locationLabel: 'Somewhere'}, '/y'));
+    assert.deepEqual([store.get('new').latitude, store.get('new').location_label], [1.5, 'Somewhere']);
+    store.close();
   } finally { rmSync(dir, {recursive: true, force: true}); }
 });
 
@@ -185,11 +238,51 @@ test('Slack poster reconciles a lost post by metadata and refuses to post unveri
   assert.deepEqual(JSON.parse(sent[0].metadata), {event_type: 'voice_intake', event_payload: {marker: 'abc:transcript'}});
 });
 
+test('with a user token the poster posts as the owner, reads with the bot, and drops metadata when Slack refuses it', async () => {
+  const sent = [];
+  let refuseMetadata = false;
+  const call = async (method, token, args) => {
+    if (method === 'auth.test') return {user_id: token === 'xoxp-owner' ? 'UARIEL' : 'ULIV'};
+    if (method === 'conversations.info') { assert.equal(token, 'xoxb-bot'); return {channel: {name: 'inbox', is_member: true}}; }
+    if (method === 'conversations.history') { assert.equal(token, 'xoxb-bot', 'reads never use the user token'); return {messages: [
+      {user: 'ULIV', ts: '1.1', text: 'root text'}, {user: 'UARIEL', ts: '1.2', text: 'root text', thread_ts: '1.0'}, {user: 'UARIEL', ts: '1.3', text: 'root text'}]}; }
+    if (method === 'conversations.replies') { assert.equal(token, 'xoxb-bot'); return {messages: [{user: 'UARIEL', ts: '1.3', text: 'reply text'}]}; }
+    assert.equal(token, 'xoxp-owner', 'posts use the user token');
+    if (refuseMetadata && args.metadata) throw new Error('slack chat.postMessage failed: invalid_metadata_format');
+    sent.push(args); return {ok: true, channel: 'C0INBOX', ts: `2.${sent.length}`};
+  };
+  const poster = new SlackPoster({channel: {channelId: 'C0INBOX', name: 'inbox'}, token: 'xoxb-bot', userToken: 'xoxp-owner', call});
+  await poster.verify();
+  assert.deepEqual([poster.botUserId, poster.posterUserId], ['ULIV', 'UARIEL']);
+  // A lost root without metadata is found by the owner's authorship and text, never by the bot's identical message or a threaded reply.
+  assert.deepEqual(await poster.post({captureId: 'abc', part: 'root', since: NOW.toISOString(), text: 'root text'}), {channelId: 'C0INBOX', ts: '1.3'});
+  assert.equal(sent.length, 0);
+  assert.deepEqual(await poster.post({captureId: 'abc', part: 'transcript', since: NOW.toISOString(), threadTs: '1.3', text: 'reply text'}), {channelId: 'C0INBOX', ts: '2.1'}, 'the root itself never counts as its own reply');
+  assert.ok(sent[0].metadata, 'metadata is attempted first');
+  assert.equal(sent[0].thread_ts, '1.3');
+  refuseMetadata = true;
+  await poster.post({captureId: 'def', part: 'root', since: NOW.toISOString(), text: 'other'});
+  assert.equal(sent[1].metadata, undefined, 'metadata is dropped after Slack refuses it');
+  await poster.post({captureId: 'def', part: 'transcript', since: NOW.toISOString(), threadTs: '2.2', text: 'more'});
+  assert.equal(sent[2].metadata, undefined, 'and stays off afterwards');
+  assert.equal(poster.metadata, false);
+  const unrelated = new SlackPoster({channel: {channelId: 'C0INBOX', name: 'inbox'}, token: 'xoxb-bot', userToken: 'xoxp-owner',
+    call: async (method, token) => method === 'chat.postMessage' ? (() => { throw new Error('slack chat.postMessage failed: ratelimited'); })() : call(method, token, {})});
+  await unrelated.verify();
+  await assert.rejects(unrelated.post({captureId: 'ghi', part: 'root', since: NOW.toISOString(), text: 'z'}), /ratelimited/);
+  assert.equal(unrelated.metadata, true, 'only a metadata refusal disables metadata');
+  const botOnly = new SlackPoster({channel: {channelId: 'C0INBOX', name: 'inbox'}, token: 'xoxb-bot', userToken: '', call: async (method, token) => { assert.equal(token, 'xoxb-bot'); return call(method, token, {}); }});
+  await botOnly.verify();
+  assert.equal(botOnly.posterUserId, 'ULIV', 'without a user token the bot posts, exactly as before');
+});
+
 test('rendering escapes Slack markup and picks a device emoji', () => {
   assert.deepEqual(['iPhone', 'Apple Watch', 'Mac', 'iPad', 'Vision'].map(deviceEmoji), ['📱', '⌚', '💻', '📱', '🎙️']);
   assert.equal(gist('one two three four five six seven eight nine ten eleven'), 'one two three four five six seven eight nine ten…');
   const row = {device_model: 'Mac', device_name: '<!channel>', captured_at: '2026-07-01T12:00:00Z', summary: 'a & b', kind: 'audio', transcript: '<@U1> hi'};
   assert.equal(rootText(row, 'America/New_York'), '💻 &lt;!channel&gt; · Wed, Jul 1, 8:00 AM · a &amp; b');
+  assert.equal(rootText({...row, location_label: 'Brooklyn, NY'}, 'America/New_York'), '💻 &lt;!channel&gt; · Wed, Jul 1, 8:00 AM · Brooklyn, NY · a &amp; b');
+  assert.ok(!rootText(row, 'America/New_York').includes('Liv'), 'the root never mentions the agent');
   assert.match(transcriptText(row, 'https://x/a'), /^&lt;@U1&gt; hi\n\n<https:\/\/x\/a\|/);
   assert.ok(transcriptText({...row, transcript: 'w '.repeat(30000)}, 'https://x/a').length < 40000);
 });

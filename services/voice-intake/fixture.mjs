@@ -7,13 +7,15 @@ import {Store, VoiceIntake} from './intake.mjs';
 export const M4A = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypM4A '), Buffer.alloc(64, 1)]);
 export const NOW = new Date('2026-11-06T16:05:00Z');
 
-export function captureForm({audio = M4A, text, deviceName = 'Ariel’s iPhone', deviceModel = 'iPhone', capturedAt = '2026-11-06T11:03:12-05:00'} = {}) {
+export function captureForm({audio = M4A, text, deviceName = 'Ariel’s iPhone', deviceModel = 'iPhone', capturedAt = '2026-11-06T11:03:12-05:00', location} = {}) {
   const form = new FormData();
   if (audio) form.append('audio', new Blob([audio]), 'Recording.m4a');
   if (text != null) form.append('text', text);
   form.append('deviceName', deviceName); form.append('deviceModel', deviceModel); form.append('capturedAt', capturedAt);
+  for (const [key, value] of Object.entries(location ?? {})) form.append(key, value);
   return form;
 }
+export const BROOKLYN = {latitude: '40.678178', longitude: '-73.944158', locationCity: 'Brooklyn', locationState: 'NY', locationName: '123 Example St'};
 
 export function fixture({transcribe = async () => 'Remind me to book the vet for Pepe next week.', gateway, guard} = {}) {
   const root = mkdtempSync(join(tmpdir(), 'voice-intake-'));

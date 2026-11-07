@@ -14,7 +14,7 @@ test('record shortcut starts recording immediately and posts the file with devic
   const [post] = byId(workflow, 'downloadurl');
   const p = post.WFWorkflowActionParameters;
   assert.deepEqual([p.WFURL, p.WFHTTPMethod, p.WFHTTPBodyType], [URL, 'POST', 'Form']);
-  assert.deepEqual(items(p.WFFormValues).map(key), ['audio', 'deviceName', 'deviceModel', 'capturedAt']);
+  assert.deepEqual(items(p.WFFormValues).map(key), ['audio', 'deviceName', 'deviceModel', 'capturedAt', 'latitude', 'longitude', 'locationCity', 'locationState', 'locationName']);
   assert.equal(items(p.WFFormValues)[0].WFItemType, 5);
   assert.deepEqual(items(p.WFFormValues)[0].WFValue, {WFSerializationType: 'WFTokenAttachmentParameterState',
     Value: {WFSerializationType: 'WFTextTokenAttachment', Value: {Type: 'Variable', VariableName: 'Recording'}}});
@@ -66,10 +66,36 @@ test('stopping the capture sends it: no menu, loop, or exit stands between captu
     const ids = actions.map(a => a.WFWorkflowActionIdentifier.replace('is.workflow.actions.', ''));
     for (const absent of ['choosefrommenu', 'repeat.count', 'exit']) assert.equal(ids.includes(absent), false, `${mode}: ${absent}`);
     const capture = ids.indexOf(mode === 'record' ? 'recordaudio' : 'dictatetext');
-    assert.deepEqual(ids.slice(capture + 1, ids.indexOf('downloadurl')), ['setvariable', 'getdevicedetails', 'getdevicedetails']);
+    const between = new Set(ids.slice(capture + 1, ids.indexOf('downloadurl')));
+    for (const id of between) assert.ok(['setvariable', 'getdevicedetails', 'getcurrentlocation', 'properties.locations', 'conditional'].includes(id), `${mode}: ${id} waits between capture and upload`);
     assert.equal(ids.indexOf('downloadurl'), ids.lastIndexOf('downloadurl'), 'exactly one upload');
     assert.ok(!JSON.stringify(actions).includes('Choice'), 'no review state survives');
   }
+});
+
+test('location is taken after the recording, inside a tolerant branch, and only in the record variant', () => {
+  const workflow = buildShortcut({url: URL});
+  const ids = workflow.WFWorkflowActions.map(a => a.WFWorkflowActionIdentifier.replace('is.workflow.actions.', ''));
+  assert.ok(ids.indexOf('recordaudio') < ids.indexOf('getcurrentlocation'), 'location never delays recording');
+  assert.ok(ids.indexOf('getcurrentlocation') < ids.indexOf('downloadurl'));
+  const [locate] = byId(workflow, 'getcurrentlocation');
+  const guard = workflow.WFWorkflowActions.find(a => a.WFWorkflowActionParameters.WFCondition === 100 && a.WFWorkflowActionParameters.WFInput.Variable.Value.VariableName === 'Location');
+  assert.ok(guard, 'details are read only if the fix has any value');
+  const details = byId(workflow, 'properties.locations');
+  assert.deepEqual(details.map(a => a.WFWorkflowActionParameters.WFContentItemPropertyName), ['Latitude', 'Longitude', 'City', 'State', 'Name']);
+  for (const detail of details) assert.deepEqual(detail.WFWorkflowActionParameters.WFInput.Value, {Type: 'Variable', VariableName: 'Location'});
+  const start = workflow.WFWorkflowActions.indexOf(guard), end = workflow.WFWorkflowActions.findIndex(a => a.WFWorkflowActionParameters.GroupingIdentifier === guard.WFWorkflowActionParameters.GroupingIdentifier && a.WFWorkflowActionParameters.WFControlFlowMode === 2);
+  for (const detail of details) assert.ok(workflow.WFWorkflowActions.indexOf(detail) > start && workflow.WFWorkflowActions.indexOf(detail) < end);
+  assert.equal(workflow.WFWorkflowActions.find(a => a.WFWorkflowActionParameters.WFVariableName === 'Location').WFWorkflowActionParameters.WFInput.Value.OutputUUID, locate.WFWorkflowActionParameters.UUID);
+  const form = items(byId(workflow, 'downloadurl')[0].WFWorkflowActionParameters.WFFormValues);
+  assert.deepEqual(form.slice(4).map(f => Object.values(f.WFValue.Value.attachmentsByRange)[0].VariableName), ['Latitude', 'Longitude', 'City', 'State', 'Name']);
+  // Get Current Location is reported to fail on watchOS, so the Watch (dictation) variant carries no location by default.
+  const dictation = buildShortcut({url: URL, mode: 'dictate'});
+  assert.equal(byId(dictation, 'getcurrentlocation').length, 0);
+  assert.deepEqual(items(byId(dictation, 'downloadurl')[0].WFWorkflowActionParameters.WFFormValues).map(key), ['text', 'deviceName', 'deviceModel', 'capturedAt']);
+  assert.equal(byId(buildShortcut({url: URL, mode: 'dictate', location: true}), 'getcurrentlocation').length, 1);
+  assert.equal(byId(buildShortcut({url: URL, location: false}), 'getcurrentlocation').length, 0);
+  assert.equal(workflow.WFWorkflowImportQuestions.length, 2, 'the Access import questions are intact');
 });
 
 test('each outcome shows a distinct notification', () => {

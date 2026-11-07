@@ -29,18 +29,41 @@ const ID = {clientId: 'A1F0C001-0000-4000-8000-000000000001', clientSecret: 'A1F
   date: 'A1F0C001-0000-4000-8000-000000000003', capture: 'A1F0C001-0000-4000-8000-000000000004',
   deviceName: 'A1F0C001-0000-4000-8000-000000000005', deviceModel: 'A1F0C001-0000-4000-8000-000000000006',
   capturedAt: 'A1F0C001-0000-4000-8000-000000000007', response: 'A1F0C001-0000-4000-8000-000000000008',
-  message: 'A1F0C001-0000-4000-8000-000000000009'};
-const GROUP = {reply: 'A1F0C001-0000-4000-8000-0000000000a5', access: 'A1F0C001-0000-4000-8000-0000000000a6'};
+  message: 'A1F0C001-0000-4000-8000-000000000009', location: 'A1F0C001-0000-4000-8000-000000000010',
+  Latitude: 'A1F0C001-0000-4000-8000-000000000011', Longitude: 'A1F0C001-0000-4000-8000-000000000012',
+  City: 'A1F0C001-0000-4000-8000-000000000013', State: 'A1F0C001-0000-4000-8000-000000000014', Name: 'A1F0C001-0000-4000-8000-000000000015'};
+const GROUP = {reply: 'A1F0C001-0000-4000-8000-0000000000a5', access: 'A1F0C001-0000-4000-8000-0000000000a6', location: 'A1F0C001-0000-4000-8000-0000000000a7'};
 const flow = (id, group, mode, parameters = {}) => ({WFWorkflowActionIdentifier: `is.workflow.actions.${id}`, WFWorkflowActionParameters: {GroupingIdentifier: group, WFControlFlowMode: mode, ...parameters}});
 const notify = (...body) => action('notification', undefined, {WFNotificationActionTitle: 'Voice intake', WFNotificationActionBody: text(...body), WFNotificationActionSound: false});
 
+// Location runs after the capture so it never delays recording, and only inside
+// an "if the fix has any value" branch so a device without one still uploads.
+// Get Details of Locations exposes Name, Street, City, State, Country, ZIP Code,
+// Latitude, Longitude, Altitude: no neighborhood. The service builds the label.
+const LOCATION_DETAILS = ['Latitude', 'Longitude', 'City', 'State', 'Name'];
+const locationActions = () => [
+  action('getcurrentlocation', ID.location),
+  action('setvariable', undefined, {WFVariableName: 'Location', WFInput: attachment(ref(ID.location, 'Current Location'))}),
+  flow('conditional', GROUP.location, 0, {WFCondition: 100, WFInput: input(named('Location'))}),
+  ...LOCATION_DETAILS.flatMap(detail => [
+    action('properties.locations', ID[detail], {WFInput: attachment(named('Location')), WFContentItemPropertyName: detail}),
+    action('setvariable', undefined, {WFVariableName: detail, WFInput: attachment(ref(ID[detail], detail))}),
+  ]),
+  flow('conditional', GROUP.location, 1),
+  flow('conditional', GROUP.location, 2),
+];
+const locationFields = () => [field('latitude', named('Latitude')), field('longitude', named('Longitude')),
+  field('locationCity', named('City')), field('locationState', named('State')), field('locationName', named('Name'))];
+
 // mode 'record' captures full audio; 'dictate' is the fallback for a device whose
 // Shortcuts runtime cannot record audio and sends on-device dictation instead.
+// Get Current Location is reported to fail on watchOS, so the dictation variant,
+// which exists for the Watch, carries no location unless asked.
 // Stopping the capture sends it: there is no review menu, so the service's
 // silence and length checks are the only guard against an accidental tap.
 // A file field nests the variable in a WFTextTokenAttachment; a bare variable
 // decodes to nothing and Shortcuts silently drops the field from the form.
-export function buildShortcut({url, mode = 'record'}) {
+export function buildShortcut({url, mode = 'record', location = mode === 'record'}) {
   if (!/^https:\/\/[^/\s]+\/capture$/.test(url)) throw new Error('capture url must be https://<host>/capture');
   const capture = mode === 'record'
     ? action('recordaudio', ID.capture, {WFRecordingCompression: 'Normal', WFRecordingStart: 'Immediately', WFRecordingEnd: 'On Tap'})
@@ -56,12 +79,13 @@ export function buildShortcut({url, mode = 'record'}) {
     action('setvariable', undefined, {WFVariableName: 'Captured At', WFInput: attachment(ref(ID.capturedAt, 'Formatted Date'))}),
     capture,
     action('setvariable', undefined, {WFVariableName: 'Recording', WFInput: attachment(ref(ID.capture, mode === 'record' ? 'Recorded Audio' : 'Dictated Text'))}),
+    ...(location ? locationActions() : []),
     action('getdevicedetails', ID.deviceName, {WFDeviceDetail: 'Device Name'}),
     action('getdevicedetails', ID.deviceModel, {WFDeviceDetail: 'Device Model'}),
     action('downloadurl', ID.response, {WFURL: url, WFHTTPMethod: 'POST', WFHTTPBodyType: 'Form', ShowHeaders: true,
       WFHTTPHeaders: fields([field('CF-Access-Client-Id', ref(ID.clientId, 'Text')), field('CF-Access-Client-Secret', ref(ID.clientSecret, 'Text'))]),
       WFFormValues: fields([payload, field('deviceName', ref(ID.deviceName, 'Device Name')), field('deviceModel', ref(ID.deviceModel, 'Device Model')),
-        field('capturedAt', named('Captured At'))])}),
+        field('capturedAt', named('Captured At')), ...(location ? locationFields() : [])])}),
     // The service's JSON names every outcome; anything else came from the edge.
     action('getvalueforkey', ID.message, {WFInput: attachment(ref(ID.response, 'Contents of URL')), WFDictionaryKey: 'message', WFGetDictionaryValueType: 'Value'}),
     flow('conditional', GROUP.reply, 0, {WFCondition: 100, WFInput: input(ref(ID.message, 'Dictionary Value'))}),
