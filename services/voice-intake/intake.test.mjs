@@ -94,14 +94,16 @@ test('location is optional, never rejects, and keeps coordinates out of the labe
 });
 
 test('a located capture records coordinates in evidence and ledger, and only the label reaches the root post', async () => {
-  const {intake, posts, calls} = fixture();
+  const {intake, posts, updates, calls} = fixture();
   const {captureId} = await intake.accept(captureForm({location: BROOKLYN}));
   await intake.drain();
+  await intake.idle();
   const row = intake.store.get(captureId);
   assert.deepEqual([row.latitude, row.longitude, row.location_label], [40.678178, -73.944158, 'Brooklyn, NY']);
   assert.deepEqual(JSON.parse(readFileSync(row.evidence_path.replace(/m4a$/, 'json'))).location, {latitude: 40.678178, longitude: -73.944158, label: 'Brooklyn, NY'});
-  assert.equal(posts[0].text, '📱 Ariel’s iPhone · Fri, Nov 6, 11:03 AM · Brooklyn, NY · Book vet for Pepe');
-  for (const post of posts) assert.ok(!post.text.includes('40.67') && !post.text.includes('73.94'), 'coordinates stay off Slack');
+  assert.equal(posts[0].text, '📱 Ariel’s iPhone · Fri, Nov 6, 11:03 AM · Brooklyn, NY · Remind me to book the vet for Pepe next week.', 'the root posts at once with the first words');
+  assert.equal(updates.at(-1).text, '📱 Ariel’s iPhone · Fri, Nov 6, 11:03 AM · Brooklyn, NY · Book vet for Pepe', 'the summarizer retitles the root in place, label intact');
+  for (const post of [...posts, ...updates]) assert.ok(!post.text.includes('40.67') && !post.text.includes('73.94'), 'coordinates stay off Slack');
   const requestPath = /request record at (\S+)\./.exec(calls[0][1].message)[1];
   assert.deepEqual(JSON.parse(readFileSync(requestPath)).location, {latitude: 40.678178, longitude: -73.944158, label: 'Brooklyn, NY'});
   const bare = fixture();
