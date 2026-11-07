@@ -1,8 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, statSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {existsSync, mkdtempSync, readFileSync, rmSync, statSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {M4A, NOW, captureForm, fixture} from './fixture.mjs';
-import {SlackPoster, audioType, deviceEmoji, gist, normalizeCapture, rootText, transcriptText} from './intake.mjs';
+import {FFMPEG, SlackPoster, audioGuard, audioRejection, audioType, deviceEmoji, gist, normalizeCapture, parseVolumeDetect, rootText, transcriptText, trivialTranscript} from './intake.mjs';
+
+// CI runners carry ffmpeg at /usr/bin; the instance pins the Homebrew path.
+const ffmpeg = [process.env.FFMPEG, FFMPEG, '/usr/bin/ffmpeg'].find(path => path && existsSync(path));
+const clip = (dir, name, source, seconds) => {
+  const path = join(dir, name);
+  execFileSync(ffmpeg, ['-nostdin', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', source, '-t', String(seconds), ...(name.endsWith('.m4a') ? ['-c:a', 'aac'] : []), path]);
+  return readFileSync(path);
+};
 
 test('audio type is read from bytes, not the file name', () => {
   assert.equal(audioType(M4A).ext, 'm4a');
@@ -22,6 +33,47 @@ test('capture validation rejects malformed forms', async () => {
   const capture = await normalizeCapture(captureForm(), opts);
   assert.equal(capture.capturedAt, '2026-11-06T16:03:12.000Z');
   assert.match(capture.id, /^[0-9a-f]{32}$/);
+});
+
+test('volumedetect output is parsed and judged; unmeasured fields never reject', () => {
+  const report = '  Duration: 00:00:05.90, start: 0.000000, bitrate: 2 kb/s\n[Parsed_volumedetect_0 @ 0x1] mean_volume: -91.0 dB\n[Parsed_volumedetect_0 @ 0x1] max_volume: -91.0 dB\n';
+  assert.deepEqual(parseVolumeDetect(report), {maxVolume: -91, duration: 5.9});
+  assert.deepEqual(parseVolumeDetect('max_volume: -inf dB'), {maxVolume: -Infinity, duration: null});
+  assert.deepEqual(parseVolumeDetect('garbage'), {maxVolume: null, duration: null});
+  assert.equal(audioRejection({maxVolume: -91, duration: 5.9}), 'silent_audio');
+  assert.equal(audioRejection({maxVolume: -Infinity, duration: 5.9}), 'silent_audio');
+  assert.equal(audioRejection({maxVolume: -18.1, duration: 0.2}), 'too_short');
+  assert.equal(audioRejection({maxVolume: -91, duration: 0.2}), 'too_short');
+  assert.equal(audioRejection({maxVolume: -18.1, duration: 5.9}), null);
+  assert.equal(audioRejection({maxVolume: -49.9, duration: 1}), null);
+  assert.equal(audioRejection({maxVolume: null, duration: null}), null);
+  assert.equal(audioRejection({maxVolume: -60, duration: 1}, {minDb: -70}), null);
+});
+
+test('the audio guard rejects silent and too-short clips, keeps speech, and skips when ffmpeg fails', {skip: !ffmpeg && 'ffmpeg not installed'}, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'voice-intake-clips-'));
+  try {
+    const silence = clip(dir, 'silence.m4a', 'anullsrc=r=44100:cl=mono', 2);
+    const tone = clip(dir, 'tone.wav', 'sine=frequency=440:sample_rate=16000', 2);
+    const short = clip(dir, 'short.wav', 'sine=frequency=440:sample_rate=16000', 0.2);
+    assert.equal(audioType(silence).ext, 'm4a');
+    const guard = audioGuard({ffmpeg});
+    assert.equal(await guard(silence, 'm4a'), 'silent_audio');
+    assert.equal(await guard(tone, 'wav'), null);
+    assert.equal(await guard(short, 'wav'), 'too_short');
+    const opts = {maxBytes: 1024 * 1024, now: NOW, guard};
+    await assert.rejects(normalizeCapture(captureForm({audio: silence}), opts), {status: 400, message: 'silent_audio'});
+    await assert.rejects(normalizeCapture(captureForm({audio: short}), opts), {status: 400, message: 'too_short'});
+    assert.equal((await normalizeCapture(captureForm({audio: tone}), opts)).ext, 'wav');
+    const {intake} = fixture({guard});
+    await assert.rejects(intake.accept(captureForm({audio: silence})), /silent_audio/);
+    assert.equal(intake.store.open().length, 0, 'silence is never stored');
+    const logs = [];
+    const broken = audioGuard({ffmpeg: join(dir, 'missing-ffmpeg'), log: (entry) => logs.push(entry)});
+    assert.equal(await broken(silence, 'm4a'), null, 'a broken ffmpeg never blocks intake');
+    assert.deepEqual([logs.length, logs[0].event, logs[0].detail], [1, 'audio_guard_skipped', 'ENOENT']);
+    assert.equal(await audioGuard({ffmpeg})(M4A, 'm4a'), null, 'an undecodable clip is skipped, not rejected');
+  } finally { rmSync(dir, {recursive: true, force: true}); }
 });
 
 test('a retried upload is the same capture and evidence is written once, private', async () => {
@@ -73,6 +125,20 @@ test('dictation captures skip transcription and have no audio link', async () =>
   assert.equal(intake.store.get(captureId).state, 'dispatched');
   assert.match(posts[0].text, /^⌚ Watch · /);
   assert.match(posts[1].text, /no audio was recorded/);
+});
+
+test('a trivial or hallucinated transcript becomes its own title without asking the summarizer', async () => {
+  for (const hallucination of ['Thank you.', 'Thanks for watching!', 'you', 'Thank you for watching.', 'Bye.', '']) assert.equal(trivialTranscript(hallucination), true, hallucination);
+  assert.equal(trivialTranscript('Call the vet tomorrow'), false);
+  assert.equal(trivialTranscript('Thank you for the vet referral'), false);
+  let asked = 0;
+  const {intake, posts} = fixture({transcribe: async () => 'Thank you.'});
+  intake.summarize = async () => { asked++; return 'Please provide the voice note!'; };
+  const {captureId} = await intake.accept(captureForm());
+  await intake.drain();
+  assert.equal(asked, 0);
+  assert.equal(intake.store.get(captureId).summary, 'Thank you.');
+  assert.match(posts[0].text, / · Thank you\.$/);
 });
 
 test('transient failures retry, then hold with a bounded reason', async () => {

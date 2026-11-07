@@ -101,7 +101,12 @@ test('capture listener accepts Shortcuts uploads, explains each rejection, and l
     assert.deepEqual(await post(Buffer.from('audio=Recorded%20Audio&deviceName=Mac&deviceModel=Mac&capturedAt=2026-11-06T11%3A03%3A12-05%3A00'), 'application/x-www-form-urlencoded'), [400, 'Not sent: recording was not attached']);
     assert.deepEqual(await post(shortcutsBody({audio: 'plain text pretending'}), SHORTCUTS_TYPE), [415, 'Not sent: recording format not supported']);
     assert.deepEqual(await post('{}', 'application/json'), [415, 'Not sent: upload unreadable']);
-    assert.deepEqual(logs.map(entry => [entry.status, entry.reason]), [[400, 'empty_audio'], [400, 'audio_not_file'], [415, 'unsupported_audio'], [415, 'form_required']]);
+    intake.guard = async () => 'silent_audio';
+    assert.deepEqual(await post(shortcutsBody(), SHORTCUTS_TYPE), [400, 'Recording was silent: check the Mac\'s input device in System Settings → Sound']);
+    intake.guard = async () => 'too_short';
+    assert.deepEqual(await post(shortcutsBody(), SHORTCUTS_TYPE), [400, 'Recording was too short']);
+    intake.guard = undefined;
+    assert.deepEqual(logs.map(entry => [entry.status, entry.reason]), [[400, 'empty_audio'], [400, 'audio_not_file'], [415, 'unsupported_audio'], [415, 'form_required'], [400, 'silent_audio'], [400, 'too_short']]);
     for (const entry of logs) {
       assert.match(entry.requestId, /^[0-9a-f-]{36}$/);
       assert.ok(entry.contentType && entry.contentLength, 'framing is logged');
