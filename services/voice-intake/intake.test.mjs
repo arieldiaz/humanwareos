@@ -5,7 +5,8 @@ import {existsSync, mkdtempSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BROOKLYN, M4A, NOW, captureForm, fixture} from './fixture.mjs';
-import {FFMPEG, SlackPoster, Store, audioGuard, audioRejection, audioType, deviceEmoji, gist, normalizeCapture, normalizeLocation, parseVolumeDetect, rootText, transcriptText, trivialTranscript} from './intake.mjs';
+import {FFMPEG, SlackPoster, Store, audioGuard, audioRejection, audioType, deviceEmoji, gist, normalizeCapture, normalizeLocation, parseVolumeDetect, rootText, sentMessage, shortcutVersion, transcriptText, trivialTranscript} from './intake.mjs';
+import {SHORTCUT_VERSION} from './shortcut.mjs';
 import {DatabaseSync} from 'node:sqlite';
 
 // CI runners carry ffmpeg at /usr/bin; the instance pins the Homebrew path.
@@ -111,6 +112,34 @@ test('a located capture records coordinates in evidence and ledger, and only the
   assert.equal(JSON.parse(readFileSync(bare.intake.store.get(bareId).evidence_path.replace(/m4a$/, 'json'))).location, null);
 });
 
+test('the shortcut version is recorded, never rejects, and only an outdated one is mentioned', async () => {
+  const opts = {maxBytes: 1024, now: NOW};
+  assert.equal(SHORTCUT_VERSION, 4);
+  for (const [sent, expected] of [['4', 4], [' 7 ', 7], ['3', 3], ['', null], ['abc', null], ['0', null], ['4.5', null], [null, null]]) assert.equal(shortcutVersion(captureForm({shortcutVersion: sent})), expected, String(sent));
+  const [current, old, plain] = await Promise.all([normalizeCapture(captureForm(), opts), normalizeCapture(captureForm({shortcutVersion: '3'}), opts), normalizeCapture(captureForm({shortcutVersion: null}), opts)]);
+  assert.deepEqual([current.shortcutVersion, old.shortcutVersion, plain.shortcutVersion], [4, 3, null]);
+  assert.equal(current.id, old.id, 'the version never changes the capture id');
+  assert.equal(sentMessage({status: 'accepted', shortcutVersion: 4}), 'Sent ✓ · v4');
+  assert.equal(sentMessage({status: 'duplicate', shortcutVersion: 5}), 'Already sent ✓ · v5', 'a newer shortcut than the service knows is not outdated');
+  assert.equal(sentMessage({status: 'accepted', shortcutVersion: 3}), 'Sent ✓ · shortcut v3 is outdated, v4 is available');
+  assert.equal(sentMessage({status: 'duplicate', shortcutVersion: null}), 'Already sent ✓ · shortcut pre-v4 is outdated, v4 is available');
+  const {intake, posts} = fixture();
+  const accepted = await intake.accept(captureForm({shortcutVersion: '3'}));
+  assert.deepEqual([accepted.status, accepted.shortcutVersion], ['accepted', 3]);
+  assert.equal((await intake.accept(captureForm())).shortcutVersion, 4, 'a duplicate reports the version of the upload that arrived');
+  const row = intake.store.get(accepted.captureId);
+  assert.equal(row.shortcut_version, 3);
+  assert.equal(JSON.parse(readFileSync(row.evidence_path.replace(/m4a$/, 'json'))).shortcutVersion, 3);
+  await intake.drain();
+  assert.match(posts[1].text, /🎧 Original audio>\n_Shortcut v3, current is v4_$/, 'the transcript reply names the drift');
+  const fresh = fixture();
+  await fresh.intake.accept(captureForm());
+  await fresh.intake.drain();
+  assert.ok(!fresh.posts[1].text.includes('Shortcut'), 'a current shortcut is not mentioned');
+  const unversioned = {kind: 'dictation', transcript: 'hi', shortcut_version: null};
+  assert.equal(transcriptText(unversioned, 'https://x/a'), 'hi\n\n_Dictated on device; no audio was recorded._\n_Shortcut pre-v4, current is v4_');
+});
+
 test('a ledger created before location gains the columns in place', () => {
   const dir = mkdtempSync(join(tmpdir(), 'voice-intake-ledger-'));
   try {
@@ -124,9 +153,9 @@ test('a ledger created before location gains the columns in place', () => {
       VALUES ('old', 'audio', 'Mac', 'Mac', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z', '/x', 'audio/mp4', 1, 'h', 'dispatched');`);
     old.close();
     const store = new Store(path);
-    assert.deepEqual([store.get('old').location_label, store.get('old').latitude], [null, null]);
-    assert.ok(store.insert({id: 'new', kind: 'audio', deviceName: 'Mac', deviceModel: 'Mac', capturedAt: '2026-11-02T00:00:00Z', mediaType: 'audio/mp4', bytes: Buffer.alloc(1), sha256: 'h2', latitude: 1.5, longitude: 2.5, locationLabel: 'Somewhere'}, '/y'));
-    assert.deepEqual([store.get('new').latitude, store.get('new').location_label], [1.5, 'Somewhere']);
+    assert.deepEqual([store.get('old').location_label, store.get('old').latitude, store.get('old').shortcut_version], [null, null, null]);
+    assert.ok(store.insert({id: 'new', kind: 'audio', deviceName: 'Mac', deviceModel: 'Mac', capturedAt: '2026-11-02T00:00:00Z', mediaType: 'audio/mp4', bytes: Buffer.alloc(1), sha256: 'h2', latitude: 1.5, longitude: 2.5, locationLabel: 'Somewhere', shortcutVersion: 4}, '/y'));
+    assert.deepEqual([store.get('new').latitude, store.get('new').location_label, store.get('new').shortcut_version], [1.5, 'Somewhere', 4]);
     store.close();
   } finally { rmSync(dir, {recursive: true, force: true}); }
 });
@@ -322,7 +351,7 @@ test('Slack poster edits a root with the token that posted it and demands confir
 test('rendering escapes Slack markup and picks a device emoji', () => {
   assert.deepEqual(['iPhone', 'Apple Watch', 'Mac', 'iPad', 'Vision'].map(deviceEmoji), ['📱', '⌚', '💻', '📱', '🎙️']);
   assert.equal(gist('one two three four five six seven eight nine ten eleven'), 'one two three four five six seven eight nine ten…');
-  const row = {device_model: 'Mac', device_name: '<!channel>', captured_at: '2026-07-01T12:00:00Z', summary: 'a & b', kind: 'audio', transcript: '<@U1> hi'};
+  const row = {device_model: 'Mac', device_name: '<!channel>', captured_at: '2026-07-01T12:00:00Z', summary: 'a & b', kind: 'audio', transcript: '<@U1> hi', shortcut_version: SHORTCUT_VERSION};
   assert.equal(rootText(row, 'America/New_York'), '💻 &lt;!channel&gt; · Wed, Jul 1, 8:00 AM · a &amp; b');
   assert.equal(rootText({...row, location_label: 'Brooklyn, NY'}, 'America/New_York'), '💻 &lt;!channel&gt; · Wed, Jul 1, 8:00 AM · Brooklyn, NY · a &amp; b');
   assert.ok(!rootText(row, 'America/New_York').includes('Liv'), 'the root never mentions the agent');

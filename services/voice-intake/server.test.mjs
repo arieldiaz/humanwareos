@@ -16,10 +16,14 @@ test('capture listener accepts multipart once, reports duplicates, and rejects e
     const first = await fetch(`${base}/capture`, {method: 'POST', body: captureForm()});
     assert.equal(first.status, 202);
     const body = await first.json();
-    assert.deepEqual([body.status, body.message], ['accepted', 'Sent ✓ — check #inbox']);
+    assert.deepEqual([body.status, body.message], ['accepted', 'Sent ✓ · v4']);
     assert.equal(first.headers.get('cache-control'), 'no-store');
     const again = await fetch(`${base}/capture`, {method: 'POST', body: captureForm()});
-    assert.deepEqual([again.status, (await again.json()).message], [200, 'Already sent ✓ — check #inbox']);
+    assert.deepEqual([again.status, (await again.json()).message], [200, 'Already sent ✓ · v4']);
+    const old = await fetch(`${base}/capture`, {method: 'POST', body: captureForm({capturedAt: '2026-11-06T11:05:00-05:00', shortcutVersion: '3'})});
+    assert.deepEqual([old.status, (await old.json()).message], [202, 'Sent ✓ · shortcut v3 is outdated, v4 is available'], 'an old shortcut still uploads and learns a newer build exists');
+    const unversioned = await fetch(`${base}/capture`, {method: 'POST', body: captureForm({capturedAt: '2026-11-06T11:06:00-05:00', shortcutVersion: null})});
+    assert.deepEqual([unversioned.status, (await unversioned.json()).message], [202, 'Sent ✓ · shortcut pre-v4 is outdated, v4 is available']);
     assert.equal((await fetch(`${base}/capture`, {method: 'POST', body: '{}', headers: {'content-type': 'application/json'}})).status, 415);
     assert.equal((await fetch(`${base}/capture`, {method: 'POST', body: captureForm({audio: Buffer.from('plain text pretending')})})).status, 415);
     assert.equal((await fetch(`${base}/capture`, {method: 'POST', body: captureForm({audio: Buffer.alloc(80 * 1024, 1)})})).status, 413);
@@ -58,7 +62,7 @@ function shortcutsBody({eol = '\r\n', close = true, filename = 'filename="Record
   const part = (name, body, headers) => Buffer.concat([Buffer.from(`--${BOUNDARY}${eol}Content-Disposition: form-data; name="${name}"${headers}${eol}${eol}`), Buffer.from(body), Buffer.from(eol)]);
   const text = `${eol}Content-Type: text/plain; charset=utf-8`;
   return Buffer.concat([part('audio', audio, `; ${filename}${eol}Content-Type: audio/x-m4a`), part('deviceName', 'Ariel’s MacBook Pro', text),
-    part('deviceModel', 'MacBook Pro', text), part('capturedAt', '2026-11-06T11:03:12-05:00', text), Buffer.from(close ? `--${BOUNDARY}--${eol}` : '')]);
+    part('deviceModel', 'MacBook Pro', text), part('capturedAt', '2026-11-06T11:03:12-05:00', text), part('shortcutVersion', '4', text), Buffer.from(close ? `--${BOUNDARY}--${eol}` : '')]);
 }
 const SHORTCUTS_TYPE = `multipart/form-data; charset=utf-8; boundary=${BOUNDARY}`;
 
@@ -77,7 +81,7 @@ test('form parser reads Shortcuts multipart and tolerates framing variants', asy
     const audio = form.get('audio');
     assert.ok(audio instanceof File, type);
     assert.deepEqual(Buffer.from(await audio.arrayBuffer()), M4A, type);
-    assert.deepEqual([form.get('deviceName'), form.get('deviceModel'), form.get('capturedAt')], ['Ariel’s MacBook Pro', 'MacBook Pro', '2026-11-06T11:03:12-05:00'], type);
+    assert.deepEqual([form.get('deviceName'), form.get('deviceModel'), form.get('capturedAt'), form.get('shortcutVersion')], ['Ariel’s MacBook Pro', 'MacBook Pro', '2026-11-06T11:03:12-05:00', '4'], type);
   }
   assert.equal(parseForm(shortcutsBody({filename: "filename*=UTF-8''Ariel%E2%80%99s%20memo.m4a"}), SHORTCUTS_TYPE).get('audio').name, 'Ariel’s memo.m4a');
   const urlencoded = parseForm(Buffer.from('text=Call%20Mom&deviceName=Ariel%E2%80%99s+Mac&capturedAt=2026-11-06T11%3A03%3A12-05%3A00'), 'application/x-www-form-urlencoded; charset=utf-8');
@@ -94,9 +98,9 @@ test('capture listener accepts Shortcuts uploads, explains each rejection, and l
       const response = await fetch(`${base}/capture`, {method: 'POST', body, headers: {'content-type': type, 'cf-access-client-id': 'id.access', 'cf-access-client-secret': 'shh-secret', ...headers}});
       return [response.status, (await response.json()).message];
     };
-    assert.deepEqual(await post(shortcutsBody(), SHORTCUTS_TYPE), [202, 'Sent ✓ — check #inbox']);
+    assert.deepEqual(await post(shortcutsBody(), SHORTCUTS_TYPE), [202, 'Sent ✓ · v4']);
     assert.equal(logs.length, 0, 'accepted captures are not rejections');
-    assert.deepEqual(await post(Buffer.from('text=Call%20Mom&deviceName=Mac&deviceModel=Mac&capturedAt=2026-11-06T11%3A03%3A12-05%3A00'), 'application/x-www-form-urlencoded'), [202, 'Sent ✓ — check #inbox']);
+    assert.deepEqual(await post(Buffer.from('text=Call%20Mom&deviceName=Mac&deviceModel=Mac&capturedAt=2026-11-06T11%3A03%3A12-05%3A00'), 'application/x-www-form-urlencoded'), [202, 'Sent ✓ · shortcut pre-v4 is outdated, v4 is available']);
     assert.deepEqual(await post(shortcutsBody({audio: ''}), SHORTCUTS_TYPE), [400, 'Recording was empty']);
     assert.deepEqual(await post(Buffer.from('audio=Recorded%20Audio&deviceName=Mac&deviceModel=Mac&capturedAt=2026-11-06T11%3A03%3A12-05%3A00'), 'application/x-www-form-urlencoded'), [400, 'Not sent: recording was not attached']);
     assert.deepEqual(await post(shortcutsBody({audio: 'plain text pretending'}), SHORTCUTS_TYPE), [415, 'Not sent: recording format not supported']);

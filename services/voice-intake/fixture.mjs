@@ -2,16 +2,18 @@ import {mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Store, VoiceIntake} from './intake.mjs';
+import {SHORTCUT_VERSION} from './shortcut.mjs';
 
 // Synthetic capture fixtures; no Slack, gateway, Whisper, or network.
 export const M4A = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypM4A '), Buffer.alloc(64, 1)]);
 export const NOW = new Date('2026-11-06T16:05:00Z');
 
-export function captureForm({audio = M4A, text, deviceName = 'Ariel’s iPhone', deviceModel = 'iPhone', capturedAt = '2026-11-06T11:03:12-05:00', location} = {}) {
+export function captureForm({audio = M4A, text, deviceName = 'Ariel’s iPhone', deviceModel = 'iPhone', capturedAt = '2026-11-06T11:03:12-05:00', location, shortcutVersion = String(SHORTCUT_VERSION)} = {}) {
   const form = new FormData();
   if (audio) form.append('audio', new Blob([audio]), 'Recording.m4a');
   if (text != null) form.append('text', text);
   form.append('deviceName', deviceName); form.append('deviceModel', deviceModel); form.append('capturedAt', capturedAt);
+  if (shortcutVersion != null) form.append('shortcutVersion', shortcutVersion);
   for (const [key, value] of Object.entries(location ?? {})) form.append(key, value);
   return form;
 }
