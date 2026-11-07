@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {MENU, buildShortcut} from './shortcut.mjs';
+import {buildShortcut} from './shortcut.mjs';
 
 const URL = 'https://intake.example.test/capture';
 const byId = (workflow, id) => workflow.WFWorkflowActions.filter(a => a.WFWorkflowActionIdentifier === `is.workflow.actions.${id}`);
@@ -50,7 +50,7 @@ test('every variable reference points to an earlier action and control flow is b
     for (const a of workflow.WFWorkflowActions) {
       const p = a.WFWorkflowActionParameters, json = JSON.stringify(p);
       for (const [, uuid] of json.matchAll(/"OutputUUID":"([^"]+)"/g)) assert.ok(seen.has(uuid), `${a.WFWorkflowActionIdentifier} -> ${uuid}`);
-      for (const [, name] of json.matchAll(/"VariableName":"([^"]+)"/g)) assert.ok(name === 'Choice' || seen.has(name), `${a.WFWorkflowActionIdentifier} -> ${name}`);
+      for (const [, name] of json.matchAll(/"VariableName":"([^"]+)"/g)) assert.ok(seen.has(name), `${a.WFWorkflowActionIdentifier} -> ${name}`);
       seen.add(p.UUID); seen.add(p.WFVariableName);
       if (p.WFControlFlowMode === 0) stack.push(p.GroupingIdentifier);
       else if (p.WFControlFlowMode === 1) assert.equal(stack.at(-1), p.GroupingIdentifier);
@@ -60,25 +60,15 @@ test('every variable reference points to an earlier action and control flow is b
   }
 });
 
-test('after recording, Send posts, Re-record loops, and Cancel stops without sending', () => {
+test('stopping the capture sends it: no menu, loop, or exit stands between capture and post', () => {
   for (const mode of ['record', 'dictate']) {
     const actions = buildShortcut({url: URL, mode}).WFWorkflowActions;
     const ids = actions.map(a => a.WFWorkflowActionIdentifier.replace('is.workflow.actions.', ''));
-    const menu = actions.filter(a => a.WFWorkflowActionIdentifier.endsWith('choosefrommenu')).map(a => a.WFWorkflowActionParameters);
-    assert.deepEqual(menu[0].WFMenuItems, MENU);
-    assert.deepEqual(menu.slice(1, -1).map(c => c.WFMenuItemTitle), MENU);
-    const at = (title) => actions.findIndex(a => a.WFWorkflowActionParameters.WFMenuItemTitle === title);
-    assert.deepEqual(ids.slice(at('Send') + 1, at('Re-record')), ['gettext', 'setvariable'], 'Send only marks the choice');
-    assert.equal(at('Re-record') + 1, at('Cancel'), 'Re-record falls through to the next repeat');
-    assert.deepEqual(ids.slice(at('Cancel') + 1, at('Cancel') + 3), ['exit', 'choosefrommenu']);
-    const repeat = actions.findIndex(a => a.WFWorkflowActionIdentifier.endsWith('repeat.count'));
+    for (const absent of ['choosefrommenu', 'repeat.count', 'exit']) assert.equal(ids.includes(absent), false, `${mode}: ${absent}`);
     const capture = ids.indexOf(mode === 'record' ? 'recordaudio' : 'dictatetext');
-    const end = actions.findLastIndex(a => a.WFWorkflowActionIdentifier.endsWith('repeat.count'));
-    assert.ok(repeat < capture && capture < at('Send') && at('Cancel') < end, 'capture and review repeat together');
-    assert.ok(ids.indexOf('date') > repeat, 'a re-recording gets its own capture time');
-    const post = ids.indexOf('downloadurl');
-    assert.deepEqual(ids.slice(end + 1, end + 4), ['conditional', 'exit', 'conditional'], 'nothing is sent unless Send was chosen');
-    assert.ok(post > end + 3);
+    assert.deepEqual(ids.slice(capture + 1, ids.indexOf('downloadurl')), ['setvariable', 'getdevicedetails', 'getdevicedetails']);
+    assert.equal(ids.indexOf('downloadurl'), ids.lastIndexOf('downloadurl'), 'exactly one upload');
+    assert.ok(!JSON.stringify(actions).includes('Choice'), 'no review state survives');
   }
 });
 
