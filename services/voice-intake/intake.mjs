@@ -92,8 +92,21 @@ export async function normalizeCapture(form, {maxBytes, now = new Date(), guard}
   } else throw invalid('audio_or_text_required');
   const capturedAt = new Date(captured).toISOString();
   const sha256 = createHash('sha256').update(bytes).digest('hex');
+  // Location is excluded from the id: a retried upload may carry a fresher fix and is still the same capture.
   const id = createHash('sha256').update(JSON.stringify([kind, deviceName, deviceModel, capturedAt, sha256])).digest('hex').slice(0, 32);
-  return {id, kind, deviceName, deviceModel, capturedAt, sha256, bytes, ...type};
+  return {id, kind, deviceName, deviceModel, capturedAt, sha256, bytes, ...type, ...normalizeLocation(form)};
+}
+
+// Optional device location. The Shortcut sends it only when the device had a
+// fix, so anything missing or unreadable is simply absent and never rejects
+// the capture. Coordinates stay in the data plane; only the label reaches Slack.
+export function normalizeLocation(form) {
+  const number = (key, limit) => { const raw = String(form.get(key) ?? '').trim(), n = Number(raw); return raw && Number.isFinite(n) && Math.abs(n) <= limit ? Math.round(n * 1e6) / 1e6 : null; };
+  const part = (key) => String(form.get(key) ?? '').replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || null;
+  const latitude = number('latitude', 90), longitude = number('longitude', 180);
+  const city = part('locationCity'), state = part('locationState');
+  const label = city && state ? `${city}, ${state}` : city ?? state ?? part('locationName');
+  return {latitude: latitude != null && longitude != null ? latitude : null, longitude: latitude != null && longitude != null ? longitude : null, locationLabel: label};
 }
 
 export function deviceEmoji(model) {
@@ -125,7 +138,8 @@ export function trivialTranscript(transcript, minWords = 4) {
 }
 
 export function rootText(row, timeZone) {
-  return escapeMrkdwn(`${deviceEmoji(row.device_model)} ${row.device_name} · ${formatWhen(row.captured_at, timeZone)} · ${row.summary}`);
+  const where = row.location_label ? ` · ${row.location_label}` : '';
+  return escapeMrkdwn(`${deviceEmoji(row.device_model)} ${row.device_name} · ${formatWhen(row.captured_at, timeZone)}${where} · ${row.summary}`);
 }
 
 export function transcriptText(row, audioUrl) {
@@ -134,6 +148,8 @@ export function transcriptText(row, audioUrl) {
   const room = SLACK_TEXT_LIMIT - link.length - 40;
   return `${body.length > room ? `${body.slice(0, room)}… _(truncated; full text in the capture record)_` : body}${link}`;
 }
+
+const location = ({latitude, longitude, locationLabel}) => latitude == null && !locationLabel ? null : {latitude, longitude, label: locationLabel};
 
 export function livMessage(requestPath) {
   return [
@@ -158,14 +174,18 @@ export class Store {
         captured_at TEXT NOT NULL, received_at TEXT NOT NULL, updated_at TEXT NOT NULL,
         evidence_path TEXT NOT NULL, media_type TEXT NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL,
         state TEXT NOT NULL, reason TEXT, attempts INTEGER NOT NULL DEFAULT 0,
-        transcript TEXT, summary TEXT, channel_id TEXT, root_ts TEXT, transcript_ts TEXT, session_key TEXT, run_id TEXT);`);
+        transcript TEXT, summary TEXT, channel_id TEXT, root_ts TEXT, transcript_ts TEXT, session_key TEXT, run_id TEXT,
+        latitude REAL, longitude REAL, location_label TEXT);`);
+    // A ledger created before location existed gains the columns in place.
+    const columns = new Set(this.db.prepare('PRAGMA table_info(voice_captures)').all().map(c => c.name));
+    for (const [name, type] of [['latitude', 'REAL'], ['longitude', 'REAL'], ['location_label', 'TEXT']]) if (!columns.has(name)) this.db.exec(`ALTER TABLE voice_captures ADD COLUMN ${name} ${type}`);
   }
   insert(capture, evidencePath) {
     const now = new Date().toISOString();
     return this.db.prepare(`INSERT OR IGNORE INTO voice_captures (id, kind, device_name, device_model, captured_at, received_at, updated_at,
-      evidence_path, media_type, bytes, sha256, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received')`)
+      evidence_path, media_type, bytes, sha256, state, latitude, longitude, location_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', ?, ?, ?)`)
       .run(capture.id, capture.kind, capture.deviceName, capture.deviceModel, capture.capturedAt, now, now,
-        evidencePath, capture.mediaType, capture.bytes.length, capture.sha256).changes === 1;
+        evidencePath, capture.mediaType, capture.bytes.length, capture.sha256, capture.latitude, capture.longitude, capture.locationLabel).changes === 1;
   }
   get(id) { return this.db.prepare('SELECT * FROM voice_captures WHERE id=?').get(id); }
   update(id, fields) {
@@ -231,7 +251,7 @@ export class VoiceIntake {
     const meta = `${path.replace(/\.[^.]+$/, '')}.json`;
     if (!existsSync(meta)) writeFileSync(meta, JSON.stringify({schemaVersion: 1, captureId: capture.id, kind: capture.kind,
       deviceName: capture.deviceName, deviceModel: capture.deviceModel, capturedAt: capture.capturedAt, receivedAt: this.now().toISOString(),
-      mediaType: capture.mediaType, bytes: capture.bytes.length, sha256: capture.sha256}, null, 2), {mode: 0o600, flag: 'wx'});
+      mediaType: capture.mediaType, bytes: capture.bytes.length, sha256: capture.sha256, location: location(capture)}, null, 2), {mode: 0o600, flag: 'wx'});
     return {status: this.store.insert(capture, path) ? 'accepted' : 'duplicate', captureId: capture.id};
   }
 
@@ -285,7 +305,8 @@ export class VoiceIntake {
     mkdirSync(directory, {recursive: true, mode: 0o700});
     const requestPath = join(directory, 'request.json');
     if (!existsSync(requestPath)) writeFileSync(requestPath, JSON.stringify({source: 'voice-intake', captureId: row.id, kind: row.kind,
-      device: {name: row.device_name, model: row.device_model}, capturedAt: row.captured_at, audioUrl: row.kind === 'audio' ? this.audioUrl(row.id) : null,
+      device: {name: row.device_name, model: row.device_model}, capturedAt: row.captured_at, location: location({latitude: row.latitude, longitude: row.longitude, locationLabel: row.location_label}),
+      audioUrl: row.kind === 'audio' ? this.audioUrl(row.id) : null,
       evidencePath: row.evidence_path, transcript: row.transcript}, null, 2), {mode: 0o600, flag: 'wx'});
     const agentId = this.config.agentId;
     return {
@@ -297,30 +318,46 @@ export class VoiceIntake {
   }
 }
 
-// Posts as the agent's own Slack bot. Each post carries metadata naming its
-// capture and part, so a lost response is reconciled instead of reposted.
+// Posts as the owner when the instance supplies a user token, else as the
+// agent's bot. Reads and verification always use the bot token, so the user
+// token needs only chat:write. Each post carries metadata naming its capture
+// and part, so a lost response is reconciled instead of reposted; when Slack
+// refuses metadata for the posting token, posts match on author and text.
 export class SlackPoster {
-  constructor({channel, token, call, eventType = 'voice_intake'}) { Object.assign(this, {channel, token, call, eventType}); }
+  constructor({channel, token, userToken, call, eventType = 'voice_intake'}) { Object.assign(this, {channel, token, userToken: userToken || undefined, call, eventType, metadata: true}); }
   async verify() {
     const auth = await this.call('auth.test', this.token, {});
     const {channel} = await this.call('conversations.info', this.token, {channel: this.channel.channelId});
     if (!auth.user_id || channel?.name !== this.channel.name || channel.is_archived || !channel.is_member) throw new Error('inbox_unavailable');
+    const poster = this.userToken ? await this.call('auth.test', this.userToken, {}) : auth;
+    if (!poster.user_id) throw new Error('inbox_unavailable');
     this.botUserId = auth.user_id;
+    this.posterUserId = poster.user_id;
   }
   async post({captureId, part, since, threadTs, text}) {
-    // Without the bot's own id a lost post could not be recognized, so never post.
-    if (!this.botUserId) throw new Error('slack_unverified');
+    // Without the poster's own id a lost post could not be recognized, so never post.
+    if (!this.posterUserId) throw new Error('slack_unverified');
     const marker = `${captureId}:${part}`;
     let cursor;
     do {
       const page = await this.call(threadTs ? 'conversations.replies' : 'conversations.history', this.token, {channel: this.channel.channelId, ts: threadTs,
         oldest: String(Date.parse(since) / 1000 - 60), limit: 200, include_all_metadata: true, cursor});
-      const found = page.messages?.find(m => m.user === this.botUserId && m.metadata?.event_type === this.eventType && m.metadata.event_payload?.marker === marker);
+      const found = page.messages?.find(m => m.user === this.posterUserId && (m.metadata
+        ? m.metadata.event_type === this.eventType && m.metadata.event_payload?.marker === marker
+        : m.text === text && (threadTs ? m.ts !== threadTs : !m.thread_ts || m.thread_ts === m.ts)));
       if (found) return {channelId: this.channel.channelId, ts: found.ts};
       cursor = page.response_metadata?.next_cursor;
     } while (cursor);
-    const result = await this.call('chat.postMessage', this.token, {channel: this.channel.channelId, thread_ts: threadTs, text,
-      metadata: JSON.stringify({event_type: this.eventType, event_payload: {marker}}), unfurl_links: false, unfurl_media: false});
+    const body = {channel: this.channel.channelId, thread_ts: threadTs, text, unfurl_links: false, unfurl_media: false};
+    const metadata = JSON.stringify({event_type: this.eventType, event_payload: {marker}});
+    let result;
+    try {
+      result = await this.call('chat.postMessage', this.userToken ?? this.token, this.metadata ? {...body, metadata} : body);
+    } catch (error) {
+      if (!this.metadata || !/metadata/i.test(error.message)) throw error;
+      this.metadata = false;
+      result = await this.call('chat.postMessage', this.userToken ?? this.token, body);
+    }
     if (!result.ts || result.channel !== this.channel.channelId) throw new Error('slack_confirmation_missing');
     return {channelId: result.channel, ts: result.ts};
   }
