@@ -5,7 +5,8 @@ import {createReadStream, readFileSync, realpathSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {promisify} from 'node:util';
-import {SlackPoster, Store, VoiceIntake, audioGuard, ollamaSummarizer, whisperTranscriber} from './intake.mjs';
+import {SlackPoster, Store, VoiceIntake, audioGuard, ollamaSummarizer} from './intake.mjs';
+import {whisperCppTranscriber} from './transcriber.mjs';
 
 const exec = promisify(execFile);
 const HEADERS = {'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff'};
@@ -153,7 +154,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   const slack = new SlackPoster({channel, token, userToken, call: slackApi});
   const intake = new VoiceIntake({store, config, slack, gateway: gatewayCall, requestsDir: join(stateDir, 'requests'),
     evidenceRoot: config.evidenceRoot ?? join(data, 'evidence/voice/captures'),
-    transcribe: whisperTranscriber(config.whisper), summarize: ollamaSummarizer(config.summary), guard: audioGuard(config.audioGuard)});
+    transcribe: whisperCppTranscriber(config.transcriber), summarize: ollamaSummarizer(config.summary), guard: audioGuard(config.audioGuard)});
   const tick = async () => { try { await slack.verify(); intake.ready = true; await intake.drain(); } catch { intake.ready = false; } };
   const capture = http.createServer({requestTimeout: 120000}, captureHandler(intake, {maxBytes: config.maxBytes, channel: config.slackChannel ?? 'inbox'}));
   const audio = http.createServer({requestTimeout: 30000}, audioHandler(intake));
@@ -163,7 +164,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
     const timer = setInterval(tick, 30000);
     for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {
       clearInterval(timer);
-      capture.close(); audio.close(() => intake.serial.finally(() => { store.close(); process.exit(0); }));
+      capture.close(); audio.close(() => intake.idle().finally(() => { store.close(); process.exit(0); }));
     });
   });
 }
