@@ -6,6 +6,7 @@ import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {promisify} from 'node:util';
+import {SHORTCUT_VERSION} from './shortcut.mjs';
 
 const exec = promisify(execFile);
 export const MAX_TEXT_CHARS = 20_000;
@@ -92,9 +93,24 @@ export async function normalizeCapture(form, {maxBytes, now = new Date(), guard}
   } else throw invalid('audio_or_text_required');
   const capturedAt = new Date(captured).toISOString();
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  // Location is excluded from the id: a retried upload may carry a fresher fix and is still the same capture.
+  // Location and shortcut version are excluded from the id: a retried upload may carry a fresher fix and is still the same capture.
   const id = createHash('sha256').update(JSON.stringify([kind, deviceName, deviceModel, capturedAt, sha256])).digest('hex').slice(0, 32);
-  return {id, kind, deviceName, deviceModel, capturedAt, sha256, bytes, ...type, ...normalizeLocation(form)};
+  return {id, kind, deviceName, deviceModel, capturedAt, sha256, bytes, ...type, shortcutVersion: shortcutVersion(form), ...normalizeLocation(form)};
+}
+
+// The Shortcut names its own version since v4; anything missing or unreadable is
+// pre-v4 (null) and never rejects the capture. The service only reports drift.
+export function shortcutVersion(form) {
+  const value = Number(String(form.get('shortcutVersion') ?? '').trim());
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+export const versionLabel = (version) => version == null ? `pre-v${SHORTCUT_VERSION}` : `v${version}`;
+export const outdatedShortcut = (version) => (version ?? 0) < SHORTCUT_VERSION;
+// What the Shortcut shows as its notification after an upload: the version it
+// runs, and when behind, that a newer build exists.
+export function sentMessage({status, shortcutVersion}) {
+  const sent = status === 'duplicate' ? 'Already sent ✓' : 'Sent ✓';
+  return outdatedShortcut(shortcutVersion) ? `${sent} · shortcut ${versionLabel(shortcutVersion)} is outdated, v${SHORTCUT_VERSION} is available` : `${sent} · v${shortcutVersion}`;
 }
 
 // Optional device location. The Shortcut sends it only when the device had a
@@ -143,7 +159,8 @@ export function rootText(row, timeZone) {
 }
 
 export function transcriptText(row, audioUrl) {
-  const link = row.kind === 'audio' ? `\n\n<${audioUrl}|🎧 Original audio>` : '\n\n_Dictated on device; no audio was recorded._';
+  const link = (row.kind === 'audio' ? `\n\n<${audioUrl}|🎧 Original audio>` : '\n\n_Dictated on device; no audio was recorded._')
+    + (outdatedShortcut(row.shortcut_version) ? `\n_Shortcut ${versionLabel(row.shortcut_version)}, current is v${SHORTCUT_VERSION}_` : '');
   const body = escapeMrkdwn(row.transcript);
   const room = SLACK_TEXT_LIMIT - link.length - 40;
   return `${body.length > room ? `${body.slice(0, room)}… _(truncated; full text in the capture record)_` : body}${link}`;
@@ -175,17 +192,17 @@ export class Store {
         evidence_path TEXT NOT NULL, media_type TEXT NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL,
         state TEXT NOT NULL, reason TEXT, attempts INTEGER NOT NULL DEFAULT 0,
         transcript TEXT, summary TEXT, channel_id TEXT, root_ts TEXT, transcript_ts TEXT, session_key TEXT, run_id TEXT,
-        latitude REAL, longitude REAL, location_label TEXT);`);
-    // A ledger created before location existed gains the columns in place.
+        latitude REAL, longitude REAL, location_label TEXT, shortcut_version INTEGER);`);
+    // A ledger created before location or versioning existed gains the columns in place.
     const columns = new Set(this.db.prepare('PRAGMA table_info(voice_captures)').all().map(c => c.name));
-    for (const [name, type] of [['latitude', 'REAL'], ['longitude', 'REAL'], ['location_label', 'TEXT']]) if (!columns.has(name)) this.db.exec(`ALTER TABLE voice_captures ADD COLUMN ${name} ${type}`);
+    for (const [name, type] of [['latitude', 'REAL'], ['longitude', 'REAL'], ['location_label', 'TEXT'], ['shortcut_version', 'INTEGER']]) if (!columns.has(name)) this.db.exec(`ALTER TABLE voice_captures ADD COLUMN ${name} ${type}`);
   }
   insert(capture, evidencePath) {
     const now = new Date().toISOString();
     return this.db.prepare(`INSERT OR IGNORE INTO voice_captures (id, kind, device_name, device_model, captured_at, received_at, updated_at,
-      evidence_path, media_type, bytes, sha256, state, latitude, longitude, location_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', ?, ?, ?)`)
+      evidence_path, media_type, bytes, sha256, state, latitude, longitude, location_label, shortcut_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', ?, ?, ?, ?)`)
       .run(capture.id, capture.kind, capture.deviceName, capture.deviceModel, capture.capturedAt, now, now,
-        evidencePath, capture.mediaType, capture.bytes.length, capture.sha256, capture.latitude, capture.longitude, capture.locationLabel).changes === 1;
+        evidencePath, capture.mediaType, capture.bytes.length, capture.sha256, capture.latitude, capture.longitude, capture.locationLabel, capture.shortcutVersion ?? null).changes === 1;
   }
   get(id) { return this.db.prepare('SELECT * FROM voice_captures WHERE id=?').get(id); }
   update(id, fields) {
@@ -233,7 +250,7 @@ export class VoiceIntake {
   // writes leaves identical bytes that the retried upload finds and keeps.
   async accept(form) {
     const capture = await normalizeCapture(form, {maxBytes: this.config.maxBytes ?? 50 * 1024 * 1024, now: this.now(), guard: this.guard});
-    if (this.store.get(capture.id)) return {status: 'duplicate', captureId: capture.id};
+    if (this.store.get(capture.id)) return {status: 'duplicate', captureId: capture.id, shortcutVersion: capture.shortcutVersion};
     const day = capture.capturedAt.slice(0, 10).split('-');
     const directory = join(this.evidenceRoot, day[0], day[1]);
     const path = join(directory, `${capture.id}.${capture.ext}`);
@@ -243,8 +260,8 @@ export class VoiceIntake {
     const meta = `${path.replace(/\.[^.]+$/, '')}.json`;
     if (!existsSync(meta)) writeFileSync(meta, JSON.stringify({schemaVersion: 1, captureId: capture.id, kind: capture.kind,
       deviceName: capture.deviceName, deviceModel: capture.deviceModel, capturedAt: capture.capturedAt, receivedAt: this.now().toISOString(),
-      mediaType: capture.mediaType, bytes: capture.bytes.length, sha256: capture.sha256, location: location(capture)}, null, 2), {mode: 0o600, flag: 'wx'});
-    return {status: this.store.insert(capture, path) ? 'accepted' : 'duplicate', captureId: capture.id};
+      mediaType: capture.mediaType, bytes: capture.bytes.length, sha256: capture.sha256, shortcutVersion: capture.shortcutVersion, location: location(capture)}, null, 2), {mode: 0o600, flag: 'wx'});
+    return {status: this.store.insert(capture, path) ? 'accepted' : 'duplicate', captureId: capture.id, shortcutVersion: capture.shortcutVersion};
   }
 
   drain() {

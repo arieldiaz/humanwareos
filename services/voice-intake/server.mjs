@@ -1,11 +1,11 @@
 import http from 'node:http';
 import {execFile} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {createReadStream, readFileSync, realpathSync} from 'node:fs';
+import {createReadStream, readFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {pathToFileURL} from 'node:url';
 import {promisify} from 'node:util';
-import {SlackPoster, Store, VoiceIntake, audioGuard, ollamaSummarizer} from './intake.mjs';
+import {SlackPoster, Store, VoiceIntake, audioGuard, ollamaSummarizer, sentMessage} from './intake.mjs';
+import {isMainModule} from './shortcut.mjs';
 import {whisperCppTranscriber} from './transcriber.mjs';
 
 const exec = promisify(execFile);
@@ -79,8 +79,7 @@ export function parseForm(body, type = '') {
 // Cloudflare Access service token before a request reaches loopback. Every
 // rejection is logged with its reason and request framing, never the body or
 // the Access headers.
-export function captureHandler(intake, {maxBytes = 50 * 1024 * 1024, channel = 'inbox', log = (entry) => console.error(JSON.stringify(entry))} = {}) {
-  const sent = {accepted: `Sent ✓ — check #${channel}`, duplicate: `Already sent ✓ — check #${channel}`};
+export function captureHandler(intake, {maxBytes = 50 * 1024 * 1024, log = (entry) => console.error(JSON.stringify(entry))} = {}) {
   return async (request, response) => {
     const requestId = randomUUID();
     const fail = (status, reason, detail) => {
@@ -96,7 +95,7 @@ export function captureHandler(intake, {maxBytes = 50 * 1024 * 1024, channel = '
       for await (const chunk of request) { size += chunk.length; if (size > maxBytes + 64 * 1024) return fail(413, 'oversized'); chunks.push(chunk); }
       const result = await intake.accept(parseForm(Buffer.concat(chunks), request.headers['content-type']));
       intake.drain();
-      return send(response, result.status === 'accepted' ? 202 : 200, {...result, requestId, message: sent[result.status]});
+      return send(response, result.status === 'accepted' ? 202 : 200, {...result, requestId, message: sentMessage(result)});
     } catch (error) {
       return error.status ? fail(error.status, error.message) : fail(503, 'unavailable', error.message);
     }
@@ -131,10 +130,6 @@ export async function gatewayCall(method, params) {
   return JSON.parse(stdout);
 }
 
-export function isMainModule(moduleUrl, argvPath) {
-  return Boolean(argvPath) && moduleUrl === pathToFileURL(realpathSync(argvPath)).href;
-}
-
 if (isMainModule(import.meta.url, process.argv[1])) {
   process.umask(0o077);
   // <runtime>/framework/services/voice-intake/server.mjs -> <runtime>
@@ -156,7 +151,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
     evidenceRoot: config.evidenceRoot ?? join(data, 'evidence/voice/captures'),
     transcribe: whisperCppTranscriber(config.transcriber), summarize: ollamaSummarizer(config.summary), guard: audioGuard(config.audioGuard)});
   const tick = async () => { try { await slack.verify(); intake.ready = true; await intake.drain(); } catch { intake.ready = false; } };
-  const capture = http.createServer({requestTimeout: 120000}, captureHandler(intake, {maxBytes: config.maxBytes, channel: config.slackChannel ?? 'inbox'}));
+  const capture = http.createServer({requestTimeout: 120000}, captureHandler(intake, {maxBytes: config.maxBytes}));
   const audio = http.createServer({requestTimeout: 30000}, audioHandler(intake));
   capture.listen(Number(config.capturePort ?? 8800), '127.0.0.1');
   audio.listen(Number(config.audioPort ?? 8801), '127.0.0.1', () => {
