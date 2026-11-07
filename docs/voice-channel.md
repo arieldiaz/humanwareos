@@ -1,16 +1,16 @@
 # Voice channel
 
-The voice channel is a first-party adapter around ordinary OpenClaw agent sessions. It has two modes: conversational turns, where the client speaks and listens, and capture intake, where a recording becomes owner work in the instance's Slack intake channel. Neither mode defines another agent, memory store, Slack mirror, or cloud speech provider.
+The voice channel is a first-party adapter around ordinary OpenClaw agent sessions. It has two modes: conversational turns, where the client speaks and listens, and capture intake, where a recording becomes owner work in the Slack intake channel. Neither mode adds an agent, memory store, Slack mirror, or cloud speech provider.
 
 Budget: 1,000 words.
 
 ## Conversational turns
 
-The client performs speech recognition and speech playback. It sends only the recognized text to a loopback service through the instance's private tailnet surface. The service authenticates the request, serializes turns onto one configured agent session, invokes OpenClaw without delivery to another channel, and returns only the visible reply plus bounded run metadata.
+The client performs speech recognition and playback and sends only the recognized text to a loopback service through the instance's private tailnet surface. The service authenticates the request, serializes turns onto one configured agent session, invokes OpenClaw without delivery to another channel, and returns only the visible reply plus bounded run metadata.
 
-For an iPhone Shortcut, Apple Dictation supplies text and Speak Text renders the response. Raw audio does not reach Humanware OS in this mode. A later streaming client may replace those edges without changing conversation ownership.
+For an iPhone Shortcut, Apple Dictation supplies text and Speak Text renders the response. Raw audio does not reach Humanware OS in this mode. A later streaming client may replace those edges without changing ownership.
 
-The instance selects the agent and provisions the bearer credential. The reference service is fixed to Liv and accepts only an authenticated owner request. The selected agent retains its normal profile, context, tools, and permission boundaries.
+The instance selects the agent and provisions the bearer credential. The reference service is fixed to Liv and accepts only an authenticated owner request. The selected agent keeps its normal profile, context, tools, and permissions.
 
 Voice may ask the agent to read or mutate Slack through a session-scoped workspace tool backed by the instance's configured Slack account. The ordinary message tool fences reads to the current conversation and cannot supply cross-channel voice access. The workspace tool exists only for the configured voice session, offers channel discovery, thread listing and reading, replies, and top-level thread creation, and never exposes its credential. Model output is not proof of a Slack mutation: the agent reports only the tool's confirmed result. The voice conversation stays on the voice surface, never mirrored into Slack.
 
@@ -28,7 +28,7 @@ The service binds to loopback behind the instance's private network boundary. Ev
 
 **Slack shape.** The root is the device emoji, device name, local date and time, place label when known, and the title. Coordinates stay in the ledger and evidence record and never reach Slack. The first reply is the full transcript with a link to the audio on the private domain, never the audio itself. The agent's final reply, delivered by the gateway into the same thread, lists the actions taken with links to what was touched.
 
-**Dispatch.** The confirmed root determines the canonical Slack thread session key, so the owner's later replies continue the same conversation. The turn is admitted through the gateway's `agent` method with protected credential resolution, explicit Slack account, channel, and thread, `deliver: true`, and a stable idempotency key, reusing the email-intake path with no hook token, hook configuration, or gateway restart. The message carries only the path of a private request record, never the transcript. The agent keeps its normal tools and approval boundaries. An unknown admission outcome is reconciled from `agent.wait` on the stable run id, or held for the operator, never blindly re-executed.
+**Dispatch.** The confirmed root determines the canonical Slack thread session key, so the owner's later replies continue the conversation. The turn is admitted through the gateway's `agent` method with protected credential resolution, explicit Slack account, channel, and thread, `deliver: true`, and a stable idempotency key, reusing the email-intake path with no hook token, hook configuration, or gateway restart. The message carries only the path of a private request record, never the transcript. The agent keeps its normal tools and approval boundaries. An unknown admission outcome is reconciled from `agent.wait` on the stable run id, or held for the operator, never blindly re-executed.
 
 **Audio access.** A second loopback listener serves stored audio by capture id, with byte ranges, only behind the instance's private-domain access boundary. The capture listener never serves audio, and the audio listener never accepts captures. Held rows make health fail.
 
@@ -36,4 +36,4 @@ The instance supplies the ingress hostname and tunnel, the private origin and au
 
 ## Root status
 
-Slack root workflow status remains human-controlled under `status-framework.md`. Neither mode adds, removes, or replaces root status reactions. A future authenticated human-status control requires a separately reviewed contract.
+Slack root workflow status remains human-controlled under `status-framework.md`; neither mode adds, removes, or replaces root status reactions. A future authenticated human-status control requires a separately reviewed contract.
