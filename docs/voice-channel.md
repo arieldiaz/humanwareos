@@ -6,7 +6,7 @@ Budget: 1,000 words.
 
 ## Conversational turns
 
-The client performs speech recognition and playback and sends only the recognized text to a loopback service through the instance's private tailnet surface. The service authenticates the request, serializes turns onto one configured agent session, invokes OpenClaw without delivery to another channel, and returns only the visible reply plus bounded run metadata.
+The client performs speech recognition and playback and sends only the recognized text to a loopback service through the instance's private tailnet surface. The service authenticates the request, serializes turns onto one configured agent session, invokes OpenClaw without delivery elsewhere, and returns only the visible reply plus bounded run metadata.
 
 For an iPhone Shortcut, Apple Dictation supplies text and Speak Text renders the response. Raw audio does not reach Humanware OS in this mode. A later streaming client may replace those edges without changing ownership.
 
