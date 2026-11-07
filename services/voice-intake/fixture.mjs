@@ -15,12 +15,12 @@ export function captureForm({audio = M4A, text, deviceName = 'Ariel’s iPhone',
   return form;
 }
 
-export function fixture({transcribe = async () => 'Remind me to book the vet for Pepe next week.', gateway} = {}) {
+export function fixture({transcribe = async () => 'Remind me to book the vet for Pepe next week.', gateway, guard} = {}) {
   const root = mkdtempSync(join(tmpdir(), 'voice-intake-'));
   const posts = [], calls = [];
   const slack = {post: async (args) => { posts.push(args); return {channelId: 'C0INBOX', ts: `1793.${posts.length}`}; }};
   const intake = new VoiceIntake({
-    store: new Store(join(root, 'captures.sqlite3')), slack, transcribe, summarize: async () => 'Book vet for Pepe',
+    store: new Store(join(root, 'captures.sqlite3')), slack, transcribe, guard, summarize: async () => 'Book vet for Pepe',
     gateway: gateway ?? (async (method, params) => { calls.push([method, params]); return {runId: params.idempotencyKey, status: 'accepted'}; }),
     config: {agentId: 'liv', privateOrigin: 'https://os.example.test', timeZone: 'America/New_York'},
     evidenceRoot: join(root, 'evidence'), requestsDir: join(root, 'requests'), now: () => NOW,

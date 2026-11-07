@@ -9,5 +9,6 @@
   "maxBytes": 52428800,
   "maxAttempts": 5,
   "whisper": {"bin": "/opt/homebrew/bin/whisper", "model": "large-v3-turbo", "language": "en", "timeoutMs": 900000},
+  "audioGuard": {"ffmpeg": "/opt/homebrew/bin/ffmpeg", "minSeconds": 0.5, "minDb": -50, "timeoutMs": 30000},
   "summary": {"url": "http://127.0.0.1:11434", "model": "gemma3:27b", "timeoutMs": 120000}
 }

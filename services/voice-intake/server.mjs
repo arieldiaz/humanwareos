@@ -5,7 +5,7 @@ import {createReadStream, readFileSync, realpathSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {promisify} from 'node:util';
-import {SlackPoster, Store, VoiceIntake, ollamaSummarizer, whisperTranscriber} from './intake.mjs';
+import {SlackPoster, Store, VoiceIntake, audioGuard, ollamaSummarizer, whisperTranscriber} from './intake.mjs';
 
 const exec = promisify(execFile);
 const HEADERS = {'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff'};
@@ -14,6 +14,7 @@ const MESSAGES = {
   empty_audio: 'Recording was empty', empty_text: 'Recording was empty', audio_or_text_required: 'Recording was empty',
   audio_not_file: 'Not sent: recording was not attached', oversized: 'Not sent: recording too large',
   unsupported_audio: 'Not sent: recording format not supported', text_too_long: 'Not sent: dictation too long',
+  silent_audio: 'Recording was silent: check the Mac\'s input device in System Settings → Sound', too_short: 'Recording was too short',
   form_required: 'Not sent: upload unreadable', invalid_form: 'Not sent: upload unreadable', unavailable: 'Mini unavailable: try again soon',
 };
 
@@ -150,7 +151,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   const slack = new SlackPoster({channel, token, call: slackApi});
   const intake = new VoiceIntake({store, config, slack, gateway: gatewayCall, requestsDir: join(stateDir, 'requests'),
     evidenceRoot: config.evidenceRoot ?? join(data, 'evidence/voice/captures'),
-    transcribe: whisperTranscriber(config.whisper), summarize: ollamaSummarizer(config.summary)});
+    transcribe: whisperTranscriber(config.whisper), summarize: ollamaSummarizer(config.summary), guard: audioGuard(config.audioGuard)});
   const tick = async () => { try { await slack.verify(); intake.ready = true; await intake.drain(); } catch { intake.ready = false; } };
   const capture = http.createServer({requestTimeout: 120000}, captureHandler(intake, {maxBytes: config.maxBytes, channel: config.slackChannel ?? 'inbox'}));
   const audio = http.createServer({requestTimeout: 30000}, audioHandler(intake));

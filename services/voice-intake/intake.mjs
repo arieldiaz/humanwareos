@@ -2,13 +2,15 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
-import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {promisify} from 'node:util';
 
 const exec = promisify(execFile);
 export const MAX_TEXT_CHARS = 20_000;
 const SLACK_TEXT_LIMIT = 39_000;
+export const FFMPEG = '/opt/homebrew/bin/ffmpeg';
 
 // Container type is read from the bytes, never from the client's file name.
 export function audioType(bytes) {
@@ -27,9 +29,43 @@ const label = (value, field) => {
   return text;
 };
 
+// Reads ffmpeg's volumedetect report: peak level in dBFS and the input duration.
+// Digital silence reports -91.0 dB (or -inf); a missing field stays null.
+export function parseVolumeDetect(stderr) {
+  const level = /max_volume:\s*(-?[\d.]+|-inf)\s*dB/.exec(stderr)?.[1];
+  const duration = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(stderr);
+  return {maxVolume: level == null ? null : level === '-inf' ? -Infinity : Number(level),
+    duration: duration ? Number(duration[1]) * 3600 + Number(duration[2]) * 60 + Number(duration[3]) : null};
+}
+
+// A recording the Mac's input never heard transcribes to a Whisper hallucination,
+// so it is refused before it becomes evidence. Unmeasured fields are not judged.
+export function audioRejection({maxVolume, duration}, {minSeconds = 0.5, minDb = -50} = {}) {
+  if (duration != null && duration < minSeconds) return 'too_short';
+  if (maxVolume != null && maxVolume < minDb) return 'silent_audio';
+  return null;
+}
+
+// Measures a capture with ffmpeg. A broken or missing ffmpeg is logged and skipped
+// so intake keeps working; only a completed measurement can reject.
+export function audioGuard({ffmpeg = FFMPEG, minSeconds, minDb, timeoutMs = 30_000, log = (entry) => console.error(JSON.stringify(entry))} = {}) {
+  return async (bytes, ext) => {
+    const dir = await mkdtemp(join(tmpdir(), 'voice-intake-guard-'));
+    try {
+      const path = join(dir, `clip.${ext}`);
+      await writeFile(path, bytes, {mode: 0o600});
+      const {stderr} = await exec(ffmpeg, ['-nostdin', '-hide_banner', '-i', path, '-af', 'volumedetect', '-f', 'null', '-'], {timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024});
+      return audioRejection(parseVolumeDetect(stderr), {minSeconds, minDb});
+    } catch (error) {
+      log({at: new Date().toISOString(), event: 'audio_guard_skipped', detail: String(error.code ?? error.message).slice(0, 200)});
+      return null;
+    } finally { await rm(dir, {recursive: true, force: true}); }
+  };
+}
+
 // Normalizes a capture form. The capture id is derived from content, device and
 // capture time, so a retried upload of the same recording is the same capture.
-export async function normalizeCapture(form, {maxBytes, now = new Date()}) {
+export async function normalizeCapture(form, {maxBytes, now = new Date(), guard}) {
   const deviceName = label(form.get('deviceName'), 'device_name');
   const deviceModel = label(form.get('deviceModel'), 'device_model');
   const captured = Date.parse(String(form.get('capturedAt') ?? ''));
@@ -43,6 +79,8 @@ export async function normalizeCapture(form, {maxBytes, now = new Date()}) {
     if (bytes.length > maxBytes) throw Object.assign(new Error('oversized'), {status: 413});
     type = audioType(bytes);
     if (!type) throw Object.assign(new Error('unsupported_audio'), {status: 415});
+    const rejection = guard && await guard(bytes, type.ext);
+    if (rejection) throw invalid(rejection);
     kind = 'audio';
   } else if (typeof text === 'string' && audio == null) {
     const value = text.trim();
@@ -75,6 +113,15 @@ export function formatWhen(iso, timeZone) {
 export function gist(transcript, words = 10) {
   const parts = String(transcript).replace(/\s+/g, ' ').trim().split(' ');
   return parts.length > words ? `${parts.slice(0, words).join(' ')}…` : parts.join(' ');
+}
+
+// Whisper's stock output for silence or noise. Asking a model to summarize it
+// yields a complaint about the missing note, so these keep the transcript as title.
+export const SILENCE_HALLUCINATIONS = new Set(['you', 'thank you', 'thanks', 'thank you for watching', 'thanks for watching', 'thank you for listening',
+  'thanks for listening', 'bye', 'goodbye', 'see you next time', 'subtitles by the amara org community', 'please subscribe', 'the end']);
+export function trivialTranscript(transcript, minWords = 4) {
+  const words = String(transcript).toLowerCase().replace(/[^\p{L}\p{N}']+/gu, ' ').trim().split(' ').filter(Boolean);
+  return words.length < minWords || SILENCE_HALLUCINATIONS.has(words.join(' '));
 }
 
 export function rootText(row, timeZone) {
@@ -163,8 +210,8 @@ export function ollamaSummarizer({url = 'http://127.0.0.1:11434', model, timeout
 }
 
 export class VoiceIntake {
-  constructor({store, config, evidenceRoot, requestsDir, transcribe, summarize, slack, gateway, now = () => new Date()}) {
-    Object.assign(this, {store, config, evidenceRoot, requestsDir, transcribe, summarize, slack, gateway, now});
+  constructor({store, config, evidenceRoot, requestsDir, transcribe, summarize, guard, slack, gateway, now = () => new Date()}) {
+    Object.assign(this, {store, config, evidenceRoot, requestsDir, transcribe, summarize, guard, slack, gateway, now});
     this.serial = Promise.resolve();
   }
 
@@ -173,7 +220,7 @@ export class VoiceIntake {
   // Evidence is written before the row exists, create-only. A crash between the two
   // writes leaves identical bytes that the retried upload finds and keeps.
   async accept(form) {
-    const capture = await normalizeCapture(form, {maxBytes: this.config.maxBytes ?? 50 * 1024 * 1024, now: this.now()});
+    const capture = await normalizeCapture(form, {maxBytes: this.config.maxBytes ?? 50 * 1024 * 1024, now: this.now(), guard: this.guard});
     if (this.store.get(capture.id)) return {status: 'duplicate', captureId: capture.id};
     const day = capture.capturedAt.slice(0, 10).split('-');
     const directory = join(this.evidenceRoot, day[0], day[1]);
@@ -200,7 +247,7 @@ export class VoiceIntake {
       if (row.state === 'received') {
         const transcript = row.kind === 'audio' ? await this.transcribe(row.evidence_path) : readFileSync(row.evidence_path, 'utf8');
         if (!transcript) return hold('empty_transcript');
-        this.store.update(id, {state: 'transcribed', transcript, summary: await this.summarize(transcript)});
+        this.store.update(id, {state: 'transcribed', transcript, summary: trivialTranscript(transcript) ? gist(transcript) : await this.summarize(transcript)});
         row = this.store.get(id);
       }
       if (row.state === 'transcribed') {
