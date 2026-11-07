@@ -16,7 +16,8 @@ test('record shortcut starts recording immediately and posts the file with devic
   assert.deepEqual([p.WFURL, p.WFHTTPMethod, p.WFHTTPBodyType], [URL, 'POST', 'Form']);
   assert.deepEqual(items(p.WFFormValues).map(key), ['audio', 'deviceName', 'deviceModel', 'capturedAt']);
   assert.equal(items(p.WFFormValues)[0].WFItemType, 5);
-  assert.deepEqual(items(p.WFFormValues)[0].WFValue.Value, {Type: 'Variable', VariableName: 'Recording'});
+  assert.deepEqual(items(p.WFFormValues)[0].WFValue, {WFSerializationType: 'WFTokenAttachmentParameterState',
+    Value: {WFSerializationType: 'WFTextTokenAttachment', Value: {Type: 'Variable', VariableName: 'Recording'}}});
   const recording = workflow.WFWorkflowActions.find(a => a.WFWorkflowActionParameters.WFVariableName === 'Recording');
   assert.equal(recording.WFWorkflowActionParameters.WFInput.Value.OutputUUID, record.WFWorkflowActionParameters.UUID);
   assert.deepEqual(workflow.WFWorkflowTypes, ['Watch']);

@@ -39,6 +39,8 @@ const RERECORDS = 10;
 
 // mode 'record' captures full audio; 'dictate' is the fallback for a device whose
 // Shortcuts runtime cannot record audio and sends on-device dictation instead.
+// A file field nests the variable in a WFTextTokenAttachment; a bare variable
+// decodes to nothing and Shortcuts silently drops the field from the form.
 // Shortcuts has no loop break, so Re-record is a bounded repeat that skips once
 // `Choice` is set; Cancel stops at once, and nothing is sent without Send.
 export function buildShortcut({url, mode = 'record'}) {
@@ -47,7 +49,7 @@ export function buildShortcut({url, mode = 'record'}) {
     ? action('recordaudio', ID.capture, {WFRecordingCompression: 'Normal', WFRecordingStart: 'Immediately', WFRecordingEnd: 'On Tap'})
     : action('dictatetext', ID.capture, {WFDictateTextStopListening: 'On Tap'});
   const payload = mode === 'record'
-    ? {WFItemType: 5, WFKey: text('audio'), WFValue: {Value: named('Recording'), WFSerializationType: 'WFTokenAttachmentParameterState'}}
+    ? {WFItemType: 5, WFKey: text('audio'), WFValue: {Value: attachment(named('Recording')), WFSerializationType: 'WFTokenAttachmentParameterState'}}
     : field('text', named('Recording'));
   const actions = [
     action('gettext', ID.clientId, {WFTextActionText: ''}),
