@@ -155,7 +155,7 @@ export function trivialTranscript(transcript, minWords = 4) {
 
 export function rootText(row, timeZone) {
   const where = row.location_label ? ` · ${row.location_label}` : '';
-  return escapeMrkdwn(`${deviceEmoji(row.device_model)} ${row.device_name} · ${formatWhen(row.captured_at, timeZone)}${where} · ${row.summary}`);
+  return escapeMrkdwn(`${deviceEmoji(row.device_model)} · ${formatWhen(row.captured_at, timeZone)}${where} · ${row.summary}`);
 }
 
 export function transcriptText(row, audioUrl) {
