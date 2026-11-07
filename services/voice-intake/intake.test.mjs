@@ -102,8 +102,8 @@ test('a located capture records coordinates in evidence and ledger, and only the
   const row = intake.store.get(captureId);
   assert.deepEqual([row.latitude, row.longitude, row.location_label], [40.678178, -73.944158, 'Brooklyn, NY']);
   assert.deepEqual(JSON.parse(readFileSync(row.evidence_path.replace(/m4a$/, 'json'))).location, {latitude: 40.678178, longitude: -73.944158, label: 'Brooklyn, NY'});
-  assert.equal(posts[0].text, '📱 ·Fri, Nov 6, 11:03 AM · Brooklyn, NY · Remind me to book the vet for Pepe next week.', 'the root posts at once with the first words');
-  assert.equal(updates.at(-1).text, '📱 ·Fri, Nov 6, 11:03 AM · Brooklyn, NY · Book vet for Pepe', 'the summarizer retitles the root in place, label intact');
+  assert.equal(posts[0].text, '📱 · Fri, Nov 6, 11:03 AM · Brooklyn, NY · Remind me to book the vet for Pepe next week.', 'the root posts at once with the first words');
+  assert.equal(updates.at(-1).text, '📱 · Fri, Nov 6, 11:03 AM · Brooklyn, NY · Book vet for Pepe', 'the summarizer retitles the root in place, label intact');
   for (const post of [...posts, ...updates]) assert.ok(!post.text.includes('40.67') && !post.text.includes('73.94'), 'coordinates stay off Slack');
   const requestPath = /request record at (\S+)\./.exec(calls[0][1].message)[1];
   assert.deepEqual(JSON.parse(readFileSync(requestPath)).location, {latitude: 40.678178, longitude: -73.944158, label: 'Brooklyn, NY'});
@@ -184,8 +184,8 @@ test('pipeline posts root and transcript as threaded replies, then admits one Li
   assert.equal(row.state, 'dispatched');
   assert.equal(posts[0].part, 'root');
   assert.equal(posts[0].threadTs, undefined);
-  assert.equal(posts[0].text, '📱 ·Fri, Nov 6, 11:03 AM · Remind me to book the vet for Pepe next week.', 'the root posts with the first words before the summarizer answers');
-  assert.deepEqual(updates, [{channelId: 'C0INBOX', ts: '1793.1', text: '📱 ·Fri, Nov 6, 11:03 AM · Book vet for Pepe'}], 'the summarizer retitles the root in place');
+  assert.equal(posts[0].text, '📱 · Fri, Nov 6, 11:03 AM · Remind me to book the vet for Pepe next week.', 'the root posts with the first words before the summarizer answers');
+  assert.deepEqual(updates, [{channelId: 'C0INBOX', ts: '1793.1', text: '📱 · Fri, Nov 6, 11:03 AM · Book vet for Pepe'}], 'the summarizer retitles the root in place');
   assert.equal(row.summary, 'Book vet for Pepe');
   assert.deepEqual(logs.map(entry => entry.event), ['capture_rooted', 'capture_retitled']);
   assert.ok(logs[0].transcribeMs >= 0 && logs[0].rootMs >= 0 && logs[0].sinceReceivedMs >= 0, 'timings are logged for the ledger');
@@ -212,7 +212,7 @@ test('dictation captures skip transcription and have no audio link', async () =>
   const {captureId} = await intake.accept(captureForm({audio: null, text: 'Add oat milk to the list', deviceModel: 'Apple Watch', deviceName: 'Watch'}));
   await intake.drain();
   assert.equal(intake.store.get(captureId).state, 'dispatched');
-  assert.match(posts[0].text, /^⌚ Watch · /);
+  assert.match(posts[0].text, /^⌚ · /);
   assert.match(posts[1].text, /no audio was recorded/);
 });
 
