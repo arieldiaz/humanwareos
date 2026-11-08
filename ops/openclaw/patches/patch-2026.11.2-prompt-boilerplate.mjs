@@ -15,7 +15,7 @@ import {SUPPORTED_VERSION, resolveSlackPluginDist} from "./slack-plugin-root.mjs
 //   2. The Slack plugin's inboundFormattingHints says OpenClaw converts
 //      Markdown to mrkdwn and steers tabular data to presentation table
 //      blocks. This instance renders Markdown into Block Kit rich_text via
-//      patch-2026.9.8-slack-rich-text.mjs and wants small tables as fenced
+//      patch-2026.11.2-slack-rich-text.mjs and wants small tables as fenced
 //      text, so the hint states the house render chain instead.
 //
 // Plugin hooks cannot fix this: before_prompt_build never sees the assembled
@@ -35,7 +35,7 @@ const result = { core: "unchanged", slack: "unchanged" };
 {
   const candidates = fs
     .readdirSync(coreDist)
-    .filter((name) => /^get-reply-.*\.mjs$/.test(name))
+    .filter((name) => /^groups-.*\.mjs$/.test(name))
     .map((name) => path.join(coreDist, name));
 
   const lurkBefore =
@@ -68,7 +68,7 @@ const result = { core: "unchanged", slack: "unchanged" };
     patchedFiles += 1;
   }
   if (patchedFiles === 0 && alreadyPatchedFiles === 0) {
-    throw new Error("No get-reply bundle contains buildGroupChatContext; review the installed version.");
+    throw new Error("No groups bundle contains buildGroupChatContext; review the installed version.");
   }
   result.core = patchedFiles > 0 ? `patched (${patchedFiles} bundle)` : "already patched";
 }

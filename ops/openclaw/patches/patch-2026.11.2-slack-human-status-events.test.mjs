@@ -5,14 +5,14 @@ import path from "node:path";
 import test from "node:test";
 import {spawnSync} from "node:child_process";
 
-const patch = path.resolve("ops/openclaw/patches/patch-2026.9.8-slack-human-status-events.mjs");
+const patch = path.resolve("ops/openclaw/patches/patch-2026.11.2-slack-human-status-events.mjs");
 
 test("patches the structured reaction handler once and is idempotent", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "human-status-patch-"));
   const plugin = path.join(root, "plugin");
   const setup = path.join(plugin, "dist", ".setup");
   fs.mkdirSync(setup, {recursive: true});
-  fs.writeFileSync(path.join(plugin, "package.json"), JSON.stringify({version: "2026.9.8"}));
+  fs.writeFileSync(path.join(plugin, "package.json"), JSON.stringify({version: "2026.11.2"}));
   const anchor = '\t\t\tconst item = event.item;\n\t\t\tif (!item || item.type !== "message") return;\n\t\t\tif (runtimeContext.reactionMode === "off") return;';
   const monitor = path.join(setup, "monitor-fixture.mjs");
   fs.writeFileSync(monitor, anchor);

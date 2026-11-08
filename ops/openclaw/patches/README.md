@@ -1,6 +1,6 @@
 # OpenClaw instance patches
 
-Runtime activation must run `scripts/apply-openclaw-patches.sh` after stopping the gateway and before starting it again. The runner accepts only OpenClaw 2026.9.8, applies every production `patch-2026.9.8-*.mjs` file in stable order, and stops on the first failure. Changing a patch file without running the runner leaves the installed OpenClaw bundles stale even when the immutable Humanware runtime revision advances.
+Runtime activation must run `scripts/apply-openclaw-patches.sh` after stopping the gateway and before starting it again. The runner accepts only OpenClaw 2026.11.2, applies every production `patch-2026.11.2-*.mjs` file in stable order, and stops on the first failure. Changing a patch file without running the runner leaves the installed OpenClaw bundles stale even when the immutable Humanware runtime revision advances.
 
 These are narrow, version-scoped patches for the globally installed OpenClaw runtime and its Slack plugin. Each is idempotent, fails closed when an anchor or version does not match, and requires a gateway restart. Each exists only until upstream fixes the behavior; on every upgrade, re-check each patch against stock and delete what upstream fixed.
 
@@ -14,21 +14,21 @@ Instance-owned declarative configuration lives one level up:
 
 Patches are applied by `scripts/openclaw-cutover.sh activate`, after the staged package is installed and before the gateway starts. Changing the pinned OpenClaw version means staging that version, re-checking every patch anchor against its stock text, and deleting what upstream fixed. There is no manual recipe; Doctor is not part of activation.
 
-`slack-plugin-root.mjs` selects the single installed 2026.9.8 Slack plugin generation and fails closed if discovery is ambiguous; set `OPENCLAW_SLACK_PLUGIN_ROOT` to choose one explicitly.
+`slack-plugin-root.mjs` selects the single installed 2026.11.2 Slack plugin generation and fails closed if discovery is ambiguous; set `OPENCLAW_SLACK_PLUGIN_ROOT` to choose one explicitly.
 
 ## Core reliability
 
-`patch-2026.9.8-cli-commentary-projection.mjs` keeps CLI pre-tool narration out of the final channel reply when the surface has no live-commentary listener. Stock classifies text before a tool call as commentary only when a listener exists; on Slack it therefore concatenates commentary and the terminal answer, including malformed boundaries such as `context.## TLDR`. The patch makes classification independent of observation: a listener receives commentary when present, otherwise it is discarded.
+`patch-2026.11.2-cli-commentary-projection.mjs` keeps CLI pre-tool narration out of the final channel reply when the surface has no live-commentary listener. Stock classifies text before a tool call as commentary only when a listener exists; on Slack it therefore concatenates commentary and the terminal answer, including malformed boundaries such as `context.## TLDR`. The patch makes classification independent of observation: a listener receives commentary when present, otherwise it is discarded.
 
-`patch-2026.9.8-slack-response-reliability.mjs` makes a terminal event from the session's current writer authoritative when restart bookkeeping still names an older recovery run, preventing a successful Slack turn from remaining falsely `running`. Session-start conflicts remain retryable until the ordinary age floor rather than being dead-lettered after eight quick attempts, and persisted or inspected ingress payloads redact credential-shaped fields.
+`patch-2026.11.2-slack-response-reliability.mjs` makes a terminal event from the session's current writer authoritative when restart bookkeeping still names an older recovery run, preventing a successful Slack turn from remaining falsely `running`. OpenClaw 2026.11.2 now applies the ordinary age floor to retryable ingress failures upstream, so the prior session-conflict patch was removed; persisted and inspected ingress payloads still require local credential-field redaction.
 
-`patch-2026.9.8-slack-human-status-events.mjs` offers structured Slack reaction events to the Humanware status bridge before stock reaction notifications render them as prose. A claimed configured-human canonical status event is journaled for the Notion projector and silently consumed, so it neither starts a model turn nor posts text. Nonclaimed events retain stock behavior; the instance disables general reaction notifications.
+`patch-2026.11.2-slack-human-status-events.mjs` offers structured Slack reaction events to the Humanware status bridge before stock reaction notifications render them as prose. A claimed configured-human canonical status event is journaled for the Notion projector and silently consumed, so it neither starts a model turn nor posts text. Nonclaimed events retain stock behavior; the instance disables general reaction notifications.
 
 `../slack-spin-out.mjs` posts the brief as one ordinary top-level message through stock send, then owns scaffold cleanup, status and durable session creation with high reasoning set before the initial run; the session replies in that message's thread.
 
 ## Prompt boilerplate
 
-`patch-2026.9.8-prompt-boilerplate.mjs` rewrites two per-turn prompt injections that contradict the instance's layer-2 specs and win by proximity:
+`patch-2026.11.2-prompt-boilerplate.mjs` rewrites two per-turn prompt injections that contradict the instance's layer-2 specs and win by proximity:
 
 - the core group-chat context in `buildGroupChatContext`: "mostly lurk … add clear value" becomes an explicit rule (unprompted speech is governed by the operator's channel rules; an explicit mention always gets a response), and "not document-style spacing" is removed because reply structure is owned by `docs/reply-shape.md`;
 - the Slack plugin's `response_format` hint, which says Markdown is converted to Slack mrkdwn and requires presentation table blocks, while this instance renders Markdown as rich_text blocks and `docs/slack-style.md` uses fenced text for small tables.
@@ -37,7 +37,7 @@ Plugin hooks cannot do this: `before_prompt_build` never sees the assembled text
 
 ## Slack rich_text rendering
 
-`patch-2026.9.8-slack-rich-text.mjs` gives Slack replies real Block Kit structure. Stock 2026.9.8 converts Markdown to mrkdwn sections; Slack's `text` field has no list primitive, so wrapped lines lose hanging indents and nested items get no real depth. Hanging indents, true ordered lists, quote and code primitives, and heading blocks exist only in `rich_text`/`header` blocks.
+`patch-2026.11.2-slack-rich-text.mjs` gives Slack replies real Block Kit structure. Stock 2026.11.2 still converts authored Markdown to mrkdwn text unless callers provide explicit blocks; Slack's `text` field has no list primitive, so wrapped lines lose hanging indents and nested items get no real depth. Hanging indents, true ordered lists, quote and code primitives, and heading blocks exist only in `rich_text`/`header` blocks.
 
 The same patch makes a channel root one line: a multi-line text send with no thread posts its first line at the root and the rest as the first reply in that thread, and the send result names the root. Media, block, DM and threaded sends are untouched. This is the one place every harness and tool reaches, so the shape no longer depends on the model choosing the work-thread tool.
 

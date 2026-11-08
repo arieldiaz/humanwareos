@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import {resolveSlackPluginDist} from "./slack-plugin-root.mjs";
 
 // Slack's plain `text` field renders mrkdwn, which has no list primitive, and
-// upstream 2026.9.8 still converts authored Markdown only to mrkdwn text or
+// upstream 2026.11.2 still converts authored Markdown only to mrkdwn text or
 // mrkdwn section blocks: lists become literal "• " lines whose wrapped lines
 // snap back to column 0, and headings have no block. Hanging indents, true
 // ordered lists, quotes, code blocks, and heading blocks only exist in Block
@@ -12,7 +12,7 @@ import {resolveSlackPluginDist} from "./slack-plugin-root.mjs";
 //
 // This patch installs an instance-owned markdown -> rich_text converter into
 // the Slack plugin and wires it into the text chunk post of sendMessageSlack
-// (send-*.mjs). In 2026.9.8 both agent reply payloads (deliverReplies) and the
+// (send-*.mjs). In 2026.11.2 both agent reply payloads (deliverReplies) and the
 // message tool reach that post for text without explicit blocks; explicit
 // caller-provided blocks take the upstream blocks branch and are untouched.
 //
@@ -56,22 +56,22 @@ fs.copyFileSync(moduleSource, path.join(pluginRoot, MODULE_NAME));
 
 const result = { module: MODULE_NAME, send: "unchanged", root: "unchanged" };
 
-// 2. Text chunk post. Only single-chunk, media-free Markdown sends get blocks:
-// multi-chunk splits would need per-chunk conversion, and media sends carry
-// their text as a file caption.
+// 2. Text chunk rendering. Only single-message, media-free Markdown sends get
+// blocks; explicit caller-provided blocks return through the stock branch.
 {
-  const before = `		if (partIndex === 0 && !opts.mediaUrl) await dispatchOnce();
-		await postPart({
-			text: chunk,
-			replyBroadcast: carriesPrimaryMessageOptions ? opts.replyBroadcast : void 0,
-			metadata,`;
-  const after = `		if (partIndex === 0 && !opts.mediaUrl) await dispatchOnce();
-		const autoRichTextBlocks = chunksToPost.length === 1 && !opts.mediaUrl && !opts.textIsSlackPlainText && !opts.textIsSlackMrkdwn ? markdownToSlackRichTextBlocks(trimmedMessage) : void 0;
-		await postPart({
-			text: chunk,
-			...autoRichTextBlocks?.length ? { blocks: autoRichTextBlocks } : {},
-			replyBroadcast: carriesPrimaryMessageOptions ? opts.replyBroadcast : void 0,
-			metadata,`;
+  const before = `		} else chunksToPost = resolvedChunks.length ? resolvedChunks : [""];
+		messages = chunksToPost.map((text) => opts.textIsSlackPlainText ? {
+			text,
+			mrkdwn: false
+		} : { text });`;
+  const after = `		} else chunksToPost = rootSplit ? [rootSplit.title, ...resolvedChunks] : resolvedChunks.length ? resolvedChunks : [""];
+		messages = chunksToPost.map((text, partIndex) => {
+			const autoRichTextBlocks = chunksToPost.length === (rootSplit ? 2 : 1) && partIndex === chunksToPost.length - 1 && !opts.mediaUrl && !opts.textIsSlackPlainText && !opts.textIsSlackMrkdwn ? markdownToSlackRichTextBlocks(rootSplit ? rootSplit.body : trimmedMessage) : void 0;
+			return opts.textIsSlackPlainText ? { text, mrkdwn: false } : {
+				text,
+				...autoRichTextBlocks?.length ? { blocks: autoRichTextBlocks } : {}
+			};
+		});`;
   const importLine = `import { markdownToSlackRichTextBlocks } from "./${MODULE_NAME}";\n`;
   let source = fs.readFileSync(sendFile, "utf8");
   if (source.includes("markdownToSlackRichTextBlocks")) {
@@ -102,44 +102,45 @@ const result = { module: MODULE_NAME, send: "unchanged", root: "unchanged" };
 			identity: sendIdentity,`,
     },
     {
-      before: `		text: trimmedMessage,
-		textLimit: textChunkLimit,`,
-      after: `		text: rootSplit ? rootSplit.body : trimmedMessage,
-		textLimit: textChunkLimit,`,
+      before: `			text: trimmedMessage,
+			chunkLimit: textChunkLimit,`,
+      after: `			text: rootSplit ? rootSplit.body : trimmedMessage,
+			chunkLimit: textChunkLimit,`,
     },
     {
-      before: `	const resolvedChunks = resolveSlackTextChunks({`,
-      after: `	const rootSplit = !opts.threadTs && !opts.mediaUrl && !blocks && recipient.kind === "channel" ? splitSlackChannelRoot(trimmedMessage) : null;
-	const resolvedChunks = resolveSlackTextChunks({`,
+      before: `	let messages;`,
+      after: `	let messages;
+	let rootSplit;`,
     },
     {
-      before: `	} else chunksToPost = resolvedChunks.length ? resolvedChunks : [""];`,
-      after: `	} else chunksToPost = rootSplit ? [rootSplit.title, ...resolvedChunks] : resolvedChunks.length ? resolvedChunks : [""];`,
+      before: `		const resolvedChunks = resolveSlackTextChunks({`,
+      after: `		rootSplit = !opts.threadTs && !opts.mediaUrl && !blocks && recipient.kind === "channel" ? splitSlackChannelRoot(trimmedMessage) : null;
+		const resolvedChunks = resolveSlackTextChunks({`,
     },
     {
-      before: `		const autoRichTextBlocks = chunksToPost.length === 1 && !opts.mediaUrl && !opts.textIsSlackPlainText && !opts.textIsSlackMrkdwn ? markdownToSlackRichTextBlocks(trimmedMessage) : void 0;`,
-      after: `		const autoRichTextBlocks = chunksToPost.length === (rootSplit ? 2 : 1) && partIndex === chunksToPost.length - 1 && !opts.mediaUrl && !opts.textIsSlackPlainText && !opts.textIsSlackMrkdwn ? markdownToSlackRichTextBlocks(rootSplit ? rootSplit.body : trimmedMessage) : void 0;`,
-    },
-    {
-      before: `			...opts.textIsSlackPlainText ? { mrkdwn: false } : {}
-		});
-	}`,
-      after: `			...opts.textIsSlackPlainText ? { mrkdwn: false } : {}
-		});
-		if (rootSplit && partIndex === 0) rootTs = lastMessageId;
-	}`,
+      before: `		if (pendingBlockFallback && partDelivery.meta?.slackQuestionActionIds.length) questionDelivery = partDelivery;`,
+      after: `		if (rootSplit && partIndex === 0) rootTs = partDelivery.messageId;
+		if (pendingBlockFallback && partDelivery.meta?.slackQuestionActionIds.length) questionDelivery = partDelivery;`,
     },
     {
       before: `	return {
 		messageId: lastMessageId,
 		channelId: deliveredChannelId,
 		threadTs: deliveredThreadTs,
+		...questionDelivery?.meta ? { meta: {
+			...questionDelivery.meta,
+			slackQuestionMessageId: questionDelivery.messageId
+		} } : {},
 		receipt: createSlackSendReceiptFromResults(deliveredResults, deliveredThreadTs)
 	};`,
       after: `	return {
 		messageId: rootTs ?? lastMessageId,
 		channelId: deliveredChannelId,
 		threadTs: deliveredThreadTs,
+		...questionDelivery?.meta ? { meta: {
+			...questionDelivery.meta,
+			slackQuestionMessageId: questionDelivery.messageId
+		} } : {},
 		receipt: createSlackSendReceiptFromResults(deliveredResults, deliveredThreadTs)
 	};`,
     },

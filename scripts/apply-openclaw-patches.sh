@@ -14,7 +14,7 @@ OPENCLAW_VERSION=$(
     'const fs=require("fs"),path=require("path"); process.stdout.write(JSON.parse(fs.readFileSync(path.join(process.env.OPENCLAW_PACKAGE_ROOT,"package.json"),"utf8")).version)'
 )
 
-if [ "$OPENCLAW_VERSION" != "2026.9.8" ]; then
+if [ "$OPENCLAW_VERSION" != "2026.11.2" ]; then
   echo "Unsupported OpenClaw version $OPENCLAW_VERSION; review runtime patches before activation." >&2
   exit 1
 fi

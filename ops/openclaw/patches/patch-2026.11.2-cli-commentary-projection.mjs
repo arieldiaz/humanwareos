@@ -3,7 +3,7 @@ import path from "node:path";
 
 const packageRoot = process.env.OPENCLAW_PACKAGE_ROOT || "/opt/homebrew/lib/node_modules/openclaw";
 const distDir = process.env.OPENCLAW_CORE_DIST || path.join(packageRoot, "dist");
-const expectedVersion = "2026.9.8";
+const expectedVersion = "2026.11.2";
 const installedVersion = JSON.parse(fs.readFileSync(path.join(distDir, "..", "package.json"), "utf8")).version;
 if (installedVersion !== expectedVersion) throw new Error(`OpenClaw ${installedVersion} is not ${expectedVersion}; review the CLI commentary patch before applying.`);
 const candidates = fs
@@ -13,8 +13,8 @@ const candidates = fs
 
 const classificationBefore = `\tconst classifyClaudeCommentary = Boolean(params.onCommentaryText) && supportsCliJsonlToolEvents(params);`;
 const classificationAfter = `\t// humanware:project-cli-pretool-commentary\n\tconst classifyClaudeCommentary = supportsCliJsonlToolEvents(params);`;
-const boundaryBefore = `\t\t\tif (classifyClaudeCommentary) {\n\t\t\t\tif (isToolUseBlockStart) flushPendingClaudeCommentaryText();\n\t\t\t\telse if (evt.type === "content_block_start" || evt.type === "message_stop") flushPendingClaudeAssistantText();\n\t\t\t}`;
-const boundaryAfter = `\t\t\tif (classifyClaudeCommentary) {\n\t\t\t\tif (isToolUseBlockStart || (evt.type === "content_block_start" && pendingClaudeText)) flushPendingClaudeCommentaryText();\n\t\t\t\telse if (evt.type === "message_stop") flushPendingClaudeAssistantText();\n\t\t\t}`;
+const boundaryBefore = `\t\t\tif (classifyClaudeCommentary) {\n\t\t\t\tif (isToolUseBlockStart) flushPendingClaudeText("commentary");\n\t\t\t\telse if (evt.type === "content_block_start" || evt.type === "message_stop") flushPendingClaudeText("assistant");\n\t\t\t}`;
+const boundaryAfter = `\t\t\tif (classifyClaudeCommentary) {\n\t\t\t\tif (isToolUseBlockStart || evt.type === "content_block_start" && pendingClaudeText) flushPendingClaudeText("commentary");\n\t\t\t\telse if (evt.type === "message_stop") flushPendingClaudeText("assistant");\n\t\t\t}`;
 
 let patched = 0;
 let alreadyPatched = 0;
