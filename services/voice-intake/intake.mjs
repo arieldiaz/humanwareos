@@ -13,6 +13,10 @@ export const MAX_TEXT_CHARS = 20_000;
 const SLACK_TEXT_LIMIT = 39_000;
 export const FFMPEG = '/opt/homebrew/bin/ffmpeg';
 
+// Root-post glyph per device model, matched in order; the last entry is the
+// fallback. 📟 is the closest Unicode has to a tablet.
+export const DEVICE_EMOJI = [[/watch/i, '⌚'], [/mac/i, '💻'], [/ipad/i, '📟'], [/iphone/i, '📱'], [/./, '🎙️']];
+
 // Container type is read from the bytes, never from the client's file name.
 export function audioType(bytes) {
   const ascii = (start, end) => bytes.subarray(start, end).toString('latin1');
@@ -126,10 +130,7 @@ export function normalizeLocation(form) {
 }
 
 export function deviceEmoji(model) {
-  if (/watch/i.test(model)) return '⌚';
-  if (/mac/i.test(model)) return '💻';
-  if (/iphone|ipad/i.test(model)) return '📱';
-  return '🎙️';
+  return DEVICE_EMOJI.find(([pattern]) => pattern.test(model ?? ''))?.[1] ?? DEVICE_EMOJI.at(-1)[1];
 }
 
 const escapeMrkdwn = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

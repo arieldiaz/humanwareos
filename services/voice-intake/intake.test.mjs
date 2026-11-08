@@ -349,7 +349,7 @@ test('Slack poster edits a root with the token that posted it and demands confir
 });
 
 test('rendering escapes Slack markup and picks a device emoji', () => {
-  assert.deepEqual(['iPhone', 'Apple Watch', 'Mac', 'iPad', 'Vision'].map(deviceEmoji), ['📱', '⌚', '💻', '📱', '🎙️']);
+  assert.deepEqual(['iPhone', 'Apple Watch', 'Mac', 'iPad', 'Vision', ''].map(deviceEmoji), ['📱', '⌚', '💻', '📟', '🎙️', '🎙️']);
   assert.equal(gist('one two three four five six seven eight nine ten eleven'), 'one two three four five six seven eight nine ten…');
   const row = {device_model: 'Mac', device_name: '<!channel>', captured_at: '2026-07-01T12:00:00Z', summary: 'a & b', kind: 'audio', transcript: '<@U1> hi', shortcut_version: SHORTCUT_VERSION};
   assert.equal(rootText(row, 'America/New_York'), '💻 · Wed, Jul 1, 8:00 AM · a &amp; b');
