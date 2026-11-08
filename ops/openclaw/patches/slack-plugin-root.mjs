@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const SUPPORTED_VERSION = "2026.9.8";
+export const SUPPORTED_VERSION = "2026.11.2";
 
 // A version match is required; directory age cannot prove which plugin is active.
 export function resolveSlackPluginDist(env = process.env) {

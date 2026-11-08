@@ -6,22 +6,22 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const patchPath = fileURLToPath(new URL("./patch-2026.9.8-cli-commentary-projection.mjs", import.meta.url));
+const patchPath = fileURLToPath(new URL("./patch-2026.11.2-cli-commentary-projection.mjs", import.meta.url));
 const parserFixture = `function supportsCliJsonlToolEvents() { return true; }
 function parse(params, events) {
 \tlet assistantText = "", pendingClaudeText = "";
 \tconst classifyClaudeCommentary = Boolean(params.onCommentaryText) && supportsCliJsonlToolEvents(params);
-\tconst flushPendingClaudeAssistantText = () => { assistantText += pendingClaudeText; pendingClaudeText = ""; };
-\tconst flushPendingClaudeCommentaryText = () => {
-\t\tconst commentary = pendingClaudeText.trim();
+\tconst flushPendingClaudeText = (kind) => {
+\t\tconst commentary = kind === "commentary" ? pendingClaudeText.trim() : pendingClaudeText;
 \t\tpendingClaudeText = "";
-\t\tif (commentary) params.onCommentaryText?.(commentary);
+\t\tif (kind === "assistant") assistantText += commentary;
+\t\telse if (commentary) params.onCommentaryText?.(commentary);
 \t};
 \tfor (const evt of events) {
 \t\tconst isToolUseBlockStart = evt.type === "content_block_start" && evt.content_block?.type === "tool_use";
 \t\t\tif (classifyClaudeCommentary) {
-\t\t\t\tif (isToolUseBlockStart) flushPendingClaudeCommentaryText();
-\t\t\t\telse if (evt.type === "content_block_start" || evt.type === "message_stop") flushPendingClaudeAssistantText();
+\t\t\t\tif (isToolUseBlockStart) flushPendingClaudeText("commentary");
+\t\t\t\telse if (evt.type === "content_block_start" || evt.type === "message_stop") flushPendingClaudeText("assistant");
 \t\t\t}
 \t\tif (evt.type === "text") classifyClaudeCommentary ? pendingClaudeText += evt.value : assistantText += evt.value;
 \t}
@@ -32,7 +32,7 @@ test("projects non-terminal CLI text blocks as commentary without changing termi
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-commentary-"));
   const dist = path.join(root, "dist");
   fs.mkdirSync(dist);
-  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ version: "2026.9.8" }));
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ version: "2026.11.2" }));
   const file = path.join(dist, "cli-live-session-registry-fixture.mjs");
   fs.writeFileSync(file, parserFixture);
   const apply = () => execFileSync(process.execPath, [patchPath], { env: { ...process.env, OPENCLAW_CORE_DIST: dist } });

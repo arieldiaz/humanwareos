@@ -51,7 +51,7 @@ test("thread usage includes prior windows and deduplicates replayed event IDs", 
   assert.equal(usage.output, 4);
 });
 
-test("thread usage decodes 2026.9.8 zstd transcript payloads", async (t) => {
+test("thread usage decodes 2026.11.2 zstd transcript payloads", async (t) => {
   const {agentsRoot, db} = await fixture(t);
   db.exec("ALTER TABLE transcript_events ADD COLUMN event_zstd BLOB");
   const event = (id, input) => JSON.stringify({id, type: "message", message: {role: "assistant", model: "sol", usage: {input, output: 2}}});

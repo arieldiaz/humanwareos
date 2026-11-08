@@ -49,7 +49,7 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -f "$RUNTIME/current/surface/artifacts/artifact-shell.js" ]
 [ ! -e "$RUNTIME/current/config/services" ]
 [ ! -e "$RUNTIME/current/config/ops" ]
-[ "$(grep -c 'fileURLToPath(import.meta.url)' "$RUNTIME/current/framework/ops/openclaw/patches/patch-2026.9.8-slack-rich-text.mjs")" -eq 1 ]
+[ "$(grep -c 'fileURLToPath(import.meta.url)' "$RUNTIME/current/framework/ops/openclaw/patches/patch-2026.11.2-slack-rich-text.mjs")" -eq 1 ]
 [ -f "$DATA/artifacts/manifests/data-plane.json" ]
 [ -f "$DATA/operations/control/restart-freeze.json" ]
 [ "$("$JQ" -r '.active' "$DATA/operations/control/restart-freeze.json")" = "true" ]

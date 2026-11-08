@@ -56,8 +56,8 @@ class SupervisorTests(unittest.TestCase):
             self.verify(spec=spec)
 
     def test_pinned_version_argument(self):
-        spec = once.job_spec(self.label, self.deploy, '/framework', '/instance', '/approval', self.path.parent, '2026.9.8')
-        self.assertEqual(spec['ProgramArguments'][-2:], ['--openclaw-version', '2026.9.8'])
+        spec = once.job_spec(self.label, self.deploy, '/framework', '/instance', '/approval', self.path.parent, '2026.11.2')
+        self.assertEqual(spec['ProgramArguments'][-2:], ['--openclaw-version', '2026.11.2'])
         self.verify(spec=spec)
         spec['ProgramArguments'][6] = '--staged-package'
         with self.assertRaises(ValueError):

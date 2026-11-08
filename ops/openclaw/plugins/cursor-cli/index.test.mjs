@@ -32,12 +32,12 @@ test("registers provider bindings without changing the selected backend or comma
 });
 
 // Run against the locally installed reviewed core without loading plugins or state.
-test("OpenClaw 9.8 accepts both CLI runtimes without requiring a native harness", {skip: !process.env.OPENCLAW_TEST_PACKAGE_ROOT}, async () => {
+test("OpenClaw 11.2 accepts both CLI runtimes without requiring a native harness", {skip: !process.env.OPENCLAW_TEST_PACKAGE_ROOT}, async () => {
   const {readFile, readdir} = await import("node:fs/promises");
   const {join} = await import("node:path");
   const {pathToFileURL} = await import("node:url");
   const root = process.env.OPENCLAW_TEST_PACKAGE_ROOT;
-  assert.equal(JSON.parse(await readFile(join(root, "package.json"), "utf8")).version, "2026.9.8");
+  assert.equal(JSON.parse(await readFile(join(root, "package.json"), "utf8")).version, "2026.11.2");
   const files = await readdir(join(root, "dist"));
   async function exportedFunction(prefix, name) {
     const candidates = files.filter(file => file.startsWith(prefix) && /\.m?js$/.test(file));
@@ -50,27 +50,28 @@ test("OpenClaw 9.8 accepts both CLI runtimes without requiring a native harness"
     }
     throw new Error(`Missing reviewed upstream contract ${name}`);
   }
-  const previous = process.env.VITEST;
-  process.env.VITEST = "1";
-  let controls;
-  try {
-    const matches = await exportedFunction("cli-backends-", "isCliRuntimeModelBackendForProvider");
-    controls = globalThis[Symbol.for("openclaw.cliBackendsTestApi")];
-    assert.ok(controls);
-    const registered = buildCursorCliBackends("/runtime/cursor-agent-launch.sh");
-    controls.setDepsForTest({resolveRuntimeCliBackends: () => registered, resolvePluginSetupCliBackend: () => undefined});
-    const ensure = await exportedFunction("runtime-plugin-", "ensureSelectedAgentHarnessPlugin");
+  const matches = await exportedFunction("cli-backends-", "isCliRuntimeModelBackendForProvider");
+  const ensure = await exportedFunction("runtime-plugin-", "ensureSelectedAgentHarnessPlugin");
+  const withRegistry = await exportedFunction("gateway-request-scope-", "withPluginRuntimeRegistryScope");
+  const registered = buildCursorCliBackends("/runtime/cursor-agent-launch.sh");
+  const registry = {
+    agentHarnesses: [],
+    cliBackends: registered.map(backend => ({backend, pluginId: "cursor-cli", builtWithOpenClawVersion: "2026.11.2"}))
+  };
+  await withRegistry(registry, async () => {
     for (const backend of registered) {
       assert.equal(matches({provider: backend.id, runtime: backend.id}), true);
-      await ensure({provider: backend.id, modelId: "grok-4.6-low-fast", agentHarnessRuntimeOverride: backend.id, config: {}, pluginRegistry: {agentHarnesses: []}});
+      await ensure({provider: backend.id, modelId: "grok-4.6-low-fast", agentHarnessRuntimeOverride: backend.id, config: {}, pluginRegistry: registry});
     }
     assert.equal(matches({provider: "openai", runtime: "cursor-agent"}), false);
-    controls.setDepsForTest({resolveRuntimeCliBackends: () => registered.map(({modelProvider, ...backend}) => backend)});
+  });
+
+  const unboundRegistry = {
+    agentHarnesses: [],
+    cliBackends: registered.map(({modelProvider, ...backend}) => ({backend, pluginId: "cursor-cli", builtWithOpenClawVersion: "2026.11.2"}))
+  };
+  await withRegistry(unboundRegistry, async () => {
     assert.equal(matches({provider: "cursor-agent", runtime: "cursor-agent"}), false);
-    await assert.rejects(ensure({provider: "cursor-agent", modelId: "grok-4.6-low-fast", agentHarnessRuntimeOverride: "cursor-agent", config: {}, pluginRegistry: {agentHarnesses: []}}), /owner-plugin-not-activatable/);
-  } finally {
-    controls?.resetDepsForTest();
-    if (previous === undefined) delete process.env.VITEST;
-    else process.env.VITEST = previous;
-  }
+    await assert.rejects(ensure({provider: "cursor-agent", modelId: "grok-4.6-low-fast", agentHarnessRuntimeOverride: "cursor-agent", config: {}, pluginRegistry: unboundRegistry}), /owner-plugin-not-activatable/);
+  });
 });

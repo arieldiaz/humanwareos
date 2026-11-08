@@ -6,16 +6,16 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const patchPath = fileURLToPath(new URL("./patch-2026.9.8-prompt-boilerplate.mjs", import.meta.url));
+const patchPath = fileURLToPath(new URL("./patch-2026.11.2-prompt-boilerplate.mjs", import.meta.url));
 
-function fixture(version = "2026.9.8") {
+function fixture(version = "2026.11.2") {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-prompt-boilerplate-"));
   const coreDist = path.join(root, "core", "dist");
   const slackDist = path.join(root, "slack", "dist");
   fs.mkdirSync(coreDist, { recursive: true });
   fs.mkdirSync(path.join(slackDist, ".setup"), { recursive: true });
   fs.writeFileSync(path.join(root, "core", "package.json"), JSON.stringify({ version }));
-  const coreFile = path.join(coreDist, "get-reply-fixture.mjs");
+  const coreFile = path.join(coreDist, "groups-fixture.mjs");
   const slackFile = path.join(slackDist, ".setup", "shared-fixture.mjs");
   fs.writeFileSync(coreFile, `function buildGroupChatContext(params) {
 \tlines.push("Be a good group participant: mostly lurk and follow the conversation; reply only when directly addressed or you can add clear value. Emoji reactions are welcome when available.");

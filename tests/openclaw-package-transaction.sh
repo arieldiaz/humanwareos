@@ -14,12 +14,12 @@ package() {
   printf '%s\n' '#!/usr/bin/env node' > "$root/openclaw.mjs"
 }
 
-package "$TRANSACTION/staged/node_modules/openclaw" 2026.9.8
+package "$TRANSACTION/staged/node_modules/openclaw" 2026.11.2
 package "$TARGET" 2026.9.1
-printf '%s\n' '{"version":"2026.9.8"}' > "$TRANSACTION/stage.json"
+printf '%s\n' '{"version":"2026.11.2"}' > "$TRANSACTION/stage.json"
 
 python3 "$ROOT/scripts/openclaw-package-transaction.py" install --transaction "$TRANSACTION" --target "$TARGET" >/dev/null
-[ "$(jq -r .version "$TARGET/package.json")" = 2026.9.8 ]
+[ "$(jq -r .version "$TARGET/package.json")" = 2026.11.2 ]
 [ "$(jq -r .version "$TRANSACTION/retained/openclaw/package.json")" = 2026.9.1 ]
 [ "$(jq -r .changed "$TRANSACTION/installed.json")" = true ]
 
@@ -28,7 +28,7 @@ python3 "$ROOT/scripts/openclaw-package-transaction.py" restore --transaction "$
 [ "$(jq -r .version "$TRANSACTION/restored.json")" = 2026.9.1 ]
 
 python3 "$ROOT/scripts/openclaw-package-transaction.py" install --transaction "$TRANSACTION" --target "$TARGET" >/dev/null
-[ "$(jq -r .version "$TARGET/package.json")" = 2026.9.8 ]
+[ "$(jq -r .version "$TARGET/package.json")" = 2026.11.2 ]
 [ "$(jq -r .version "$TRANSACTION/retained/openclaw/package.json")" = 2026.9.1 ]
 
 python3 "$ROOT/scripts/openclaw-package-transaction.py" restore --transaction "$TRANSACTION" --target "$TARGET" >/dev/null
@@ -37,9 +37,9 @@ python3 "$ROOT/scripts/openclaw-package-transaction.py" restore --transaction "$
 
 SAME_TRANSACTION="$TMP/same-transaction"
 SAME_TARGET="$TMP/same-global/openclaw"
-package "$SAME_TRANSACTION/staged/node_modules/openclaw" 2026.9.8
-package "$SAME_TARGET" 2026.9.8
-printf '%s\n' '{"version":"2026.9.8"}' > "$SAME_TRANSACTION/stage.json"
+package "$SAME_TRANSACTION/staged/node_modules/openclaw" 2026.11.2
+package "$SAME_TARGET" 2026.11.2
+printf '%s\n' '{"version":"2026.11.2"}' > "$SAME_TRANSACTION/stage.json"
 
 python3 "$ROOT/scripts/openclaw-package-transaction.py" install --transaction "$SAME_TRANSACTION" --target "$SAME_TARGET" >/dev/null
 [ "$(jq -r .changed "$SAME_TRANSACTION/installed.json")" = false ]

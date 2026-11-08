@@ -9,7 +9,7 @@
   },
   "agents": ["liv", "max"],
   "openclaw": {
-    "version": "2026.9.8",
+    "version": "2026.11.2",
     "config": "openclaw/config.patch.json5",
     "plugins": []
   },

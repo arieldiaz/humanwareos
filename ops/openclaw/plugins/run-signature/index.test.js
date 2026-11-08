@@ -72,7 +72,7 @@ test("exposes start_work_thread to claude-cli loopback sessions that lack native
   const tools = [];
   runSignaturePlugin.register({ config: {}, on() {}, registerTool(factory, options) { tools.push({ factory, options }); } });
   const sessionKey = "agent:liv:slack:channel:c0br94zuu9y:thread:1791466852.431599";
-  // Shape built by OpenClaw 2026.9.8 tool-resolution for the loopback surface: agentId from the session key, no nativeChannelId or sender.
+  // Shape built by OpenClaw 2026.11.2 tool-resolution for the loopback surface: agentId from the session key, no nativeChannelId or sender.
   const fromSessionKey = tools[0].factory.create({ messageChannel: "slack", agentId: "liv", sessionKey });
   assert.equal(fromSessionKey?.name, "start_work_thread");
   const fromDelivery = tools[0].factory.create({ messageChannel: "slack", agentId: "liv", agentAccountId: "liv", sessionKey: "agent:liv:main", deliveryContext: { channel: "slack", to: "channel:C0BR94ZUU9Y" } });
@@ -237,7 +237,7 @@ test("resolves the newest Slack package and its hashed runtime chunk", () => {
   assert.throws(() => resolveSlackRuntimeModule("actions", { projectsDir: "/proj", list: () => [], stat: () => ({ mtimeMs: 0 }) }));
 });
 
-test("resolves Slack 2026.9.8 named exports through the stable runtime API", () => {
+test("resolves Slack 2026.11.2 named exports through the stable runtime API", () => {
   const dist = "/proj/openclaw-slack-current/node_modules/@openclaw/slack/dist";
   const options = {
     projectsDir: "/proj",

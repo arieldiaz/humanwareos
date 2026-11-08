@@ -1,4 +1,4 @@
-"""Read-only OpenClaw 2026.9.8 stores and legacy 2026.7.1 files.
+"""Read-only OpenClaw 2026.11.2 stores and legacy 2026.7.1 files.
 
 State root contains agents/. Canonical errors propagate; legacy fallback is
 allowed only when canonical sessions are absent (including the known 7.1 auth schema). No migration or repair is performed.
