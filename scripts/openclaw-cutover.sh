@@ -78,7 +78,7 @@ prepare() {
 activate() {
   [ "$#" -eq 2 ] || usage
   local prepared approval framework instance runtime transaction version data runtime_root current control instance_id
-  local report previous_runtime live_config config_rollback workspace_rollback candidate_bin active=1 previous_patch_set="" stock_needed=0
+  local report previous_runtime live_config config_rollback workspace_rollback candidate_bin candidate_config active=1 previous_patch_set="" stock_needed=0
   local cutover_started=0 package_installed=0 config_replaced=0 workspace_applied=0 runtime_switched=0
   prepared=$(CDPATH= cd -- "$(dirname "$1")" && pwd)/$(basename "$1")
   approval=$(CDPATH= cd -- "$(dirname "$2")" && pwd)/$(basename "$2")
@@ -100,19 +100,24 @@ activate() {
   config_rollback="$report/openclaw-before.json"
   workspace_rollback="$report/workspaces"
   candidate_bin="$transaction/staged/node_modules/openclaw/openclaw.mjs"
+  candidate_config="$runtime/config/openclaw/openclaw.json"
   [ -f "$candidate_bin" ] || { echo "Prepared OpenClaw candidate is missing: $candidate_bin" >&2; exit 1; }
+  [ -f "$candidate_config" ] || { echo "Prepared OpenClaw config is missing: $candidate_config" >&2; exit 1; }
+  candidate_gateway() {
+    OPENCLAW_CONFIG_PATH="$candidate_config" "$NODE_BIN" "$candidate_bin" gateway "$@"
+  }
   mkdir -p "$report"
   chmod 700 "$report"
 
   # Drain, then consume the approval, then stop: the suspension window is short,
   # so nothing slow may sit between the drain and the stop.
-  "$NODE_BIN" "$candidate_bin" gateway status --json > "$report/gateway-pre-suspend-status.json"
+  candidate_gateway status --json > "$report/gateway-pre-suspend-status.json"
   if $JQ -e '.service.loaded == false and .port.status == "free"' "$report/gateway-pre-suspend-status.json" >/dev/null; then
     active=0
-  elif "$NODE_BIN" "$candidate_bin" gateway suspend --wait 60 --expect-final --json > "$report/suspend.json" 2> "$report/suspend.err"; then
+  elif candidate_gateway suspend --wait 60 --expect-final --json > "$report/suspend.json" 2> "$report/suspend.err"; then
     active=0
   fi
-  trap '"$OPENCLAW_BIN" gateway resume --json >/dev/null 2>&1 || true' EXIT
+  trap 'candidate_gateway resume --json >/dev/null 2>&1 || true' EXIT
   "$framework/scripts/runtime-restart-guard.sh" consume "$control" "$approval" "$instance_id" "$active" "$report/restart-approval.json" > "$report/consumed-approval-path"
 
   previous_runtime=""
@@ -166,7 +171,7 @@ activate() {
   if [ "$active" -eq 0 ] && $JQ -e '.service.loaded == false and .port.status == "free"' "$report/gateway-pre-suspend-status.json" >/dev/null; then
     $JQ -n '{action:"stop",ok:true,result:"already-stopped",message:"Gateway service is not loaded and its port is free."}' > "$report/gateway-stop.json"
   else
-    "$NODE_BIN" "$candidate_bin" gateway stop --disable --force --json > "$report/gateway-stop.json"
+    candidate_gateway stop --disable --force --json > "$report/gateway-stop.json"
   fi
   /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" install --transaction "$transaction" --target "$PACKAGE_TARGET" $([ "$stock_needed" -eq 1 ] && echo --force)
   if $JQ -e '.replaced == true' "$transaction/installed.json" >/dev/null; then
