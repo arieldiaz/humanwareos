@@ -17,12 +17,15 @@ PACKAGE_TARGET=${OPENCLAW_PACKAGE_ROOT:-/opt/homebrew/lib/node_modules/openclaw}
 
 # Builds and cutover transactions are rebuildable. Keep the newest KEEP of each
 # plus whatever `current` points at, so a rollback target always survives.
+# A build the live OpenClaw config still references (its secret provider) also
+# survives: a prepared but unactivated cutover must not strand the gateway.
 prune() {
   [ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
-  local runtime_root=$1 data=$2 keep=${3:-3} current="" name
+  local runtime_root=$1 data=$2 keep=${3:-3} current="" name live_config="$HOME/.openclaw/openclaw.json"
   [ ! -L "$runtime_root/current" ] || current=$(basename "$(readlink "$runtime_root/current")")
   if [ -d "$runtime_root/runtime" ]; then
     ls -1 "$runtime_root/runtime" | grep -vx -- "$current" | sort -r | tail -n +"$((keep + 1))" | while IFS= read -r name; do
+      [ -f "$live_config" ] && grep -qF -- "$runtime_root/runtime/$name/" "$live_config" && continue
       rm -rf "$runtime_root/runtime/$name"
     done
   fi
