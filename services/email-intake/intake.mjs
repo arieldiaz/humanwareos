@@ -89,7 +89,7 @@ export class Intake {
           const details = () => effect.payload.failure ? 'The calendar invitation could not be recorded. Review is required in Slack; the diagnostic is retained privately.' : render(message, evidence, this.config.labels[message.recipient], effect.payload.receipt);
           if (effect.kind === 'intake_root') {
             // A short root; the details are the thread's first reply.
-            const confirmed = await this.post(effect, conversation, () => headline(message, evidence, effect.payload.receipt, this.config.timeZone));
+            const confirmed = await this.post(effect, conversation, () => headline(message, evidence, effect.payload.receipt));
             this.service.linkIntakeThread(effect.intakeId, effect.key, confirmed);
             conversation = repository.read(effect.intakeId);
             await this.post({key: `${effect.key}:details`, kind: 'intake_append'}, conversation, details);

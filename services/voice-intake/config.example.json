@@ -1,7 +1,6 @@
 {
   "agentId": "liv",
   "slackChannel": "inbox",
-  "timeZone": "America/New_York",
   "privateOrigin": "https://os.example.com",
   "audioPath": "/voice-intake/audio/",
   "capturePort": 8800,

@@ -7,7 +7,7 @@ Local trusted ingress for agent mailboxes. The service listens on `127.0.0.1:${E
 Instance config is read from `$EMAIL_INTAKE_CONFIG`, else `$HUMANWARE_RUNTIME_ROOT/config/services/email-intake/config.json`. `config.example.json` documents every key:
 
 - `routes` (address → owning agent id), `labels` (address → display label), `sessionRecipients` (addresses that may start owner sessions), `ownerMailbox` (the owner principal), `trustedMailboxes` (optional additional exact principals with the same session authority; default none), `calendarRecipients` (addresses using the deterministic calendar path; default none).
-- `maxBytes`, `subjectWindowMs`, `calendarUrl`, `timeZone` (IANA zone for the root post's receipt time, default `UTC`).
+- `maxBytes`, `subjectWindowMs`, `calendarUrl`.
 - `queue.accountId`, `queue.ingressId`, `queue.deadLetterId` (32-hex Cloudflare ids) and `queue.tokenSecretId` (secret id resolved through `ops/openclaw/runtime/secret-exec.sh` for Queues pull/ack). Required.
 - `tablePrefix` (SQLite evidence/delivery/fault table prefix, default `email_intake`) and `slackEventType` (Slack message metadata event type used for reconciliation, default `email_intake`). Keep these stable once data exists.
 
@@ -23,7 +23,7 @@ Owner intent is interpreted semantically by the normal configured agent session:
 
 Calendar recipients retain an independently authorized deterministic calendar path and never start an owner session. Session-recipient attachments never mutate calendars automatically. Nonowner mail creates a review root, never a work session.
 
-Each Slack root is one line, the subject (or calendar title) and local receipt time. Its first reply carries sender, label, outcome, and the UTC receipt.
+Each Slack root is only the subject (or calendar title); Slack already shows the time. Its first reply carries the ✉️ or 📅 kind, label, sender, outcome, and the UTC receipt.
 
 ## Dispatch and recovery
 

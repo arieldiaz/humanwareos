@@ -29,7 +29,7 @@ export function fixture({transcribe = async () => 'Remind me to book the vet for
   const intake = new VoiceIntake({
     store: new Store(join(root, 'captures.sqlite3')), slack, transcribe, guard, summarize,
     gateway: gateway ?? (async (method, params) => { calls.push([method, params]); return {runId: params.idempotencyKey, status: 'accepted'}; }),
-    config: {agentId: 'liv', privateOrigin: 'https://os.example.test', timeZone: 'America/New_York'},
+    config: {agentId: 'liv', privateOrigin: 'https://os.example.test'},
     evidenceRoot: join(root, 'evidence'), requestsDir: join(root, 'requests'), now: () => NOW, log: (entry) => logs.push(entry),
   });
   return {root, intake, posts, updates, calls, logs};

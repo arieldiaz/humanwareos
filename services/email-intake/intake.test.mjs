@@ -42,8 +42,8 @@ for (const recipient of Object.keys(config.routes)) test(`${recipient}: one root
   const s = setup(t);
   await s.intake.receive(event({recipient, promoted: true, lifecycle: 'done', receipt: {verified: true}, destination: 'CPROJECT'}));
   assert.equal(s.messages.length, 2); assert.equal(s.messages[0].user, config.routes[recipient] === 'max' ? 'UMAX' : 'ULIV');
-  assert.equal(s.messages[0].text, '✉️ Small request · Mon, Sep 21, 3:00 PM'); assert.equal(s.messages[1].thread_ts, s.messages[0].ts);
-  assert.match(s.messages[1].text, /Awaiting review in Slack/); assert.doesNotMatch(s.messages.map(m => m.text).join('\n'), /Start coding|#project|approved=true/);
+  assert.equal(s.messages[0].text, 'Small request'); assert.equal(s.messages[1].thread_ts, s.messages[0].ts);
+  assert.match(s.messages[1].text, /^✉️ Email · [^]*Awaiting review in Slack/); assert.doesNotMatch(s.messages.map(m => m.text).join('\n'), /Start coding|#project|approved=true/);
   s.restart(); await s.intake.receive(event({recipient, eventId: 'new-delivery', textBody: 'altered replay'}));
   assert.equal(s.messages.length, 2);
   const conv = s.store.repository.byMessageId(recipient, 'first@example.test');
@@ -70,7 +70,7 @@ test('verified calendar receipt deduplicates separate delivery and never writes 
   const s = setup(t, async () => ({ok: true, eventId: 'event-1', receipt: {verified: true, domain: 'calendar', operationId: 'operation-1', resourceId: 'event-1', outcome: 'recorded', verifiedAt: '2026-09-21T15:00:00Z'}, display: {title: 'Recital', when: 'October 14'}}));
   await s.intake.receive(event({recipient: 'kids@bot.example.test', calendarPayload: 'fixture'}));
   s.restart(); await s.intake.receive(event({recipient: 'kids@bot.example.test', eventId: 'two', messageId: '<second@example.test>', calendarPayload: 'fixture'}));
-  assert.equal(s.messages.length, 2); assert.match(s.messages[0].text, /^📅 Recital · /); assert.match(s.messages[1].text, /Calendar recorded; verified stored/);
+  assert.equal(s.messages.length, 2); assert.equal(s.messages[0].text, 'Recital'); assert.match(s.messages[1].text, /^📅 Calendar · [^]*Calendar recorded; verified stored/);
   assert.deepEqual([...new Set(s.calls.filter(c => c.method === 'reactions.add').map(c => c.args.name))], []);
 });
 test('invalid calendar produces safe failure reply and no success tile', async t => {
