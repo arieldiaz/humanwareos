@@ -98,5 +98,16 @@ test("a multi-line channel post splits into a one-line root and a threaded body"
   });
   assert.deepEqual(splitSlackChannelRoot("\n\n  Title only  \n\n"), null);
   assert.equal(splitSlackChannelRoot("One line"), null);
+  assert.equal(splitSlackChannelRoot("**Fix:** short and bold"), null);
   assert.equal(splitSlackChannelRoot(""), null);
+});
+
+test("a one-line paragraph root narrows to its bold title or first sentence", () => {
+  assert.deepEqual(splitSlackChannelRoot("**Passkeys rollout (Supabase Auth)** — from a voice capture. I'm opening a PR.\n\nMore."), {
+    title: "Passkeys rollout (Supabase Auth)",
+    body: "from a voice capture. I'm opening a PR.\n\nMore.",
+  });
+  const long = `Passkeys are next. ${"Detail ".repeat(30).trim()}.`;
+  assert.deepEqual(splitSlackChannelRoot(long), { title: "Passkeys are next.", body: `${"Detail ".repeat(30).trim()}.` });
+  assert.equal(splitSlackChannelRoot("A short root. With two sentences."), null);
 });
