@@ -134,10 +134,6 @@ export function deviceEmoji(model) {
 
 const escapeMrkdwn = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-export function formatWhen(iso, timeZone) {
-  return new Intl.DateTimeFormat('en-US', {timeZone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}).format(new Date(iso));
-}
-
 // Deterministic fallback when no local summarizer answers.
 export function gist(transcript, words = 10) {
   const parts = String(transcript).replace(/\s+/g, ' ').trim().split(' ');
@@ -153,17 +149,18 @@ export function trivialTranscript(transcript, minWords = 4) {
   return words.length < minWords || SILENCE_HALLUCINATIONS.has(words.join(' '));
 }
 
-export function rootText(row, timeZone) {
-  const where = row.location_label ? ` · ${row.location_label}` : '';
-  return escapeMrkdwn(`${deviceEmoji(row.device_model)} · ${formatWhen(row.captured_at, timeZone)}${where} · ${row.summary}`);
+// The root is only the title; Slack shows the time, and the first reply carries the details.
+export function rootText(row) {
+  return escapeMrkdwn(row.summary);
 }
 
 export function transcriptText(row, audioUrl) {
   const link = (row.kind === 'audio' ? `\n\n<${audioUrl}|🎧 Original audio>` : '\n\n_Dictated on device; no audio was recorded._')
     + (outdatedShortcut(row.shortcut_version) ? `\n_Shortcut ${versionLabel(row.shortcut_version)}, current is v${SHORTCUT_VERSION}_` : '');
+  const head = escapeMrkdwn(`${deviceEmoji(row.device_model)}${row.location_label ? ` · ${row.location_label}` : ''}`) + '\n\n';
   const body = escapeMrkdwn(row.transcript);
-  const room = SLACK_TEXT_LIMIT - link.length - 40;
-  return `${body.length > room ? `${body.slice(0, room)}… _(truncated; full text in the capture record)_` : body}${link}`;
+  const room = SLACK_TEXT_LIMIT - head.length - link.length - 40;
+  return `${head}${body.length > room ? `${body.slice(0, room)}… _(truncated; full text in the capture record)_` : body}${link}`;
 }
 
 const location = ({latitude, longitude, locationLabel}) => latitude == null && !locationLabel ? null : {latitude, longitude, label: locationLabel};
@@ -284,7 +281,7 @@ export class VoiceIntake {
         row = this.store.get(id);
       }
       if (row.state === 'transcribed') {
-        const root = await timed('rootMs', () => this.slack.post({captureId: id, part: 'root', since: row.received_at, text: rootText(row, this.config.timeZone)}));
+        const root = await timed('rootMs', () => this.slack.post({captureId: id, part: 'root', since: row.received_at, text: rootText(row)}));
         this.store.update(id, {state: 'rooted', channel_id: root.channelId, root_ts: root.ts});
         row = this.store.get(id);
         this.log({at: this.now().toISOString(), event: 'capture_rooted', captureId: id, ...timing, sinceReceivedMs: Date.now() - Date.parse(row.received_at)});
@@ -322,7 +319,7 @@ export class VoiceIntake {
     const work = (async () => {
       const summary = await this.summarize(row.transcript);
       if (!summary || summary === row.summary) return;
-      await this.slack.update({channelId: row.channel_id, ts: row.root_ts, text: rootText({...row, summary}, this.config.timeZone)});
+      await this.slack.update({channelId: row.channel_id, ts: row.root_ts, text: rootText({...row, summary})});
       this.store.update(row.id, {summary});
       this.log({at: this.now().toISOString(), event: 'capture_retitled', captureId: row.id, summaryMs: Date.now() - started});
     })().catch(error => this.log({at: this.now().toISOString(), event: 'retitle_failed', captureId: row.id, detail: String(error.message).slice(0, 200)}))

@@ -137,7 +137,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   const data = process.env.HUMANWARE_DATA_ROOT;
   if (!data) throw new Error('HUMANWARE_DATA_ROOT is required');
   const config = JSON.parse(readFileSync(process.env.VOICE_INTAKE_CONFIG ?? join(runtime, 'config/services/voice-intake/config.json')));
-  if (!config.agentId || !config.privateOrigin || !config.timeZone) throw new Error('voice-intake config requires agentId, privateOrigin, and timeZone');
+  if (!config.agentId || !config.privateOrigin) throw new Error('voice-intake config requires agentId and privateOrigin');
   const token = process.env.VOICE_INTAKE_SLACK_BOT_TOKEN;
   if (!token) throw new Error('voice_intake_slack_token_missing');
   // Optional owner token: root and transcript appear as the owner, never mentioning the agent.
