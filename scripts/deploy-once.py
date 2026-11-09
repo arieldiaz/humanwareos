@@ -123,18 +123,15 @@ def submit(framework, instance, approval, version=None, label=None):
 def schedule_wake(args, approval_id, report):
     prompt = (
         f'Verify Humanware cutover {approval_id} using {report}. '
-        'Read the cutover logs and active runtime manifest. Post one line to the channel stating success or the precise '
-        'failure, then put the evidence in the first reply in that thread, and answer NO_REPLY so nothing else is posted. '
-        'Do not start, retry, or restart anything. If the cutover is still running, schedule one new check 15 minutes later '
-        'to the same channel before ending.'
+        'Read the cutover logs and active runtime manifest. Your final answer is delivered into the requesting Slack '
+        'thread: lead with one line stating success or the precise failure, then the evidence. Do not post with the '
+        'message tool. Do not start, retry, or restart anything. If the cutover is still running, schedule one new '
+        f'check 15 minutes later to Slack thread {args.thread} in channel {args.channel} before ending.'
     )
     result = subprocess.run([
         OPENCLAW, 'automations', 'add', '--name', f'Cutover check {approval_id}', '--at', '30m',
         '--agent', args.agent, '--session', 'isolated', '--message', prompt, '--announce',
         '--channel', 'slack', '--account', args.agent, '--to', f'channel:{args.channel}',
-        # The CLI accepts only integer Telegram topic ids here; a Slack thread ts is
-        # kept in the approval provenance and the check posts to the channel.
-        *(['--thread-id', args.thread] if args.thread.isdigit() else []),
         '--delete-after-run', '--json',
     ], capture_output=True, text=True, check=True)
     payload = json.loads(result.stdout)
@@ -142,6 +139,14 @@ def schedule_wake(args, approval_id, report):
     job_id = job.get('id') if isinstance(job, dict) else None
     if not job_id:
         raise ValueError('durable cutover wake returned no job ID')
+    # The CLI's --thread-id takes only Telegram topic integers; the gateway accepts a Slack ts.
+    try:
+        subprocess.run([OPENCLAW, 'gateway', 'call', 'cron.update', '--json', '--params',
+                        json.dumps({'id': job_id, 'patch': {'delivery': {'threadId': args.thread}}})],
+                       capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        cancel_wake(job_id)
+        raise
     return job_id
 
 

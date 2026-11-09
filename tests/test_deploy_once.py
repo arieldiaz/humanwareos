@@ -84,12 +84,23 @@ class ApprovalTests(unittest.TestCase):
         completed = subprocess.CompletedProcess([], 0, '{"job":{"id":"wake-1"}}', '')
         with mock.patch.object(once.subprocess, 'run', return_value=completed) as run:
             self.assertEqual(once.schedule_wake(args, 'approval-1', '/reports/job'), 'wake-1')
-        command = run.call_args.args[0]
-        self.assertEqual(command[command.index('--agent') + 1], 'agent-a')
-        self.assertEqual(command[command.index('--to') + 1], 'channel:C1')
-        self.assertNotIn('--thread-id', command, 'a Slack ts is not a Telegram topic id')
-        self.assertEqual(command[command.index('--to') + 1], 'channel:C1')
-        self.assertIn('--delete-after-run', command)
+        add, update = (call.args[0] for call in run.call_args_list)
+        self.assertEqual(add[add.index('--agent') + 1], 'agent-a')
+        self.assertEqual(add[add.index('--to') + 1], 'channel:C1')
+        self.assertNotIn('--thread-id', add, 'a Slack ts is not a Telegram topic id')
+        self.assertIn('--delete-after-run', add)
+        self.assertEqual(update[:4], [once.OPENCLAW, 'gateway', 'call', 'cron.update'])
+        self.assertEqual(json.loads(update[update.index('--params') + 1]),
+                         {'id': 'wake-1', 'patch': {'delivery': {'threadId': '1.2'}}})
+
+    def test_wake_is_cancelled_when_thread_cannot_be_set(self):
+        args = SimpleNamespace(agent='agent-a', channel='C1', thread='1.2')
+        added = subprocess.CompletedProcess([], 0, '{"job":{"id":"wake-1"}}', '')
+        with mock.patch.object(once.subprocess, 'run',
+                               side_effect=[added, subprocess.CalledProcessError(1, 'call'), added]) as run:
+            with self.assertRaises(subprocess.CalledProcessError):
+                once.schedule_wake(args, 'approval-1', '/reports/job')
+        self.assertEqual(run.call_args.args[0][:4], [once.OPENCLAW, 'automations', 'rm', 'wake-1'])
 
     def test_launch_removes_approval_and_wake_when_handoff_fails(self):
         with tempfile.TemporaryDirectory() as directory:
