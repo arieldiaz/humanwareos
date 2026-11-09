@@ -41,10 +41,11 @@ function setup(t, calendar = async () => ({ok: true, status: 'pending_agent_revi
 for (const recipient of Object.keys(config.routes)) test(`${recipient}: one root, persistent replay, correct owner, no authority`, async t => {
   const s = setup(t);
   await s.intake.receive(event({recipient, promoted: true, lifecycle: 'done', receipt: {verified: true}, destination: 'CPROJECT'}));
-  assert.equal(s.messages.length, 1); assert.equal(s.messages[0].user, config.routes[recipient] === 'max' ? 'UMAX' : 'ULIV');
-  assert.match(s.messages[0].text, /Awaiting review in Slack/); assert.doesNotMatch(s.messages[0].text, /Start coding|#project|approved=true/);
+  assert.equal(s.messages.length, 2); assert.equal(s.messages[0].user, config.routes[recipient] === 'max' ? 'UMAX' : 'ULIV');
+  assert.equal(s.messages[0].text, '✉️ Small request · Mon, Sep 21, 3:00 PM'); assert.equal(s.messages[1].thread_ts, s.messages[0].ts);
+  assert.match(s.messages[1].text, /Awaiting review in Slack/); assert.doesNotMatch(s.messages.map(m => m.text).join('\n'), /Start coding|#project|approved=true/);
   s.restart(); await s.intake.receive(event({recipient, eventId: 'new-delivery', textBody: 'altered replay'}));
-  assert.equal(s.messages.length, 1);
+  assert.equal(s.messages.length, 2);
   const conv = s.store.repository.byMessageId(recipient, 'first@example.test');
   assert.equal(conv.state, 'awaiting_promotion'); assert.equal(conv.promotion, null);
   assert.equal(s.store.repository.pendingEffects().length, 0);
@@ -53,12 +54,12 @@ for (const recipient of Object.keys(config.routes)) test(`${recipient}: one root
 test('references append to original intake root and preserve state', async t => {
   const s = setup(t); await s.intake.receive(event());
   await s.intake.receive(event({eventId: 'reply', messageId: '<reply@example.test>', references: ['<first@example.test>'], subject: 'Changed subject'}));
-  assert.equal(s.messages.length, 2); assert.equal(s.messages[1].thread_ts, s.messages[0].ts);
+  assert.equal(s.messages.length, 3); assert.equal(s.messages[2].thread_ts, s.messages[0].ts);
 });
 test('lost response reconciles after restart without a second post', async t => {
   const s = setup(t); s.loseResponse(); await assert.rejects(s.intake.receive(event()), /delivery_pending/);
   assert.equal(s.messages.length, 1); s.restart(); await s.intake.receive(event());
-  assert.equal(s.messages.length, 1); assert.equal(s.intake.health().faults, 0);
+  assert.equal(s.messages.length, 2); assert.equal(s.messages.filter(m => !m.thread_ts).length, 1); assert.equal(s.intake.health().faults, 0);
 });
 test('unknown send outcome blocks blind resend and reports one durable fault', async t => {
   const s = setup(t); s.offline(); await assert.rejects(s.intake.receive(event()));
@@ -69,12 +70,12 @@ test('verified calendar receipt deduplicates separate delivery and never writes 
   const s = setup(t, async () => ({ok: true, eventId: 'event-1', receipt: {verified: true, domain: 'calendar', operationId: 'operation-1', resourceId: 'event-1', outcome: 'recorded', verifiedAt: '2026-09-21T15:00:00Z'}, display: {title: 'Recital', when: 'October 14'}}));
   await s.intake.receive(event({recipient: 'kids@bot.example.test', calendarPayload: 'fixture'}));
   s.restart(); await s.intake.receive(event({recipient: 'kids@bot.example.test', eventId: 'two', messageId: '<second@example.test>', calendarPayload: 'fixture'}));
-  assert.equal(s.messages.length, 1); assert.match(s.messages[0].text, /Calendar recorded; verified stored/);
+  assert.equal(s.messages.length, 2); assert.match(s.messages[0].text, /^📅 Recital · /); assert.match(s.messages[1].text, /Calendar recorded; verified stored/);
   assert.deepEqual([...new Set(s.calls.filter(c => c.method === 'reactions.add').map(c => c.args.name))], []);
 });
 test('invalid calendar produces safe failure reply and no success tile', async t => {
   const s = setup(t, async () => ({status: 'rejected'})); await s.intake.receive(event({recipient: 'kids@bot.example.test', calendarPayload: 'bad'}));
-  assert.equal(s.messages.length, 2); assert.match(s.messages[1].text, /could not be recorded/);
+  assert.equal(s.messages.length, 3); assert.match(s.messages[2].text, /could not be recorded/);
   assert.equal(s.calls.some(c => c.args.name === 'white_check_mark'), false);
 });
 test('size/recipient validation precedes domain calls; automatic messages never dispatch', async t => {
@@ -92,7 +93,7 @@ test('HTTP authentication and promotion boundary reject forged email authority',
   assert.equal((await fetch(url+'/inbound/email', {method: 'POST', body: JSON.stringify(event())})).status, 401);
   assert.equal((await fetch(url+'/promote', {method: 'POST', headers: {'x-email-intake-secret': 'fixture-secret'}, body: JSON.stringify({trustedHuman: true, actorId: 'Owner'})})).status, 403);
   assert.equal((await fetch(url+'/inbound/email', {method: 'POST', headers: {'x-email-intake-secret': 'fixture-secret'}, body: JSON.stringify(event())})).status, 200);
-  assert.equal((await fetch(url+'/health')).status, 200); assert.equal(s.messages.length, 1);
+  assert.equal((await fetch(url+'/health')).status, 200); assert.equal(s.messages.length, 2);
 });
 test('dead letters expose one bounded persisted fault', async t => {
   const s = setup(t); await s.intake.deadLetter(event()); s.restart(); await s.intake.deadLetter(event());

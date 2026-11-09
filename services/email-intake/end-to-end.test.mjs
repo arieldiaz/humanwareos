@@ -44,18 +44,18 @@ async function deliver({recipient = 'max@bot.example.test', subject = 'Hello', t
 }
 const ics = (method = 'REQUEST', seq = 0) => ['BEGIN:VCALENDAR', `METHOD:${method}`, 'BEGIN:VEVENT', 'UID:fixture@example.test', `SEQUENCE:${seq}`, 'ORGANIZER:mailto:sender@example.test', 'DTSTART:20261014T220000Z', 'DTEND:20261014T230000Z', 'SUMMARY:Recital', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
 test('Worker → outbound pull → SQLite → ordinary root and correlated reply', async () => {
-  const id = await deliver(); assert.equal(sent.length, 1);
+  const id = await deliver(); assert.equal(sent.length, 2);
   assert.equal(sent[0].conversation.owner, 'max'); assert.equal(sent[0].conversation.promotion, null);
   await deliver({references: id, subject: 'Re: Hello'});
-  assert.equal(sent.length, 2); assert.equal(sent[1].effect.kind, 'intake_append');
-  assert.equal(sent[1].conversation.intakeThread.threadTs, '1');
+  assert.equal(sent.length, 3); assert.equal(sent[2].effect.kind, 'intake_append');
+  assert.equal(sent[2].conversation.intakeThread.threadTs, '1');
 });
 test('Worker calendar REQUEST, new Message-ID duplicate, CANCEL, and invalid invitation', async () => {
   const before = sent.length;
   await deliver({recipient: 'kids@bot.example.test', calendarPayload: ics(), subject: 'Recital'});
-  assert.equal(sent.length, before+1); assert.equal(statuses.length, 0);
+  assert.equal(sent.length, before+2); assert.equal(statuses.length, 0);
   await deliver({recipient: 'kids@bot.example.test', calendarPayload: ics(), subject: 'Forwarded Recital'});
-  assert.equal(sent.length, before+1);
+  assert.equal(sent.length, before+2);
   let events = await tool('calendar_list_events', {calendarId: calendar.id, from: '2026-01-01', to: '2027-01-01', includeCancelled: true});
   assert.equal(events.length, 1); assert.equal(events[0].revision, 1);
   await deliver({recipient: 'kids@bot.example.test', calendarPayload: ics('CANCEL', 1), subject: 'Cancelled recital'});

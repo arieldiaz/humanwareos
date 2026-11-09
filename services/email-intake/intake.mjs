@@ -1,6 +1,6 @@
 import {EmailIntakeService, normalizeMessage, digest} from './framework.mjs';
 import {authenticateMail} from './authenticate.mjs';
-import {render} from './render.mjs';
+import {headline, render} from './render.mjs';
 
 export function normalizeEvent(event, config = {}) {
   // Mail from any of our own routed domains is a loop, never a new request.
@@ -84,24 +84,17 @@ export class Intake {
           continue;
         }
         {
-          let delivery = this.store.delivery(effect.key);
-          let confirmed = delivery?.result;
-          if (!confirmed && delivery) {
-            confirmed = await this.slack.find(effect, conversation, delivery.started_at);
-            // Never blindly repeat an uncertain publication, even after restart.
-            if (!confirmed) throw new Error('ambiguous_slack_delivery');
-          }
-          if (!confirmed) {
-            const {message} = repository.message(effect.payload.messageKey);
-            const evidence = this.store.evidence(message.key);
-            const text = effect.payload.failure ? 'The calendar invitation could not be recorded. Review is required in Slack; the diagnostic is retained privately.' : render(message, evidence, this.config.labels[message.recipient], effect.payload.receipt);
-            this.store.start(effect.key);
-            confirmed = await this.slack.send(effect, conversation, text);
-          }
-          this.store.confirmed(effect.key, confirmed);
+          const {message} = repository.message(effect.payload.messageKey);
+          const evidence = this.store.evidence(message.key);
+          const details = () => effect.payload.failure ? 'The calendar invitation could not be recorded. Review is required in Slack; the diagnostic is retained privately.' : render(message, evidence, this.config.labels[message.recipient], effect.payload.receipt);
           if (effect.kind === 'intake_root') {
+            // A short root; the details are the thread's first reply.
+            const confirmed = await this.post(effect, conversation, () => headline(message, evidence, effect.payload.receipt, this.config.timeZone));
             this.service.linkIntakeThread(effect.intakeId, effect.key, confirmed);
             conversation = repository.read(effect.intakeId);
+            await this.post({key: `${effect.key}:details`, kind: 'intake_append'}, conversation, details);
+          } else {
+            await this.post(effect, conversation, details);
           }
         }
         repository.acknowledgeEffect(effect.key, {delivered: true});
@@ -113,6 +106,21 @@ export class Intake {
         // Other conversations can progress; this conversation waits for its root.
       }
     }
+  }
+  async post(effect, conversation, text) {
+    const delivery = this.store.delivery(effect.key);
+    let confirmed = delivery?.result;
+    if (!confirmed && delivery) {
+      confirmed = await this.slack.find(effect, conversation, delivery.started_at);
+      // Never blindly repeat an uncertain publication, even after restart.
+      if (!confirmed) throw new Error('ambiguous_slack_delivery');
+    }
+    if (!confirmed) {
+      this.store.start(effect.key);
+      confirmed = await this.slack.send(effect, conversation, text());
+    }
+    this.store.confirmed(effect.key, confirmed);
+    return confirmed;
   }
   deadLetter(event) { return this.exclusive(async () => {
     const message = normalizeEvent(event, this.config);
