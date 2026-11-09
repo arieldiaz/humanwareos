@@ -11,6 +11,12 @@ test('real crypto/DNS-key verification authenticates exact owner and reparses si
   assert.equal(result.event.sender, config.ownerMailbox); assert.match(result.event.textBody, /Investigate only/);
   assert.doesNotMatch(result.event.textBody, /forged JSON/);
 });
+test('a configured trusted mailbox authenticates as itself; unlisted senders still do not', async () => {
+  const raw = await signedMail({sender: 'partner@example.test'});
+  const trusted = await authenticateMail(event(raw), {...config, trustedMailboxes: ['partner@example.test']}, {verify, now: now.getTime()});
+  assert.equal(trusted.authentication?.principal, 'partner@example.test');
+  assert.equal((await auth(raw)).authentication, null);
+});
 test('spoofed From, forged authentication headers, missing and failed authentication do not authorize', async () => {
   const raw = await signedMail();
   for (const message of [raw.replace('Investigate only', 'Implement now'), raw.slice(raw.indexOf('From:')), `Authentication-Results: mx.cloudflare.net; dkim=pass header.d=example.test; dmarc=pass\r\n${raw.slice(raw.indexOf('From:'))}`]) {
