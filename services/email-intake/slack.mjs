@@ -1,7 +1,7 @@
 import {framework, digest} from './framework.mjs';
 const {slackApi} = await framework('ops/openclaw/plugins/run-signature/index.js');
 
-async function boundedCall(method, token, args) {
+export async function boundedCall(method, token, args) {
   let timer;
   try {
     return await Promise.race([slackApi(method, token, args), new Promise((_, reject) => {

@@ -7,7 +7,7 @@ export class Store {
   constructor(path, {tablePrefix} = {}) {
     const prefix = tablePrefix ?? 'email_intake';
     if (!/^[a-z][a-z0-9_]{0,40}$/.test(prefix)) throw new Error('invalid_table_prefix');
-    this.tables = {evidence: `${prefix}_evidence`, delivery: `${prefix}_delivery`, faults: `${prefix}_faults`};
+    this.tables = {evidence: `${prefix}_evidence`, delivery: `${prefix}_delivery`, faults: `${prefix}_faults`, outbound: `${prefix}_outbound`};
     mkdirSync(dirname(path), {recursive: true, mode: 0o700});
     this.repository = new SQLiteIntakeRepository(path);
     chmodSync(path, 0o600);
@@ -15,7 +15,22 @@ export class Store {
     this.db.exec(`PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS ${this.tables.evidence} (key TEXT PRIMARY KEY, value TEXT NOT NULL, domain_result TEXT);
       CREATE TABLE IF NOT EXISTS ${this.tables.delivery} (key TEXT PRIMARY KEY, started_at TEXT NOT NULL, result TEXT);
-      CREATE TABLE IF NOT EXISTS ${this.tables.faults} (key TEXT PRIMARY KEY, code TEXT NOT NULL, created_at TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS ${this.tables.faults} (key TEXT PRIMARY KEY, code TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS ${this.tables.outbound} (id TEXT PRIMARY KEY, status TEXT NOT NULL, draft TEXT NOT NULL, approval TEXT, result TEXT, updated_at TEXT NOT NULL);`);
+  }
+  // Outbound mail record: draft, approval, then sending → sent | rejected. Rows are never deleted.
+  outbound(id) {
+    const row = this.db.prepare(`SELECT * FROM ${this.tables.outbound} WHERE id=?`).get(id);
+    return row ? {id: row.id, status: row.status, draft: JSON.parse(row.draft), approval: row.approval ? JSON.parse(row.approval) : null, result: row.result ? JSON.parse(row.result) : null} : null;
+  }
+  addOutbound(draft, status, approval = null) {
+    this.db.prepare(`INSERT INTO ${this.tables.outbound} VALUES (?, ?, ?, ?, NULL, ?)`).run(draft.id, status, JSON.stringify(draft), approval && JSON.stringify(approval), new Date().toISOString());
+  }
+  // Compare-and-set so two concurrent callers cannot both claim one send.
+  transitionOutbound(id, from, to, fields = {}) {
+    const columns = Object.keys(fields).filter((key) => ['approval', 'result'].includes(key));
+    return this.db.prepare(`UPDATE ${this.tables.outbound} SET status=?, updated_at=?${columns.map((key) => `, ${key}=?`).join('')} WHERE id=? AND status=?`)
+      .run(to, new Date().toISOString(), ...columns.map((key) => JSON.stringify(fields[key])), id, from).changes === 1;
   }
   evidence(key, value) {
     if (value) this.db.prepare(`INSERT OR IGNORE INTO ${this.tables.evidence} VALUES (?, ?, NULL)`).run(key, JSON.stringify(value));

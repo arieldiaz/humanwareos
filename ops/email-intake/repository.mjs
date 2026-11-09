@@ -93,6 +93,16 @@ export class SQLiteIntakeRepository {
     return row ? this.read(row.intake_id) : null;
   }
 
+  byIntakeThread(channelId, threadTs) {
+    const row = this.#db.prepare("SELECT value FROM email_intake_conversations WHERE json_extract(value, '$.intakeThread.channelId')=? AND json_extract(value, '$.intakeThread.threadTs')=?").get(channelId, threadTs);
+    return row ? JSON.parse(row.value) : null;
+  }
+
+  latestMessage(intakeId) {
+    const row = this.#db.prepare("SELECT value FROM email_intake_messages WHERE intake_id=? ORDER BY json_extract(value, '$.receivedAt') DESC, rowid DESC LIMIT 1").get(intakeId);
+    return row ? JSON.parse(row.value) : null;
+  }
+
   bySubject(message, windowMs) {
     if (!message.subjectKey) return [];
     return this.#db.prepare("SELECT value FROM email_intake_conversations WHERE recipient=? AND sender=? AND subject_key=? AND last_received_at BETWEEN ? AND ? ORDER BY id").all(
