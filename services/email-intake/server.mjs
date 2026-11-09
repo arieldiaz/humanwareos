@@ -73,14 +73,19 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   const server = http.createServer({requestTimeout: 30000}, handler(intake, secret, transport));
   // Bind before any dispatcher starts: a second supervised instance cannot send.
   server.listen(Number(process.env.EMAIL_INTAKE_PORT ?? 8795), '127.0.0.1', () => {
-    let running = null, stopping = false;
+    let running = null, stopping = false, failure = null;
     const tick = () => {
       if (running || stopping) return;
       running = (async () => {
         try {
           await intake.exclusive(async () => { await intake.verify(); await intake.drain(); });
           await transport.tick();
-        } catch { intake.ready = false; }
+          failure = null;
+        } catch (error) {
+          // Log each new bounded code once; a silent stall looks like an empty inbox.
+          if (failure !== error.message) console.error(JSON.stringify({event: 'email_intake_tick_failed', code: String(error.message).slice(0, 80)}));
+          failure = error.message; intake.ready = false;
+        }
       })().finally(() => { running = null; });
     };
     tick();

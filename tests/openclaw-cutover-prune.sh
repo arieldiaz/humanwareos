@@ -14,13 +14,15 @@ for i in 1 2 3 4 5 6; do
 done
 mkdir -p "$DATA/operations/cutovers/unrelated"
 ln -s "$RUNTIME_ROOT/runtime/20261002T000000Z-build" "$RUNTIME_ROOT/current"
+mkdir -p "$TEST_ROOT/home/.openclaw"
+printf '{"secrets":{"providers":{"p":{"command":"%s/runtime/20261001T000000Z-build/framework/ops/openclaw/runtime/secret-exec.sh"}}}}\n' "$RUNTIME_ROOT" > "$TEST_ROOT/home/.openclaw/openclaw.json"
 printf '{}\n' > "$PENDING/fresh.json"
 printf '{}\n' > "$PENDING/expired.json"
 touch -t 202601010000 "$PENDING/expired.json"
 
-"$CUTOVER" prune "$RUNTIME_ROOT" "$DATA" 3
+HOME="$TEST_ROOT/home" "$CUTOVER" prune "$RUNTIME_ROOT" "$DATA" 3
 
-test "$(ls "$RUNTIME_ROOT/runtime" | sort | tr '\n' ' ')" = "20261002T000000Z-build 20261004T000000Z-build 20261005T000000Z-build 20261006T000000Z-build "
+test "$(ls "$RUNTIME_ROOT/runtime" | sort | tr '\n' ' ')" = "20261001T000000Z-build 20261002T000000Z-build 20261004T000000Z-build 20261005T000000Z-build 20261006T000000Z-build "
 test "$(ls "$DATA/operations/cutovers" | sort | tr '\n' ' ')" = "openclaw-20261004T000000Z-build openclaw-20261005T000000Z-build openclaw-20261006T000000Z-build unrelated "
 test -f "$PENDING/fresh.json"
 test ! -e "$PENDING/expired.json"
