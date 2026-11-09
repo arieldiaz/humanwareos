@@ -381,15 +381,24 @@ export function markdownToSlackRichTextBlocks(markdown, options = {}) {
 
 export default markdownToSlackRichTextBlocks;
 
+const ROOT_MAX = 120;
+
 /**
- * A channel root is one line. Split a multi-line channel post into the title
- * line and the body that belongs in its thread; null when it is already one line.
+ * A channel root is one brief line. Split a channel post into that title and
+ * the body that belongs in its thread: the first line, narrowed to a leading
+ * bold title ("**Title** — rest") or, when still long, its first sentence.
+ * Null when the post is already one brief line.
  */
 export function splitSlackChannelRoot(markdown) {
   const lines = String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n");
   const first = lines.findIndex((line) => line.trim());
   if (first < 0) return null;
-  const body = lines.slice(first + 1).join("\n").trim();
+  let title = lines[first].trim(), lead = "";
+  const bold = /^\*\*([^*]+)\*\*\s*(?:—|–|-|:|\.)\s+(\S.*)$/.exec(title);
+  const sentence = title.length > ROOT_MAX && /^(.{10,120}?[.!?])\s+(\S.*)$/.exec(title);
+  if (bold) [, title, lead] = bold;
+  else if (sentence) [, title, lead] = sentence;
+  const body = [lead, lines.slice(first + 1).join("\n").trim()].filter(Boolean).join("\n\n");
   if (!body) return null;
-  return { title: lines[first].trim(), body };
+  return { title, body };
 }

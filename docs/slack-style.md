@@ -14,7 +14,7 @@ Verify authored output against delivered Slack blocks: a bold label authored by 
 
 ## Channel posts
 
-A top-level post in any channel is one line. Details, reports, lists and links go in the first reply in that post's thread, never in the root. The adapter enforces this shape: a multi-line channel post lands as its first line at the root and the rest as the first reply in that thread.
+A top-level post in any channel is one line. Details, reports, lists and links go in the first reply in that post's thread, never in the root. The adapter enforces this shape: a channel post lands as its first line at the root, narrowed to a leading bold title or, past 120 characters, its first sentence, and the rest as the first reply in that thread.
 
 ## Work threads
 
