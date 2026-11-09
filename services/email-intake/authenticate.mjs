@@ -25,7 +25,8 @@ export async function authenticateMail(event, config, {verify = dkimVerify, now 
   const calendar = attachments.find(a => a.mimeType === 'text/calendar' || a.name.toLowerCase().endsWith('.ics'));
   normalized.calendarPayload = calendar ? Buffer.from(calendar.content, 'base64').toString('utf8') : normalized.textBody.includes('BEGIN:VCALENDAR') ? normalized.textBody : null;
   const denied = {event: normalized, authentication: null, attachments};
-  if (sender !== config.ownerMailbox || !config.sessionRecipients.includes(event.recipient)) return denied;
+  // trustedMailboxes are additional exact principals with the owner's session authority.
+  if (![config.ownerMailbox, ...(config.trustedMailboxes ?? [])].includes(sender) || !config.sessionRecipients.includes(event.recipient)) return denied;
   const singleton = ['from', 'to', 'cc', 'subject', 'date', 'message-id', 'content-type', 'mime-version', 'references', 'in-reply-to', 'auto-submitted', 'precedence'];
   if (singleton.some(key => get(key).length > 1) || !['from', 'to', 'subject', 'date', 'message-id'].every(key => get(key).length === 1)) return denied;
   const destinations = [...(parsed.to ?? []), ...(parsed.cc ?? [])].map(a => a.address?.toLowerCase());
@@ -36,8 +37,8 @@ export async function authenticateMail(event, config, {verify = dkimVerify, now 
   try { verified = await verify(raw); } catch { throw new Error('sender_verification_unavailable'); }
   // DNS outages are retryable, not a permanent unauthenticated classification.
   if (verified.results?.some(r => r.status?.result === 'temperror')) throw new Error('sender_verification_unavailable');
-  if (verified.headerFrom?.length !== 1 || verified.headerFrom[0].toLowerCase() !== config.ownerMailbox) return denied;
-  const domain = config.ownerMailbox.split('@')[1];
+  if (verified.headerFrom?.length !== 1 || verified.headerFrom[0].toLowerCase() !== sender) return denied;
+  const domain = sender.split('@')[1];
   const required = singleton.filter(key => get(key).length);
   const signature = verified.results?.find(r => {
     const signed = (r.signingHeaders?.keys ?? '').toLowerCase().split(':').map(s => s.trim());
