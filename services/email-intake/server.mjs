@@ -1,6 +1,6 @@
 import http from 'node:http';
 import {execFileSync} from 'node:child_process';
-import {QueueConsumer} from './queue.mjs';
+import {QueueConsumer, RawObjects} from './queue.mjs';
 import {timingSafeEqual} from 'node:crypto';
 import {readFileSync, realpathSync} from 'node:fs';
 import {join} from 'node:path';
@@ -52,23 +52,24 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   const channel = JSON.parse(readFileSync(join(runtime, 'config/channels/slack.json'))).registry.inbox;
   const secret = process.env.EMAIL_INTAKE_SECRET;
   if (!secret || !process.env.CALENDAR_INGEST_SECRET) throw new Error('intake_credentials_missing');
-  const tokenSecretId = config.queue?.tokenSecretId;
-  if (!tokenSecretId) throw new Error('email-intake config.queue.tokenSecretId is required');
+  const tokenSecretId = config.queue?.tokenSecretId, rawSecretId = config.raw?.tokenSecretId;
+  if (!tokenSecretId || !rawSecretId) throw new Error('email-intake config.queue.tokenSecretId and config.raw.tokenSecretId are required');
   const store = new Store(join(stateDir, 'intake.sqlite3'), {tablePrefix: config.tablePrefix});
   // One Slack bot per routed owner; tokens come from <OWNER>_SLACK_BOT_TOKEN.
   const tokens = Object.fromEntries(ownersOf(config).map(owner => [owner, process.env[`${owner.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_SLACK_BOT_TOKEN`]]));
   const slack = new SlackAdapter({channel, tokens, eventType: config.slackEventType});
-  const intake = new Intake({store, config, channel, slack, sessions: new SessionAdapter({store, directory: join(stateDir, 'requests')}), calendar: calendarClient({url: config.calendarUrl, secret: process.env.CALENDAR_INGEST_SECRET})});
   // Protected provider output is captured in-process, never shell interpolation,
-  // argv, a file, or diagnostics. Reuse the existing Cloudflare credential.
-  let token;
+  // argv, a file, or diagnostics.
+  let values;
   try {
-    const result = JSON.parse(execFileSync(join(runtime, 'framework/ops/openclaw/runtime/secret-exec.sh'), [], {
-      input: JSON.stringify({protocolVersion: 1, provider: 'email-intake', ids: [tokenSecretId]}),
+    values = JSON.parse(execFileSync(join(runtime, 'framework/ops/openclaw/runtime/secret-exec.sh'), [], {
+      input: JSON.stringify({protocolVersion: 1, provider: 'email-intake', ids: [tokenSecretId, rawSecretId]}),
       encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 30000
-    }));
-    token = result.values?.[tokenSecretId];
-  } catch { throw new Error('queue_credential_unavailable'); }
+    })).values ?? {};
+  } catch { throw new Error('cloudflare_credential_unavailable'); }
+  const token = values[tokenSecretId];
+  const objects = new RawObjects({accountId: config.queue.accountId, bucket: config.raw.bucket, token: values[rawSecretId]});
+  const intake = new Intake({store, config, channel, slack, objects, sessions: new SessionAdapter({store, directory: join(stateDir, 'requests')}), calendar: calendarClient({url: config.calendarUrl, secret: process.env.CALENDAR_INGEST_SECRET})});
   const transport = new QueueConsumer({config: config.queue, token, intake, directory: join(stateDir, 'dead-letter')});
   const server = http.createServer({requestTimeout: 30000}, handler(intake, secret, transport));
   // Bind before any dispatcher starts: a second supervised instance cannot send.

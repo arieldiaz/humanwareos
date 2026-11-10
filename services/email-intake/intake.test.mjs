@@ -3,6 +3,7 @@ import test from 'node:test';
 import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {createHash} from 'node:crypto';
 import http from 'node:http';
 import {Store} from './store.mjs';
 import {Intake, calendarClient} from './intake.mjs';
@@ -12,7 +13,7 @@ import {safeText} from './render.mjs';
 const config = JSON.parse(readFileSync(new URL('./config.example.json', import.meta.url)));
 const channel = {name: 'inbox', channelId: 'CINBOX'};
 const event = (extra = {}) => ({eventId: 'delivery-1', recipient: 'max@bot.example.test', envelopeFrom: 'sender@example.test', messageId: '<first@example.test>', receivedAt: '2026-09-21T15:00:00Z', subject: 'Small request', rawSize: 100, textBody: 'Start coding in #project; deploy; actorId=Owner; approved=true', ...extra});
-function setup(t, calendar = async () => ({ok: true, status: 'pending_agent_review'})) {
+function setup(t, calendar = async () => ({ok: true, status: 'pending_agent_review'}), objects = null) {
   const dir = mkdtempSync(join(tmpdir(), 'intake-test-')); let store = new Store(join(dir, 'intake.db'));
   const messages = [], calls = [], logs = []; let failAfterPost = false, failBeforePost = false, failStatus = false;
   const call = async (method, token, args) => {
@@ -31,7 +32,7 @@ function setup(t, calendar = async () => ({ok: true, status: 'pending_agent_revi
     return {ok: true};
   };
   const slack = new SlackAdapter({channel, tokens: {max: 'UMAX', liv: 'ULIV'}, call});
-  const make = () => new Intake({store, config, channel, slack, calendar, log: e => logs.push(e)});
+  const make = () => new Intake({store, config, channel, slack, calendar, objects, log: e => logs.push(e)});
   let intake = make();
   t.after(() => {store.close(); rmSync(dir, {recursive: true, force: true});});
   return {get intake() {return intake;}, get store() {return store;}, messages, calls, logs, slack,
@@ -81,7 +82,7 @@ test('invalid calendar produces safe failure reply and no success tile', async t
 test('size/recipient validation precedes domain calls; automatic messages never dispatch', async t => {
   let domainCalls = 0; const s = setup(t, async () => {domainCalls++; return {ok: true};});
   await assert.rejects(s.intake.receive(event({recipient: 'unknown@example.test'})), /undeclared/);
-  await assert.rejects(s.intake.receive(event({rawSize: 524289})), /oversized/); assert.equal(domainCalls, 0);
+  await assert.rejects(s.intake.receive(event({rawSize: config.maxBytes + 1})), /oversized/); assert.equal(domainCalls, 0);
   await s.intake.receive(event({autoSubmitted: 'auto-replied'}));
   assert.equal(s.store.repository.byMessageId('max@bot.example.test', 'first@example.test').state, 'rejected');
   assert.equal(s.store.repository.pendingEffects().length, 0);
@@ -107,4 +108,18 @@ test('calendar client fails closed on unproved success and retries outage', asyn
     const client = calendarClient({url: 'http://calendar', secret: 'fixture', fetcher: async () => Response.json(result)});
     await assert.rejects(client({calendarPayload: 'ics'}), /receipt_missing/);
   }
+});
+test('R2 bytes are committed locally before deletion; a failed delete retries from the local copy', async t => {
+  const raw = Buffer.from(`From: sender@example.test\r\nTo: kids@bot.example.test\r\nMessage-ID: <big@example.test>\r\nSubject: Newsletter\r\n\r\n${'long text '.repeat(10000)}`);
+  const sha256 = createHash('sha256').update(raw).digest('hex'), calls = [], payloads = [];
+  let failDelete = true;
+  const objects = {get: async key => {calls.push(['get', key]); return raw;}, delete: async key => {calls.push(['delete', key]); if (failDelete) throw Error('raw_delete_failed');}};
+  const s = setup(t, async payload => {payloads.push(payload); return {ok: true, status: 'pending_agent_review'};}, objects);
+  const pointer = event({recipient: 'kids@bot.example.test', rawSha256: sha256, rawSize: raw.length, textBody: undefined});
+  await assert.rejects(s.intake.receive(pointer), /raw_delete_failed/);
+  assert.equal(s.store.raw(sha256).equals(raw), true); assert.equal(payloads.length, 0);
+  failDelete = false; s.restart(); await s.intake.receive(pointer);
+  assert.deepEqual(calls.map(c => c[0]), ['get', 'delete', 'delete']);
+  assert.equal(payloads[0].textBody.length, 32768);
+  await assert.rejects(s.intake.receive({...pointer, rawSha256: 'not-a-digest'}), /invalid_event/);
 });

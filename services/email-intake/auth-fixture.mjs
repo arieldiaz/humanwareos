@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {generateKeyPairSync} from 'node:crypto';
 import {dkimSign} from 'mailauth/lib/dkim/sign.js';
 import {dkimVerify} from 'mailauth/lib/dkim/verify.js';
-export const config = {ownerMailbox: 'owner@example.test', sessionRecipients: ['liv@bot.example.test', 'max@bot.example.test'], maxBytes: 65536};
+export const config = {ownerMailbox: 'owner@example.test', sessionRecipients: ['liv@bot.example.test', 'max@bot.example.test'], maxBytes: 26214400};
 export const now = new Date('2026-09-24T12:00:00Z');
 const keys = generateKeyPairSync('rsa', {modulusLength: 2048});
 export const publicKey = keys.publicKey.export({type: 'spki', format: 'der'}).toString('base64');

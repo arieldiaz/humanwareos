@@ -12,6 +12,28 @@ export function decodeMessage(message) {
   return event;
 }
 
+// Worker-written raw MIME, read and deleted over the Cloudflare R2 REST API.
+export class RawObjects {
+  constructor({accountId, bucket, token, fetcher = fetch}) {
+    if (!token || !/^[a-f0-9]{32}$/.test(accountId) || !/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket ?? '')) throw new Error('raw_configuration_missing');
+    Object.assign(this, {accountId, bucket, token, fetcher});
+  }
+  async request(sha256, method) {
+    if (!/^[a-f0-9]{64}$/.test(sha256)) throw new Error('invalid_raw_key');
+    return this.fetcher(`https://api.cloudflare.com/client/v4/accounts/${this.accountId}/r2/buckets/${this.bucket}/objects/${sha256}`, {
+      method, headers: {authorization: `Bearer ${this.token}`}, signal: AbortSignal.timeout(120000), redirect: 'error'});
+  }
+  async get(sha256) {
+    const response = await this.request(sha256, 'GET');
+    if (!response.ok) throw new Error('raw_unavailable');
+    return Buffer.from(await response.arrayBuffer());
+  }
+  async delete(sha256) {
+    const response = await this.request(sha256, 'DELETE');
+    if (!response.ok && response.status !== 404) throw new Error('raw_delete_failed');
+  }
+}
+
 export class QueueConsumer {
   constructor({config, token, intake, directory, fetcher = fetch, now = Date.now}) {
     if (!token || ![config.accountId, config.ingressId, config.deadLetterId].every(x => /^[a-f0-9]{32}$/.test(x))) throw new Error('queue_configuration_missing');

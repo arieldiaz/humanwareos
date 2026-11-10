@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {QueueConsumer, decodeMessage} from './queue.mjs';
+import {QueueConsumer, RawObjects, decodeMessage} from './queue.mjs';
 import {handler} from './server.mjs';
 const config = {accountId: 'a'.repeat(32), ingressId: 'b'.repeat(32), deadLetterId: 'c'.repeat(32)};
 const event = {eventId: 'one', recipient: 'max@bot.example.test', rawBase64: 'bWFpbA=='};
@@ -121,4 +121,17 @@ test('an interrupted temporary DLQ write cannot masquerade as a retained record'
     return Response.json({success: true, result: {}});
   };
   await f.consumer.poll(config.deadLetterId, true);
+});
+test('R2 client: bucket-scoped REST URL, bounded errors, idempotent delete', async () => {
+  const requests = [], status = {GET: 500, DELETE: 404};
+  const objects = new RawObjects({accountId: config.accountId, bucket: 'agent-email-raw', token: 'fixture-not-a-secret', fetcher: async (url, options) => {
+    requests.push({url, options}); return new Response('sensitive upstream', {status: status[options.method]});
+  }});
+  const key = 'f'.repeat(64);
+  await assert.rejects(objects.get(key), {message: 'raw_unavailable'});
+  await objects.delete(key);
+  await assert.rejects(objects.get('../other'), {message: 'invalid_raw_key'});
+  assert.equal(requests[0].url, `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/r2/buckets/agent-email-raw/objects/${key}`);
+  assert.equal(requests[0].options.redirect, 'error'); assert.equal(requests.length, 2);
+  for (const bad of [{token: ''}, {bucket: undefined}, {accountId: 'x'}]) assert.throws(() => new RawObjects({accountId: config.accountId, bucket: 'b-ok', token: 't', ...bad}), /raw_configuration_missing/);
 });

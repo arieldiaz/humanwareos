@@ -1,5 +1,4 @@
 const EVENT_SCHEMA_VERSION = 1;
-const DEFAULT_MAX_RAW_BYTES = 64 * 1024;
 export function normalizeAddress(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -43,15 +42,13 @@ export function buildEvent(message, now = new Date()) {
   };
 }
 
-export async function buildQueuedEvent(message, now = new Date()) {
-  const event = buildEvent(message, now);
-  if (!message.raw) return event;
+// Raw MIME is stored in R2 under its SHA-256, which is also the delivery ID:
+// stable across provider redelivery even without a Message-ID. Only this
+// pointer and bounded envelope metadata are queued.
+export async function readRaw(message, now = new Date()) {
   const raw = await new Response(message.raw).arrayBuffer();
-  if (raw.byteLength > DEFAULT_MAX_RAW_BYTES) throw new Error("raw message too large");
-  const rawBase64 = btoa(String.fromCharCode(...new Uint8Array(raw)));
-  // Stable even when the provider redelivers mail without a Message-ID.
-  const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), byte => byte.toString(16).padStart(2, '0')).join('');
-  return {...event, deliveryId: hash, rawBase64};
+  const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), byte => byte.toString(16).padStart(2, '0')).join('');
+  return {raw, event: {...buildEvent(message, now), deliveryId: sha256, rawSha256: sha256, sizeBytes: raw.byteLength, rawSize: raw.byteLength}};
 }
 
 async function handleEmail(message, env) {
@@ -61,18 +58,21 @@ async function handleEmail(message, env) {
     message.setReject("550 5.1.1 Recipient not configured");
     return;
   }
-
-  const maxRawBytes = Number(env.MAX_RAW_BYTES || DEFAULT_MAX_RAW_BYTES);
+  const maxRawBytes = Number(env.MAX_RAW_BYTES);
+  if (!Number.isSafeInteger(maxRawBytes) || maxRawBytes <= 0) throw new Error("MAX_RAW_BYTES unconfigured");
+  if (!env.EMAIL_RAW || !env.EMAIL_EVENTS) throw new Error("EMAIL_RAW bucket or EMAIL_EVENTS queue unavailable");
   if (Number(message.rawSize || 0) > maxRawBytes) {
     message.setReject("552 5.3.4 Message too large");
     return;
   }
-
-  const event = await buildQueuedEvent(message);
-  if (!env.EMAIL_EVENTS) throw new Error("EMAIL_EVENTS queue unavailable");
-  if (new TextEncoder().encode(JSON.stringify(event)).length > 128 * 1024) {
-    message.setReject("552 5.3.4 Normalized message too large"); return;
+  const {raw, event} = await readRaw(message);
+  if (raw.byteLength > maxRawBytes || new TextEncoder().encode(JSON.stringify(event)).length > 128 * 1024) {
+    message.setReject("552 5.3.4 Message too large");
+    return;
   }
+  // The object must exist before its pointer is queued. The local intake
+  // deletes it after committing the bytes to private evidence.
+  await env.EMAIL_RAW.put(event.rawSha256, raw);
   await env.EMAIL_EVENTS.send(event, {contentType: "json"});
 }
 
