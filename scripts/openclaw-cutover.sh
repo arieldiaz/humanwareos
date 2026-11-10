@@ -174,7 +174,9 @@ activate() {
   if [ "$active" -eq 0 ] && $JQ -e '.service.loaded == false and .port.status == "free"' "$report/gateway-pre-suspend-status.json" >/dev/null; then
     $JQ -n '{action:"stop",ok:true,result:"already-stopped",message:"Gateway service is not loaded and its port is free."}' > "$report/gateway-stop.json"
   else
-    candidate_gateway stop --disable --force --json > "$report/gateway-stop.json"
+    # OpenClaw 2026.11.2 refuses service management under a non-canonical
+    # OPENCLAW_CONFIG_PATH; status, suspend and resume are RPC and stay on the candidate.
+    "$OPENCLAW_BIN" gateway stop --disable --force --json > "$report/gateway-stop.json"
   fi
   /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" install --transaction "$transaction" --target "$PACKAGE_TARGET" $([ "$stock_needed" -eq 1 ] && echo --force)
   if $JQ -e '.replaced == true' "$transaction/installed.json" >/dev/null; then
