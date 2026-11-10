@@ -92,23 +92,6 @@ export function resolveSlackRuntimeModule(kind, { projectsDir = SLACK_PROJECTS_D
   return `${dist}/${chunk}`;
 }
 
-// The gateway's events disagree about what they carry: model_call_started may
-// hold the thinking level but llm_output never does. Overwriting per event meant the last event erased
-// what an earlier one knew. A field the new event does not carry keeps its
-// last-known value; model and provider always follow the newest event so a
-// model switch is never masked.
-export function mergeProvenance(prior, next) {
-  return {
-    model: next.model ?? prior?.model,
-    provider: next.provider ?? prior?.provider,
-    harnessId: next.harnessId ?? prior?.harnessId,
-    sessionKey: next.sessionKey ?? prior?.sessionKey,
-    thinkLevel: next.thinkLevel ?? prior?.thinkLevel,
-    reasoningLevel: next.reasoningLevel ?? prior?.reasoningLevel,
-    reasoningEffort: next.reasoningEffort ?? prior?.reasoningEffort,
-  };
-}
-
 export function buildRunReactionNames(provenance) {
   const tiles = [
     resolveModelTile(provenance.model),
@@ -237,17 +220,17 @@ export function resolveSelectedHarness(config, agentId, session = {}) {
   return (agent?.models?.[ref] ?? config?.agents?.defaults?.models?.[ref])?.agentRuntime?.id;
 }
 
-async function loadSessionThinking(sessionKey) {
-  return (await loadSessionEntry(sessionKey))?.thinkingLevel;
-}
-
-async function loadSessionProvenance(config, sessionKey) {
-  const session = await loadSessionEntry(sessionKey);
+// The session row is what the gateway actually ran this turn with: it is
+// rewritten at run start and by switch_model, so reading it at send time is
+// per-message truth. Live hook events were cached per session instead, and a
+// cached model outlived a mid-thread switch.
+export async function loadSessionProvenance(config, sessionKey, load = loadSessionEntry) {
+  const session = await load(sessionKey);
   if (!session?.model) return;
   const agentId = String(sessionKey ?? "").match(/^agent:([^:]+):/i)?.[1];
   return {
-    model: session.model,
-    provider: session.modelProvider,
+    model: session.modelOverride ?? session.model,
+    provider: session.providerOverride ?? session.modelProvider,
     harnessId: resolveSelectedHarness(config, agentId, session),
     // Only an explicit per-session override is stored here; the configured
     // default never reaches the session row, so its absence stays an absence.
@@ -273,9 +256,6 @@ const plugin = {
   register(api) {
     const excludedChannels = new Set((api.pluginConfig?.excludedChannels ?? []).map((value) => String(value).toUpperCase()));
     const isExcludedChannel = (channel) => excludedChannels.has(String(channel ?? "").toUpperCase());
-    const byRun = new Map();
-    const bySession = new Map();
-    const byAgent = new Map();
     const botIdCache = new Map();
     const serializeRunStrip = createKeyedSerialQueue();
     const dataRoot = resolveDataRoot(api.config, api.pluginConfig);
@@ -301,41 +281,6 @@ const plugin = {
     registerSwitchModelTool(api);
     registerThreadLead(api, {isExcludedChannel, botUserIds: slackBotUserIds});
 
-    const rememberProvenance = async (event, ctx) => {
-      const sessionKey = event.sessionKey ?? ctx.sessionKey;
-      const prior = (sessionKey ? bySession.get(sessionKey) : undefined) ??
-        (event.runId ? byRun.get(event.runId) : undefined);
-      const agentId = String(sessionKey ?? "").match(/^agent:([^:]+):/i)?.[1];
-      const session = sessionKey ? await loadSessionEntry(sessionKey).catch(() => undefined) : undefined;
-      const provenance = mergeProvenance(prior, {
-        model: event.resolvedRef ?? event.model ?? ctx.modelId,
-        provider: event.provider ?? ctx.modelProviderId,
-        harnessId: resolveSelectedHarness(api.config, agentId, session),
-        sessionKey,
-        thinkLevel: event.thinkLevel ?? ctx.thinkLevel,
-        reasoningLevel: event.reasoningLevel ?? ctx.reasoningLevel,
-        reasoningEffort: event.reasoningEffort ?? ctx.reasoningEffort,
-      });
-      if ((provenance.thinkLevel ?? provenance.reasoningLevel ?? provenance.reasoningEffort) != null && !resolveThinkingTile(provenance)) {
-        api.logger?.warn?.(`thinking_unknown session=${provenance.sessionKey ?? "unknown"}`);
-      }
-      if (event.runId) {
-        byRun.set(event.runId, provenance);
-      }
-      if (provenance.sessionKey) {
-        bySession.set(provenance.sessionKey, provenance);
-        const eventAgentId = provenance.sessionKey.match(/^agent:([^:]+)/i)?.[1];
-        // Last resort for a send with no session of its own — a fresh thread
-        // root, a cron post, a ghost delivery row. The agent's most recent run
-        // is what is actually answering, so its tiles are right far more often
-        // than no tiles at all.
-        if (eventAgentId && provenance.model) byAgent.set(eventAgentId.toLowerCase(), provenance);
-      }
-    };
-
-    api.on("model_call_started", rememberProvenance);
-    api.on("llm_input", rememberProvenance);
-    api.on("llm_output", rememberProvenance);
     api.on('message_sent', async (event, ctx) => {
       try { await reactToSentMessage(event, ctx); }
       catch (error) { await appendFaultJournal({reason: `Run signature: ${String(error)}`}); }
@@ -359,22 +304,11 @@ const plugin = {
         return;
       }
 
-      let provenance = ctx.sessionKey ? bySession.get(ctx.sessionKey) : undefined;
-      let provenanceSource = "live_session_events";
-      if (!provenance && ctx.sessionKey) {
-        try {
-          provenance = await loadSessionProvenance(api.config, ctx.sessionKey);
-          if (provenance) {
-            provenanceSource = "session_store_disk";
-            await rememberProvenance(provenance, {});
-          }
-        } catch (error) {
-          api.logger?.error?.(`session provenance recovery failed for ${ctx.sessionKey}: ${String(error)}`);
-        }
-      }
-      if (!provenance && accountId) {
-        provenance = byAgent.get(String(accountId).toLowerCase());
-        if (provenance) provenanceSource = "agent_last_run";
+      let provenance;
+      try {
+        provenance = ctx.sessionKey ? await loadSessionProvenance(api.config, ctx.sessionKey) : undefined;
+      } catch (error) {
+        api.logger?.error?.(`session provenance read failed for ${ctx.sessionKey}: ${String(error)}`);
       }
       if (!provenance) {
         api.logger?.error?.(`run-signature has no provenance for ${channel}:${messageTs}; delivering unmarked`);
@@ -386,18 +320,17 @@ const plugin = {
         await appendFaultJournal({ channel, messageTs, reason: "the selected execution profile did not identify a harness, so the harness tile was omitted" });
 
       if (!resolveThinkingTile(provenance)) {
-        const effective = (ctx.sessionKey ? await loadSessionThinking(ctx.sessionKey).catch(() => undefined) : undefined) ??
-          resolveConfiguredThinking(api.config, agentId ?? provenance.sessionKey?.match(/^agent:([^:]+)/i)?.[1]);
+        const effective = resolveConfiguredThinking(api.config, agentId);
         if (normalizeThinkingLevel(effective)) {
           provenance = { ...provenance, thinkLevel: effective };
         } else {
-          api.logger?.info?.(`run-signature thinking_unknown for ${channel}:${messageTs}: effective reasoning level not provable; tile omitted (source ${provenanceSource})`);
+          api.logger?.info?.(`run-signature thinking_unknown for ${channel}:${messageTs}: effective reasoning level not provable; tile omitted`);
         }
       }
 
       const reactionNames = buildRunReactionNames(provenance);
       if (!resolveModelTile(provenance.model)) {
-        api.logger?.error?.(`run-signature cannot build reactions for ${channel}:${messageTs}: no model tile for ${provenance?.model ?? "unknown"} (source ${provenanceSource})`);
+        api.logger?.error?.(`run-signature cannot build reactions for ${channel}:${messageTs}: no model tile for ${provenance?.model ?? "unknown"}`);
         await appendFaultJournal({ channel, messageTs, reason: `there is no model tile for ${provenance?.model ?? "unknown"}` });
         return;
       }

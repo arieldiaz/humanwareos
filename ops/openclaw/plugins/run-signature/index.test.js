@@ -18,7 +18,7 @@ import {
   resolveThinkingTile,
   retrySlackRateLimit,
   resolveSlackRuntimeModule,
-  mergeProvenance,
+  loadSessionProvenance,
   resolveSelectedHarness,
 } from "./index.js";
 import runSignaturePlugin from "./index.js";
@@ -260,19 +260,6 @@ test("does not substitute an internal Slack chunk with minified exports", () => 
   }), /no actions runtime chunk/);
 });
 
-test("a later event without a thinking level keeps the one already known", () => {
-  const first = mergeProvenance(undefined, { model: "claude-fable-5", harnessId: "claude-cli", thinkLevel: "high" });
-  const second = mergeProvenance(first, { model: "claude-fable-5", provider: "claude-cli" });
-  assert.equal(second.thinkLevel, "high");
-  assert.equal(second.harnessId, "claude-cli");
-});
-
-test("a newer explicit thinking level replaces the remembered one", () => {
-  const first = mergeProvenance(undefined, { model: "claude-fable-5", thinkLevel: "high" });
-  const second = mergeProvenance(first, { model: "claude-fable-5", thinkLevel: "off" });
-  assert.equal(second.thinkLevel, "off");
-});
-
 const PROFILE_CONFIG = {
   agents: {
     defaults: {
@@ -286,13 +273,22 @@ const PROFILE_CONFIG = {
   },
 };
 
-test("the selected profile harness is carried by run provenance into the reply signature", () => {
-  const selected = resolveSelectedHarness(PROFILE_CONFIG, "liv");
-  const started = mergeProvenance(undefined, {model: "claude-opus-5-5", provider: "anthropic", harnessId: selected});
-  const completed = mergeProvenance(started, {model: "claude-opus-5-5", provider: "claude-cli"});
-  assert.deepEqual(buildRunReactionNames(completed).filter((name) => name.startsWith("h_")), ["h_cc"]);
+test("the selected profile harness is carried by run provenance into the reply signature", async () => {
+  const sessionKey = "agent:liv:slack:channel:c0bkfafgj72:thread:1.2";
+  const provenance = await loadSessionProvenance(PROFILE_CONFIG, sessionKey, async () => ({model: "claude-opus-5-5", modelProvider: "anthropic"}));
+  assert.deepEqual(buildRunReactionNames(provenance), ["m_opus", "h_cc"]);
   assert.equal(resolveSelectedHarness(PROFILE_CONFIG, "liv", {agentHarnessId: "codex"}), "codex");
   assert.equal(resolveSelectedHarness({agents: {entries: {liv: {}}}}, "liv", {modelProvider: "claude-cli"}), undefined);
+});
+
+test("the signature follows a mid-thread model switch, read fresh from the session row per message", async () => {
+  const sessionKey = "agent:liv:slack:channel:c0bkfafgj72:thread:1794312366.527659";
+  // The thread started on the configured default and was switched with switch_model: the row carries both.
+  const row = {model: "claude-fable-5-1", modelProvider: "anthropic", modelOverride: "claude-fable-5-1", providerOverride: "anthropic", thinkingLevel: "medium"};
+  const provenance = await loadSessionProvenance(PROFILE_CONFIG, sessionKey, async () => row);
+  assert.deepEqual(buildRunReactionNames(provenance), ["m_fable", "think_medium"]);
+  assert.equal(await loadSessionProvenance(PROFILE_CONFIG, sessionKey, async () => undefined), undefined);
+  assert.equal(await loadSessionProvenance(PROFILE_CONFIG, sessionKey, async () => ({})), undefined);
 });
 
 test("configured thinking default resolves per agent with a global fallback", () => {
