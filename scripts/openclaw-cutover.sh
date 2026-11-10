@@ -106,8 +106,10 @@ activate() {
   candidate_config="$runtime/config/openclaw/openclaw.json"
   [ -f "$candidate_bin" ] || { echo "Prepared OpenClaw candidate is missing: $candidate_bin" >&2; exit 1; }
   [ -f "$candidate_config" ] || { echo "Prepared OpenClaw config is missing: $candidate_config" >&2; exit 1; }
+  # Service management refuses a non-canonical config path, so the candidate
+  # binary drives the live gateway through the canonical config it is replacing.
   candidate_gateway() {
-    OPENCLAW_CONFIG_PATH="$candidate_config" "$NODE_BIN" "$candidate_bin" gateway "$@"
+    "$NODE_BIN" "$candidate_bin" gateway "$@"
   }
   mkdir -p "$report"
   chmod 700 "$report"
