@@ -119,6 +119,103 @@ class SessionConsoleTest(unittest.TestCase):
         self.assertEqual(MODULE.effective_workflow(act, ["done"]), act)
 
 
+class SubagentRunCaptureTest(unittest.TestCase):
+    ROOT_KEY = 'agent:liv:slack:channel:c1:thread:123.45'
+
+    def setUp(self):
+        import sqlite3
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = pathlib.Path(self.temp.name)
+        agent_db = self.root / 'agents' / 'liv' / 'agent' / 'openclaw-agent.sqlite'
+        agent_db.parent.mkdir(parents=True)
+        (self.root / 'state').mkdir()
+        self.agent = sqlite3.connect(agent_db)
+        self.state = sqlite3.connect(self.root / 'state' / 'openclaw.sqlite')
+        self.addCleanup(self.agent.close)
+        self.addCleanup(self.state.close)
+        self.agent.executescript('''
+            CREATE TABLE session_nodes (session_key TEXT PRIMARY KEY, current_session_id TEXT, entry_json TEXT, updated_at INTEGER);
+            CREATE TABLE session_windows (
+                session_id TEXT PRIMARY KEY, session_key TEXT, created_at INTEGER, updated_at INTEGER,
+                started_at INTEGER, ended_at INTEGER, status TEXT, chat_type TEXT, channel TEXT,
+                account_id TEXT, model_provider TEXT, model TEXT, agent_harness_id TEXT,
+                parent_session_key TEXT, spawned_by TEXT, display_name TEXT);
+        ''')
+        self.state.execute('CREATE TABLE subagent_runs (run_id TEXT PRIMARY KEY, child_session_key TEXT, created_at INTEGER, payload_json TEXT)')
+        self.node(self.ROOT_KEY, 'root', {'groupId': 'C1', 'lastThreadId': '123.45', 'status': 'done'})
+        self.node('agent:liv:subagent:a', 'child-a', {'lastRunId': 'run-a', 'thinkingLevel': 'high', 'model': 'm', 'modelProvider': 'p',
+                                                  'inputTokens': 10, 'outputTokens': 5, 'totalTokens': 15,
+                                                  'estimatedCostUsd': 0.25, 'endedAt': 1787300060000, 'status': 'done'})
+        self.node('agent:liv:subagent:d', 'child-d', {'lastRunId': 'run-d', 'inputTokens': 3, 'status': 'running'})
+        self.add_run('run-a', 'agent:liv:subagent:a', self.ROOT_KEY, ended=('ok', 60000))
+        self.add_run('run-b', 'agent:liv:subagent:b', 'agent:liv:subagent:a', ended=('timeout', 30000))  # child session deleted
+        self.add_run('run-c', 'agent:liv:subagent:c', self.ROOT_KEY)
+        self.add_run('run-d', 'agent:liv:subagent:d', self.ROOT_KEY, ended=('error', 1000))
+
+    def node(self, key, session_id, entry):
+        entry = dict(entry, sessionId=session_id, updatedAt=1787300000000)
+        self.agent.execute('INSERT OR REPLACE INTO session_nodes VALUES (?, ?, ?, ?)', (key, session_id, json.dumps(entry), entry['updatedAt']))
+        self.agent.commit()
+
+    def add_run(self, run_id, child, parent, ended=None):
+        payload = {'childSessionKey': child, 'requesterSessionKey': parent, 'requesterAgentId': 'liv',
+                   'createdAt': 1787300000000, 'task': 'SYNTHETIC PRIVATE BRIEF', 'execution': {'status': 'running'}}
+        if ended:
+            payload['execution'] = {'status': 'terminal', 'startedAt': 1787300000000, 'endedAt': 1787300000000 + ended[1],
+                                    'outcome': {'status': ended[0], 'elapsedMs': ended[1]}}
+        self.state.execute('INSERT INTO subagent_runs VALUES (?, ?, ?, ?)', (run_id, child, 1787300000000, json.dumps(payload)))
+        self.state.commit()
+
+    def build(self):
+        return MODULE.build(str(self.root / 'data'), str(self.root / 'agents'))
+
+    def ledger(self):
+        return [json.loads(line) for path in sorted((self.root / 'data/evidence/sessions/events').glob('*.jsonl'))
+                for line in path.read_text().splitlines()]
+
+    def test_runs_are_captured_once_with_observed_usage_and_tree(self):
+        from jsonschema import Draft202012Validator, FormatChecker
+        result, additions = self.build()
+        self.assertEqual(additions, 6)  # four spawns; run-c running, run-d counters not settled
+        validator = Draft202012Validator(json.loads((SCRIPT.parents[2] / 'schemas/session-event.schema.json').read_text()), format_checker=FormatChecker())
+        for row in self.ledger():
+            validator.validate(row)
+        self.assertNotIn('SYNTHETIC PRIVATE BRIEF', json.dumps(self.ledger()) + json.dumps(result))
+        completed = {row['runId']: row for row in self.ledger() if row['kind'] == 'run.completed'}
+        self.assertEqual(completed['run-a']['cost']['tokens'], {'input': 10, 'output': 5, 'total': 15})
+        self.assertEqual((completed['run-a']['cost']['status'], completed['run-a']['outcome']), ('estimated', 'succeeded'))
+        self.assertEqual((completed['run-b']['cost']['status'], completed['run-b']['cost']['tokens']), ('unavailable', {}))
+        self.assertEqual((completed['run-b']['run']['parentSessionId'], completed['run-b']['run']['rootSessionId']), ('openclaw:liv:child-a', 'slack:C1:123.45'))
+
+        session = next(item for item in result['sessions'] if item['id'] == 'slack:C1:123.45')
+        self.assertEqual(session['workerRuns'], 4)
+        self.assertEqual([run['runId'] for run in session['runs']], ['run-a', 'run-c', 'run-d'])
+        worker = session['runs'][0]
+        self.assertEqual((worker['model'], worker['reasoning'], worker['durationMs']), ('p/m', 'high', 60000))
+        self.assertEqual([run['runId'] for run in worker['children']], ['run-b'])
+        usd = next(group for group in session['costRollup'] if group['currency'] == 'USD')
+        self.assertEqual((usd['estimated'], next(g for g in session['costRollup'] if g['currency'] is None)['unavailable']), (0.25, 1))
+        summary = (self.root / 'data/generated/sessions' / session['summaryMarkdown']).read_text()
+        self.assertIn('**Worker runs:** 4', summary)
+        self.assertIn('0.25 USD estimated', summary)
+
+        self.assertEqual(self.build()[1], 0)
+        self.node('agent:liv:subagent:d', 'child-d', {'lastRunId': 'run-d', 'inputTokens': 3, 'status': 'failed', 'endedAt': 1787300001000})
+        self.assertEqual(self.build()[1], 1)
+        self.assertEqual(self.build()[1], 0)
+        late = next(row for row in self.ledger() if row['id'] == 'openclaw:run.completed:run-d')
+        self.assertEqual((late['cost']['status'], late['cost']['tokens'], late['outcome']), ('unavailable', {'input': 3}, 'failed'))
+
+    def test_per_invocation_usage_suppresses_session_counters(self):
+        entries, logical = {}, {}
+        MODULE.registry_index(str(self.root / 'agents'), {}, entries, logical)
+        runs = list(MODULE.iter_subagent_runs(self.root))
+        rows = MODULE.run_events(runs, entries, logical, {'openclaw:liv:child-a'})
+        completed = next(row for row in rows if row['id'] == 'openclaw:run.completed:run-a')
+        self.assertEqual((completed['cost']['status'], completed['cost']['tokens']), ('unavailable', {}))
+
+
 class CanonicalSessionReaderTest(unittest.TestCase):
     def setUp(self):
         import sqlite3

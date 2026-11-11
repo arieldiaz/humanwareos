@@ -39,6 +39,14 @@ export function traceHtml(row) {
     <p>Parents: ${(row.parentIds || []).map(id => `<a href="/activity/?event=${encodeURIComponent(id)}#event-${encodeURIComponent(id)}">${esc(id)}</a>`).join(', ') || 'Unavailable'}</p>
     <p class="muted">Raw references resolve only in an authorized local evidence reader.</p>`;
 }
+const costLabel = cost => !cost || cost.status === 'unavailable' ? 'cost unavailable' : `${cost.amount} ${cost.currency} ${cost.status}`;
+const rollupLabel = rollup => (rollup || []).map(g => g.currency ? `${g.exact} ${g.currency} exact + ${g.estimated} ${g.currency} estimated${g.unavailable ? `, ${g.unavailable} unavailable` : ''}` : `${g.unavailable} unavailable`).join('; ') || 'Unavailable';
+/* Root session -> worker runs, from observed run events only. */
+export function runTreeHtml(runs, rollup) {
+  const esc = escapeHtml;
+  const item = run => `<li><a href="${esc(sessionLink(run.sessionId, run.runId))}">${esc(run.runId)}</a> · ${esc(run.model || 'model unavailable')} · ${esc(run.reasoning || 'reasoning unavailable')} · ${esc(run.status || 'not completed')} · ${run.durationMs == null ? 'duration unavailable' : `${Math.round(run.durationMs / 1000)}s`} · ${run.tokens?.total == null ? 'tokens unavailable' : `${run.tokens.total} tokens`} · ${esc(costLabel(run.cost))}${run.children?.length ? `<ul>${run.children.map(item).join('')}</ul>` : ''}</li>`;
+  return `<p>Cost roll-up: ${esc(rollupLabel(rollup))}</p>${runs?.length ? `<ul class="run-tree">${runs.map(item).join('')}</ul>` : '<p class="muted">No worker runs observed.</p>'}`;
+}
 export function renderTrace(container, rows) {
   container.innerHTML = rows.map(row => `<details id="event-${encodeURIComponent(row.id)}" class="event ${['outward','irreversible'].includes(row.reversibility) ? 'consequential' : ''}">
     <summary><time>${escapeHtml(row.ts)}</time> <strong>${escapeHtml(row.kind)}</strong> · ${escapeHtml(row.actor?.identity || row.agent)} · ${escapeHtml(row.outcome || 'unknown')} <span>${escapeHtml(row.reversibility || '')}</span></summary>

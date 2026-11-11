@@ -279,6 +279,53 @@ class ActivityTest(unittest.TestCase):
         row['cost'] = {'status': 'unavailable', 'amount': 0, 'tokens': {}}
         self.assertTrue(list(validator.iter_errors(row)))
 
+    def run_event(self, event_id, kind, child, parent_session='root', cost=None, **run):
+        args = fields(event_id, kind, run=dict(childRunId=child, childSessionId=f'session-{child}', parentSessionId=parent_session,
+                                               rootSessionId='root', model='provider/model', reasoning='high', **run))
+        args.update(session_id=parent_session, run_id=child)
+        if kind == 'run.completed':
+            args['cost'] = cost or {'status': 'unavailable', 'usageId': f'run:{child}'}
+        return A.event(**args)
+
+    def test_run_events_validate_and_never_invent_links(self):
+        validator = Draft202012Validator(json.loads((ROOT/'schemas/session-event.schema.json').read_text()), format_checker=FormatChecker())
+        spawned = self.run_event('s1', 'run.spawned', 'run-1')
+        completed = self.run_event('c1', 'run.completed', 'run-1', status='timeout', durationMs=5)
+        for row in (spawned, completed):
+            validator.validate(row)
+        self.assertIsNone(spawned['run']['parentRunId'])
+        self.assertEqual((completed['run']['status'], completed['cost']['status']), ('timeout', 'unavailable'))
+        self.assertTrue(list(validator.iter_errors({k: v for k, v in completed.items() if k != 'cost'})))
+        self.assertTrue(list(validator.iter_errors({k: v for k, v in spawned.items() if k != 'run'})))
+        with self.assertRaises(ValueError):
+            A.event(**fields('x', 'run.spawned', run={'childSessionId': 'session-1'}))
+        with self.assertRaises(ValueError):
+            self.run_event('c2', 'run.completed', 'run-2', status='finished')
+        # Legacy host lifecycle names never become run events.
+        self.assertIsNone(A.project({'schemaVersion': 2, 'id': 'legacy', 'kind': 'run.completed', 'ts': '2026-09-29T00:00:00Z'}))
+
+    def test_run_tree_nests_workers_and_rollup_keeps_unknown_visible(self):
+        estimated = {'status': 'estimated', 'usageId': 'run:run-1', 'amount': 0.2, 'currency': 'USD',
+                     'basisRef': {'type': 'raw', 'id': 'entry-1'}, 'tokens': {'total': 30}}
+        exact = {'status': 'exact', 'usageId': 'run:run-2', 'amount': 0.1, 'currency': 'USD',
+                 'basisRef': {'type': 'raw', 'id': 'entry-2'}, 'tokens': {'total': 10}}
+        rows = [self.run_event('s1', 'run.spawned', 'run-1'),
+                self.run_event('s2', 'run.spawned', 'run-2', parent_session='session-run-1'),
+                self.run_event('s3', 'run.spawned', 'run-3'),
+                self.run_event('c1', 'run.completed', 'run-1', cost=estimated, status='ok', durationMs=9),
+                self.run_event('c2', 'run.completed', 'run-2', parent_session='session-run-1', cost=exact, status='error', durationMs=3),
+                A.event(**dict(fields('u1', 'usage.cost', cost={'status': 'unavailable', 'tokens': {'input': 4}}), session_id='root'))]
+        tree = A.run_tree(rows, 'root')
+        self.assertEqual([node['runId'] for node in tree], ['run-1', 'run-3'])
+        self.assertEqual([node['runId'] for node in tree[0]['children']], ['run-2'])
+        self.assertEqual((tree[0]['status'], tree[0]['durationMs'], tree[0]['tokens'], tree[0]['cost']['amount']), ('ok', 9, {'total': 30}, 0.2))
+        self.assertIsNone(tree[1]['status'])
+        self.assertEqual(A.run_tree(rows, 'other-root'), [])
+        missing, usd = A.cost_rollup(rows + rows)
+        self.assertEqual((missing['currency'], missing['unavailable']), (None, 1))
+        self.assertEqual((usd['exact'], usd['estimated'], usd['unavailable']), (0.1, 0.2, 0))
+        self.assertEqual(usd['eventIds'], ['c1', 'c2'])
+
     def test_contract_kinds_and_legacy_versions_are_explicit(self):
         schema = json.loads((ROOT/'schemas/session-event.schema.json').read_text())
         self.assertEqual(schema['oneOf'][0]['properties']['schemaVersion']['enum'], [1,2])

@@ -90,7 +90,9 @@
             "memory.promoted",
             "memory.superseded",
             "memory.suppressed",
-            "memory.deleted"
+            "memory.deleted",
+            "run.spawned",
+            "run.completed"
           ]
         },
         "summary": {"type": "string"},
@@ -181,6 +183,22 @@
           "required": ["claimId", "introducedBy", "supersedes", "visibility", "projections"],
           "additionalProperties": false
         },
+        "run": {
+          "type": "object",
+          "properties": {
+            "childRunId": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+            "childSessionId": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
+            "parentRunId": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+            "parentSessionId": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+            "rootSessionId": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+            "model": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+            "reasoning": {"anyOf": [{"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"}, {"type": "null"}]},
+            "status": {"enum": ["ok", "error", "timeout", "killed", "reset", "deleted", "unknown"]},
+            "durationMs": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]}
+          },
+          "required": ["childRunId", "childSessionId", "parentRunId", "parentSessionId", "rootSessionId", "model", "reasoning"],
+          "additionalProperties": false
+        },
         "cost": {
           "type": "object",
           "properties": {
@@ -243,7 +261,9 @@
       "additionalProperties": false,
       "allOf": [
         {"if": {"properties": {"kind": {"pattern": "^memory\\."}}}, "then": {"required": ["memory"]}},
-        {"if": {"properties": {"kind": {"const": "usage.cost"}}}, "then": {"required": ["cost"]}},
+        {"if": {"properties": {"kind": {"enum": ["usage.cost", "run.completed"]}}}, "then": {"required": ["cost"]}},
+        {"if": {"properties": {"kind": {"pattern": "^run\\."}}}, "then": {"required": ["run"]}},
+        {"if": {"properties": {"kind": {"const": "run.completed"}}}, "then": {"properties": {"run": {"required": ["status", "durationMs"]}}}},
         {
           "if": {"properties": {"kind": {"enum": ["memory.promoted", "memory.superseded", "memory.suppressed", "memory.deleted"]}}},
           "then": {"properties": {"memory": {"properties": {"introducedBy": {"type": "string", "minLength": 1}}}}}

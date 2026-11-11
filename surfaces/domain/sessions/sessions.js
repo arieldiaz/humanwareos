@@ -1,4 +1,4 @@
-import {escapeHtml as esc, freshness, renderTrace} from '../activity/trace.js';
+import {escapeHtml as esc, freshness, renderTrace, runTreeHtml} from '../activity/trace.js';
 const $ = id => document.getElementById(id);
 const FILTERS = [['open','Open'],['all','All'],['active','Active'],['needs_you','Needs you'],['error','Errors'],['completed','Completed'],['idle','Idle']];
 const LEVELS = [['normal','Normal'],['verbose','Verbose'],['forensic','Forensic']];
@@ -43,6 +43,7 @@ function renderDrawer() {
   $('run').value = run;
   $('policy').textContent = `${DATA.tracePolicy?.[level] || ''} · Sanitized trace; hidden chain-of-thought is never exposed.`;
   const events = (s.events || []).filter(e => allowed[level].has(e.level || 'normal')).filter(e => !run || (run === 'unknown' ? !e.runId : e.runId === run)).map(e => ({...e, logicalSessionId: s.id}));
+  $('runTree').innerHTML = runTreeHtml(s.runs, s.costRollup);
   renderTrace($('timeline'), events.slice().reverse());
   $('coverage').innerHTML = `${s.traceTruncated ? 'Recent events only. ' : ''}${esc(s.eventCount)} observed events. <a href="/activity/?${esc(new URLSearchParams({session: s.id, ...(run && run !== 'unknown' ? {run} : {})}))}">Search complete activity history</a>`;
 }
