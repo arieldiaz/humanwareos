@@ -77,26 +77,56 @@ test("renders each agent's selected profile into effective OpenClaw config", () 
   assert.deepEqual(rendered.agents.defaults.modelPolicy.allow, ["openai/gpt-5.6-sol"]);
 });
 
-test("keeps the reference instance on the task-capable harnesses by default", () => {
+test("keeps the reference instance's orchestrating roots and default worker", () => {
   const narrowing = JSON.parse(readFileSync(templatePath, "utf8"));
   const template = loadProfilePolicy(templatePath);
   const rendered = applyRuntimeProfiles(source, template);
 
   assert.equal(narrowing.profiles, undefined);
-  assert.equal(template.defaultProfile, "codex-low");
+  assert.equal(template.defaultProfile, "codex-medium");
   assert.equal(template.profiles["native-low"].enabled, false);
-  assert.deepEqual(template.agents.liv.allowedProfiles, template.agents.max.allowedProfiles);
-  assert.deepEqual(template.agents.liv.allowedProfiles, ["cursor-agent-low", "cursor-agent-high", "codex-low", "codex-high"]);
-  assert.equal(template.agents.liv.defaultProfile, "cursor-agent-low");
-  assert.equal(template.agents.liv.escalationProfile, "cursor-agent-high");
-  assert.deepEqual(rendered.agents.list[0].runtime, {type: "embedded"});
-  assert.equal(rendered.agents.list[0].model.primary, "cursor-agent/grok-4.7-low-fast");
-  assert.deepEqual(rendered.agents.list[0].models["cursor-agent/grok-4.7-low-fast"].agentRuntime, {id: "cursor-agent"});
-  assert.equal(template.agents.max.defaultProfile, "codex-low");
-  assert.equal(template.agents.max.escalationProfile, "codex-high");
-  assert.deepEqual(rendered.agents.list[1].runtime, {type: "embedded"});
-  assert.equal(rendered.agents.list[1].model.primary, "openai/gpt-5.6-sol");
-  assert.deepEqual(rendered.agents.list[1].models["openai/gpt-5.6-sol"].agentRuntime, {id: "codex"});
+  assert.equal(template.agents.liv.allowedProfiles, undefined);
+  assert.deepEqual(template.allowedProfiles, ["cursor-agent-low", "cursor-agent-high", "codex-low", "codex-medium", "codex-high", "codex-astra-high", "claude-sonnet-high", "claude-fable-high"]);
+  const [liv, max] = rendered.agents.list;
+  assert.deepEqual(liv.runtime, {type: "embedded"});
+  assert.equal(liv.model.primary, "anthropic/claude-fable-5-2");
+  assert.equal(liv.thinkingDefault, "high");
+  assert.deepEqual(liv.models["anthropic/claude-fable-5-2"].agentRuntime, {id: "claude-cli"});
+  assert.deepEqual(liv.subagents, {model: "openai/gpt-5.6-sol", thinking: "medium"});
+  assert.deepEqual(max.runtime, {type: "embedded"});
+  assert.equal(max.model.primary, "openai/gpt-6-astra");
+  assert.equal(max.thinkingDefault, "high");
+  assert.deepEqual(max.models["openai/gpt-6-astra"].agentRuntime, {id: "codex"});
+  assert.deepEqual(max.subagents, {model: "openai/gpt-5.6-sol", thinking: "medium"});
+  assert.deepEqual(rendered.agents.defaults.model, {primary: "openai/gpt-5.6-sol"});
+  assert.deepEqual(liv.models["openai/gpt-5.6-sol"].agentRuntime, {id: "codex"});
+});
+
+test("renders the worker profile over existing sub-agent settings and checks the allowlist", () => {
+  const policy = structuredClone(catalog);
+  policy.agents.max.workerProfile = "native-deep";
+  const withSubagents = structuredClone(source);
+  withSubagents.agents.list[1].subagents = {delegationMode: "prefer", model: "openai/old"};
+  const rendered = applyRuntimeProfiles(withSubagents, policy);
+  assert.deepEqual(rendered.agents.list[1].subagents, {delegationMode: "prefer", model: "openai/gpt-5.6-sol", thinking: "high"});
+  assert.equal(rendered.agents.list[0].subagents, undefined);
+
+  policy.agents.max.workerProfile = "cursor-deep";
+  assert.throws(() => applyRuntimeProfiles(source, policy), /agent max cannot delegate to profile cursor-deep/);
+  policy.agents.max.workerProfile = "native-deep";
+  delete policy.agents.max.escalationProfile;
+  policy.profiles["native-deep"].enabled = false;
+  assert.throws(() => applyRuntimeProfiles(source, policy), /agent max cannot delegate to disabled profile native-deep/);
+});
+
+test("agents without their own allowlist inherit the shared one", () => {
+  const policy = structuredClone(catalog);
+  policy.allowedProfiles = ["native", "native-deep"];
+  delete policy.agents.max.allowedProfiles;
+  const rendered = applyRuntimeProfiles(source, policy);
+  assert.deepEqual(Object.keys(rendered.agents.list[1].models), ["openai/gpt-5.6-sol"]);
+  delete policy.allowedProfiles;
+  assert.throws(() => applyRuntimeProfiles(source, policy), /agent max has no allowed profiles/);
 });
 
 test("renders every enabled framework catalog profile", () => {
@@ -193,7 +223,7 @@ test("rejects a profile outside the agent allowlist", () => {
 test("rejects a disabled selected profile", () => {
   const invalid = structuredClone(catalog);
   invalid.profiles.cursor.enabled = false;
-  assert.throws(() => applyRuntimeProfiles(source, invalid), /selected disabled profile cursor/);
+  assert.throws(() => applyRuntimeProfiles(source, invalid), /cannot select disabled profile cursor/);
 });
 
 test("rejects an escalation profile outside the agent allowlist", () => {
@@ -239,12 +269,13 @@ test("canonical keyed agents preserve the selected profiles and all agent policy
   const rendered = applyRuntimeProfiles(canonical, loadProfilePolicy(templatePath));
   assert.equal(rendered.agents.list, undefined);
   assert.equal(rendered.agents.entries.liv.id, undefined);
-  assert.equal(rendered.agents.entries.liv.model.primary, "cursor-agent/grok-4.7-low-fast");
-  assert.equal(rendered.agents.entries.max.model.primary, "openai/gpt-5.6-sol");
-  assert.equal(rendered.agents.entries.liv.thinkingDefault, "low");
+  assert.equal(rendered.agents.entries.liv.model.primary, "anthropic/claude-fable-5-2");
+  assert.equal(rendered.agents.entries.max.model.primary, "openai/gpt-6-astra");
+  assert.equal(rendered.agents.entries.liv.thinkingDefault, "high");
   assert.equal(rendered.agents.entries.max.fastModeDefault, true);
+  assert.equal(rendered.agents.entries.max.subagents.model, "openai/gpt-5.6-sol");
   assert.deepEqual(rendered.agents.entries.liv.tools, {deny: ["browser"]});
-  assert.deepEqual(rendered.agents.entries.max.models["openai/gpt-5.6-sol"].agentRuntime, {id: "codex"});
+  assert.deepEqual(rendered.agents.entries.max.models["openai/gpt-6-astra"].agentRuntime, {id: "codex"});
   assert.deepEqual(canonical, original);
 });
 

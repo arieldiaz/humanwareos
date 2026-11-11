@@ -2,7 +2,7 @@
 
 How a root agent turns a conversation into coordinated work. Layer 2 spec — see [agent-context-hierarchy.md](docs/agent-context-hierarchy.md).
 
-Status: proposed. Nothing here is live until the human approves the spec and implementation.
+Status: build steps 2 and 3 are implemented; the other steps are proposed.
 
 Budget: 1,100 words. Over it, consolidate.
 
@@ -40,7 +40,7 @@ A worker may not post to a channel, send anything outside the system, write memo
 
 ### Nested workers
 
-Depth is one level by default. A worker that needs help returns a delegation request naming the sub-task, its brief, and its profile. The root approves or denies it; an approved request lets that worker spawn exactly the named child. The human deals only with the root; the ledger keeps the whole tree.
+Depth is one level by default. A worker that needs help returns a delegation request naming the sub-task, its brief, and its profile. The root approves or denies it and spawns an approved child itself. The human deals only with the root; the ledger keeps the whole tree.
 
 ## Routing
 

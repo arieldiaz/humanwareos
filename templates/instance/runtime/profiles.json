@@ -1,16 +1,15 @@
 {
   "schemaVersion": 2,
-  "defaultProfile": "codex-low",
+  "defaultProfile": "codex-medium",
+  "allowedProfiles": ["cursor-agent-low", "cursor-agent-high", "codex-low", "codex-medium", "codex-high", "codex-astra-high", "claude-sonnet-high", "claude-fable-high"],
   "agents": {
     "liv": {
-      "defaultProfile": "cursor-agent-low",
-      "escalationProfile": "cursor-agent-high",
-      "allowedProfiles": ["cursor-agent-low", "cursor-agent-high", "codex-low", "codex-high"]
+      "defaultProfile": "claude-fable-high",
+      "workerProfile": "codex-medium"
     },
     "max": {
-      "defaultProfile": "codex-low",
-      "escalationProfile": "codex-high",
-      "allowedProfiles": ["cursor-agent-low", "cursor-agent-high", "codex-low", "codex-high"]
+      "defaultProfile": "codex-astra-high",
+      "workerProfile": "codex-medium"
     }
   }
 }

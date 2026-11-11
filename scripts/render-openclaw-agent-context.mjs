@@ -21,7 +21,25 @@ function section(title, body) {
   return `## ${title}\n\n${String(body).trim()}\n`;
 }
 
-export function renderAgentContext({agentId, frameworkRules, instanceRules, responseContract, agentTemplate, agentOverlay, runtimeCurrent, dataRoot}) {
+// Copies the named `## ` sections of a spec verbatim, one heading level down,
+// so the live prompt carries the spec's operative rules without restating them.
+export function excerpt(markdown, titles) {
+  const sections = new Map();
+  let current = null;
+  for (const line of String(markdown).split("\n")) {
+    const heading = line.match(/^## (.+)$/);
+    if (heading) sections.set(current = heading[1].trim(), []);
+    else if (current) sections.get(current).push(line);
+  }
+  return titles.map((title) => {
+    if (!sections.has(title)) fail(`spec section ${title} is missing`);
+    return `### ${title}\n${sections.get(title).join("\n").replace(/^(#+) /gm, "#$1 ").trimEnd()}`;
+  }).join("\n\n");
+}
+
+// OpenClaw injects only AGENTS.md into sub-agent sessions, so the worker
+// contract goes there and the root-only orchestration rules go in SOUL.md.
+export function renderAgentContext({agentId, frameworkRules, instanceRules, responseContract, orchestration, agentTemplate, agentOverlay, runtimeCurrent, dataRoot}) {
   if (!/^[a-z][a-z0-9-]*$/.test(agentId)) fail(`unsafe agent id ${agentId}`);
   const templateMeta = parseFrontmatter(agentTemplate);
   const overlayMeta = parseFrontmatter(agentOverlay);
@@ -30,8 +48,8 @@ export function renderAgentContext({agentId, frameworkRules, instanceRules, resp
   const theme = overlayMeta.theme || overlayMeta.vibe || templateMeta.description || "Humanware OS agent";
   const emoji = overlayMeta.emoji || "";
   return {
-    "AGENTS.md": `# Humanware OS assembled instructions\n\nGenerated from the active immutable runtime. Do not edit this projection; change the owning framework or instance source and rebuild.\n\n${section("Framework rules", frameworkRules)}\n${section("Reply shape", responseContract)}\n${section("Private instance context", instanceRules)}`,
-    "SOUL.md": `# Humanware OS assembled identity — ${displayName}\n\nGenerated from the active immutable runtime. Before non-trivial work, load ${join(dataRoot, "current", "strategy", "current.md")} and the smallest relevant projection from ${join(dataRoot, "current", "memory")} in the active privacy scope.\n\n${section("Framework identity", agentTemplate)}\n${section("Private identity overlay", agentOverlay || "No private identity overlay.")}`,
+    "AGENTS.md": `# Humanware OS assembled instructions\n\nGenerated from the active immutable runtime. Do not edit this projection; change the owning framework or instance source and rebuild.\n\n${section("Framework rules", frameworkRules)}\n${section("Reply shape", responseContract)}\n${section("Worker contract", `A sub-agent session is a worker; a root agent writes worker briefs to this contract.\n\n${excerpt(orchestration, ["Workers"])}`)}\n${section("Private instance context", instanceRules)}`,
+    "SOUL.md": `# Humanware OS assembled identity — ${displayName}\n\nGenerated from the active immutable runtime. Before non-trivial work, load ${join(dataRoot, "current", "strategy", "current.md")} and the smallest relevant projection from ${join(dataRoot, "current", "memory")} in the active privacy scope.\n\n${section("Framework identity", agentTemplate)}\n${section("Private identity overlay", agentOverlay || "No private identity overlay.")}\n${section("Orchestration", excerpt(orchestration, ["The ladder", "Root agents", "Routing"]))}`,
     "IDENTITY.md": `# IDENTITY.md — runtime projection\n\n- Name: ${displayName}\n- Theme: ${theme}\n${emoji ? `- Emoji: ${emoji}\n` : ""}\nThis identity is rendered from the active immutable Humanware OS runtime.\n`,
     "USER.md": `# USER.md — runtime projection\n\nOwner, time zone, and private instance facts are in the assembled AGENTS.md. Current personal facts belong to ${join(dataRoot, "current", "memory")}; load only the smallest relevant projection in the active privacy scope.\n`,
     "MEMORY.md": `# MEMORY.md — data-plane bridge\n\nCurrent memory lives at ${join(dataRoot, "current", "memory")}. Before answering about prior work, decisions, dates, people, preferences, or todos, use an approved exact-read tool to load the smallest relevant projection. Automatic semantic indexing is not required. This generated bridge contains no copied memory facts.\n`,
@@ -44,6 +62,7 @@ export function renderRuntimeContexts(runtimeDir) {
   const frameworkRules = readFileSync(join(runtimeDir, "instructions", "AGENTS.md"), "utf8");
   const instanceRules = readFileSync(join(runtimeDir, "instructions", "AGENTS-instance.md"), "utf8");
   const responseContract = readFileSync(join(runtimeDir, "instructions", "docs", "reply-shape.md"), "utf8");
+  const orchestration = readFileSync(join(runtimeDir, "instructions", "docs", "orchestration.md"), "utf8");
   const runtimeCurrent = join(instance.paths.runtimeRoot, "current");
   for (const agentId of instance.agents) {
     if (!/^[a-z][a-z0-9-]*$/.test(agentId)) fail(`unsafe agent id ${agentId}`);
@@ -56,7 +75,7 @@ export function renderRuntimeContexts(runtimeDir) {
     }
     const destination = join(runtimeDir, "instructions", "openclaw", agentId);
     mkdirSync(destination, {recursive: true});
-    const rendered = renderAgentContext({agentId, frameworkRules, instanceRules, responseContract, agentTemplate, agentOverlay, runtimeCurrent, dataRoot: instance.paths.dataRoot});
+    const rendered = renderAgentContext({agentId, frameworkRules, instanceRules, responseContract, orchestration, agentTemplate, agentOverlay, runtimeCurrent, dataRoot: instance.paths.dataRoot});
     for (const [filename, content] of Object.entries(rendered)) writeFileSync(join(destination, filename), content, {mode: 0o600});
   }
 }
