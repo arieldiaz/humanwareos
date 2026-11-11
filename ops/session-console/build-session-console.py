@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -156,12 +157,22 @@ TOKEN_FIELDS = (("input", "inputTokens"), ("output", "outputTokens"), ("cacheRea
                 ("cacheWrite", "cacheWrite"), ("total", "totalTokens"))
 
 
-def run_events(runs, entries, logical_by_key, usage_sessions):
-    """One run.spawned and, once ended, one run.completed per registry run.
+def is_worker_session(key, entry):
+    """OpenClaw's sub-agent test: a stored spawn depth, else a parent link or a sub-agent key."""
+    if type(entry.get("spawnDepth")) is int and entry["spawnDepth"] >= 0:
+        return entry["spawnDepth"] > 0
+    return bool(entry.get("spawnedBy")) or bool(re.search(r"(^|:)subagent:", str(key or "")))
 
-    The child session's counters are the run total only when that session's last
-    run is this run and the adapter saw no per-invocation usage for it.
+
+def run_events(runs, entries, logical_by_key, usage_sessions):
+    """One run.spawned and, once ended, one run.completed per worker registry run.
+
+    Plugin-started root conversations, such as a Slack work thread, also appear
+    in the registry; they are roots, not workers. The child session's counters
+    are the run total only when that session's last run is this run and the
+    adapter saw no per-invocation usage for it.
     """
+    runs = [run for run in runs if is_worker_session(run.get("childSessionKey"), entries.get(run.get("childSessionKey")) or {})]
     parents = {run.get("childSessionKey"): run.get("requesterSessionKey") for run in runs}
     logical = lambda key: logical_by_key.get(key, key)
 

@@ -1,6 +1,5 @@
 import {matchSlackChannel, startSlackWorkThread} from "../../slack-spin-out.mjs";
 import {resolveSlackChannel} from "./slack-route.mjs";
-import {createHash} from "node:crypto";
 
 async function listSlackChannels(token) {
   const channels = [];
@@ -15,24 +14,23 @@ async function listSlackChannels(token) {
   return channels;
 }
 
-function workSessionKey(agentId, operationId) {
-  const id = createHash("sha256").update(String(operationId)).digest("hex").slice(0, 20);
-  return `agent:${agentId}:subagent:work-thread-${id}`;
+// A work thread is a root conversation: its session is the one the Slack
+// adapter routes the human's replies in that thread to, so it has the root tool
+// surface and the agent's default reasoning. A sub-agent key would make it a
+// leaf worker.
+function slackThreadSessionKey(api, {accountId, channel, rootMessageId}) {
+  const route = api.runtime.channel.routing.resolveAgentRoute({cfg: api.config, channel: "slack", accountId, peer: {kind: "channel", id: channel}});
+  return `${route.sessionKey}:thread:${rootMessageId}`;
 }
 
 async function createWorkSession(api, params) {
-  const key = workSessionKey(params.agentId, params.idempotencyKey);
-  const thinking = await api.runtime.subagent.run({
+  const key = slackThreadSessionKey(api, params);
+  const started = await api.runtime.subagent.run({
     sessionKey: key,
-    message: "/think high",
-    disableTools: true,
+    message: params.task,
     deliver: false,
-    idempotencyKey: `${params.idempotencyKey}:thinking`,
+    idempotencyKey: params.idempotencyKey,
   });
-  const configured = await api.runtime.subagent.waitForRun({runId: thinking.runId, timeoutMs: 30_000});
-  if (configured.status !== "ok") {
-    throw new Error(configured.error ?? `work session reasoning setup ${configured.status}`);
-  }
   await api.runtime.agent.session.patchSessionEntry({
     sessionKey: key,
     update: () => ({
@@ -40,12 +38,6 @@ async function createWorkSession(api, params) {
       displayName: params.label,
       ...(params.category ? {category: params.category} : {}),
     }),
-  });
-  const started = await api.runtime.subagent.run({
-    sessionKey: key,
-    message: params.task,
-    deliver: false,
-    idempotencyKey: params.idempotencyKey,
   });
   return {key: started.sessionKey ?? key, runId: started.runId, runStarted: true};
 }
@@ -63,7 +55,7 @@ export function registerWorkThreadTool(api, {
     if (!currentChannel || !agentId || !accountId) return;
     return {
       name: "start_work_thread",
-      description: "Start substantial Slack work in its normal shape with one call: the title as one top-level channel post and a durable high-reasoning session that receives the brief, replies in that thread, and begins immediately. Use this instead of separate message and sessions_spawn calls.",
+      description: "Start substantial Slack work in its normal shape with one call: the title as one top-level channel post and that thread's own root session, which receives the brief, replies in the thread, and begins immediately. Use this instead of separate message and sessions_spawn calls.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -103,7 +95,6 @@ export function registerWorkThreadTool(api, {
             title: args.title,
             detail: args.detail,
             group: args.group,
-            parentSessionKey: context.sessionKey,
             operationId: toolCallId,
             send: (params) => {
               workThreadPosts.add(String(params.message).trim());

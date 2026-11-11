@@ -42,7 +42,7 @@ test("registers transport hooks without semantic collaboration hooks", () => {
   assert.ok(hooks.includes("message_sent"));
 });
 
-test("registers the Slack workflow tools with the normal high-reasoning path", () => {
+test("registers the Slack workflow tools with the thread's root session", () => {
   const tools = [];
   runSignaturePlugin.register({
     config: {},
@@ -65,7 +65,7 @@ test("registers the Slack workflow tools with the normal high-reasoning path", (
   assert.equal(tool.name, "start_work_thread");
   assert.deepEqual(tool.parameters.required, ["title", "detail"]);
   assert.ok(tool.parameters.properties.channel);
-  assert.match(tool.description, /durable high-reasoning session/);
+  assert.match(tool.description, /thread's own root session/);
 });
 
 test("exposes start_work_thread to claude-cli loopback sessions that lack nativeChannelId", () => {
