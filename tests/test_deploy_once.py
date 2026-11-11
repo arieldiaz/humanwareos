@@ -79,21 +79,43 @@ class ApprovalTests(unittest.TestCase):
         self.assertIs(record['allowActiveSessions'], False)
         self.assertRegex(record['approvalId'], r'^[A-Za-z0-9._-]+$')
 
-    def test_wake_returns_to_exact_slack_thread(self):
+    def test_wake_posts_to_the_report_channel(self):
         args = SimpleNamespace(agent='agent-a', channel='C1', thread='1.2')
         completed = subprocess.CompletedProcess([], 0, '{"job":{"id":"wake-1"}}', '')
         with mock.patch.object(once.subprocess, 'run', return_value=completed) as run:
-            self.assertEqual(once.schedule_wake(args, 'approval-1', '/reports/job'), 'wake-1')
+            self.assertEqual(once.schedule_wake(args, 'approval-1', '/reports/job', 'C-OPS'), 'wake-1')
         command = run.call_args.args[0]
         self.assertEqual(command[command.index('--agent') + 1], 'agent-a')
-        self.assertEqual(command[command.index('--to') + 1], 'channel:C1')
+        self.assertEqual(command[command.index('--to') + 1], 'channel:C-OPS')
         self.assertNotIn('--thread-id', command, 'a Slack ts is not a Telegram topic id')
-        self.assertEqual(command[command.index('--to') + 1], 'channel:C1')
         self.assertIn('--delete-after-run', command)
+
+    def test_topic_id_stays_with_the_initiating_channel(self):
+        args = SimpleNamespace(agent='agent-a', channel='C1', thread='42')
+        completed = subprocess.CompletedProcess([], 0, '{"job":{"id":"wake-1"}}', '')
+        with mock.patch.object(once.subprocess, 'run', return_value=completed) as run:
+            once.schedule_wake(args, 'approval-1', '/reports/job', 'C1')
+            once.schedule_wake(args, 'approval-1', '/reports/job', 'C-OPS')
+        same, other = (call.args[0] for call in run.call_args_list)
+        self.assertEqual(same[same.index('--thread-id') + 1], '42')
+        self.assertNotIn('--thread-id', other)
+
+    def test_report_channel_is_the_registered_ops_channel_or_the_initiating_one(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = {'channels': ['channels/other.json', 'channels/slack.json']}
+            channels = Path(directory) / 'channels'
+            channels.mkdir()
+            (channels / 'other.json').write_text(json.dumps({'adapter': 'other', 'registry': {'ops': {'channelId': 'X'}}}))
+            (channels / 'slack.json').write_text(json.dumps({'adapter': 'slack', 'registry': {'ops': {'channelId': 'C-OPS'}}}))
+            self.assertEqual(once.report_channel(directory, manifest, 'C1'), 'C-OPS')
+            (channels / 'slack.json').write_text(json.dumps({'adapter': 'slack', 'registry': {}}))
+            self.assertEqual(once.report_channel(directory, manifest, 'C1'), 'C1')
+            self.assertEqual(once.report_channel(directory, {}, 'C1'), 'C1')
 
     def test_launch_removes_approval_and_wake_when_handoff_fails(self):
         with tempfile.TemporaryDirectory() as directory:
-            args = SimpleNamespace(framework='/framework', instance=directory, agent='agent-a', openclaw_version=None)
+            args = SimpleNamespace(framework='/framework', instance=directory, agent='agent-a', channel='C1',
+                                   openclaw_version=None)
             (Path(directory) / 'humanware.instance.json').write_text(json.dumps(
                 {'id': 'example-os', 'agents': ['agent-a'], 'paths': {'dataRoot': directory}}))
             approval = Path(directory) / 'approval.json'

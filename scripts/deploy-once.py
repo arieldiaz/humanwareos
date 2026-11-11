@@ -2,8 +2,9 @@
 """Hand an approved cutover to an independent, non-restarting launchd job.
 
 Instance values come from the instance's humanware.instance.json (`id`,
-`paths.dataRoot`, `agents`); the launchd domain is the invoking user's; the
-Slack channel and thread are arguments.
+`paths.dataRoot`, `agents`, and the Slack declaration's `registry.ops`, where the
+check reports); the launchd domain is the invoking user's; the initiating Slack
+channel and thread are arguments.
 """
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -120,7 +121,16 @@ def submit(framework, instance, approval, version=None, label=None):
     return {'label': label, 'report': str(directory), 'state': 'submitted'}
 
 
-def schedule_wake(args, approval_id, report):
+def report_channel(instance, manifest, initiating):
+    """The instance's registered `ops` Slack channel, else the initiating channel."""
+    for relative in manifest.get('channels', []):
+        declaration = json.loads((Path(instance) / relative).read_text())
+        if declaration.get('adapter') == 'slack':
+            return declaration.get('registry', {}).get('ops', {}).get('channelId') or initiating
+    return initiating
+
+
+def schedule_wake(args, approval_id, report, channel):
     prompt = (
         f'Verify Humanware cutover {approval_id} using {report}. '
         'Read the cutover logs and active runtime manifest. Post one line to the channel stating success or the precise '
@@ -131,10 +141,10 @@ def schedule_wake(args, approval_id, report):
     result = subprocess.run([
         OPENCLAW, 'automations', 'add', '--name', f'Cutover check {approval_id}', '--at', '30m',
         '--agent', args.agent, '--session', 'isolated', '--message', prompt, '--announce',
-        '--channel', 'slack', '--account', args.agent, '--to', f'channel:{args.channel}',
-        # The CLI accepts only integer Telegram topic ids here; a Slack thread ts is
-        # kept in the approval provenance and the check posts to the channel.
-        *(['--thread-id', args.thread] if args.thread.isdigit() else []),
+        '--channel', 'slack', '--account', args.agent, '--to', f'channel:{channel}',
+        # The CLI accepts only integer Telegram topic ids here, and only the initiating
+        # channel has that topic; a Slack thread ts is kept in the approval provenance.
+        *(['--thread-id', args.thread] if channel == args.channel and args.thread.isdigit() else []),
         '--delete-after-run', '--json',
     ], capture_output=True, text=True, check=True)
     payload = json.loads(result.stdout)
@@ -160,7 +170,7 @@ def launch(args):
     report = Path(manifest['paths']['dataRoot']) / 'generated/reports/cutover-jobs' / label
     wake = None
     try:
-        wake = schedule_wake(args, approval.stem, report)
+        wake = schedule_wake(args, approval.stem, report, report_channel(instance, manifest, args.channel))
         result = submit(args.framework, instance, approval, args.openclaw_version, label)
     except Exception as error:
         if wake:
