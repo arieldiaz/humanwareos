@@ -20,8 +20,7 @@ a dead user token, degrades to a bot post instead of a 5xx.
 
 Environment (required values fail at startup when missing):
   HUMANWARE_DATA_ROOT    required — instance data root; captures default to
-                         <root>/working/inbox/recordings, usage reads
-                         <root>/generated/stats/windows.jsonl
+                         <root>/working/inbox/recordings
   SLACK_BOT_TOKEN        required — bot token (hydrated by the run script)
   SLACK_BOT_TOKENS       optional — space-separated bot tokens used to index
                          Slack thread roots (default: SLACK_BOT_TOKEN)
@@ -105,9 +104,6 @@ OAUTH_STATE_TTL = 600.0
 _DATA_ROOT_ENV = os.environ.get("HUMANWARE_DATA_ROOT", "")
 DATA_ROOT = Path(_DATA_ROOT_ENV) if _DATA_ROOT_ENV else None
 DEFAULT_CAPTURE_DIR = DATA_ROOT / "working" / "inbox" / "recordings" if DATA_ROOT else None
-# Rate-limit window utilization feed — same source that drives the stats page
-# pace gauges. The menu bar app's usage module reads the latest sample via GET /usage.
-WINDOWS_PATH = DATA_ROOT / "generated" / "stats" / "windows.jsonl" if DATA_ROOT else None
 _SESSIONS_ENV = os.environ.get("MENUBAR_SESSIONS_PATH", "")
 SESSIONS_PATH = (
     Path(_SESSIONS_ENV) if _SESSIONS_ENV
@@ -135,44 +131,6 @@ def missing_required_config() -> list[str]:
 THREAD_CACHE_TTL = 120.0
 THREAD_CACHE: dict = {"at": 0.0, "snapshot": None, "refreshing": False}
 THREAD_CACHE_LOCK = threading.Lock()
-
-
-def latest_usage() -> dict:
-    """Return the most recent Claude/Codex window sample, normalized for the app.
-
-    Reads the last non-empty line of windows.jsonl and passes through only the
-    fields the app renders: per-provider windows with label, usedPercent and the
-    ISO reset timestamp (the app formats reset time in the viewer's local tz).
-    Never fabricates: if the feed is missing/unreadable, returns ok=False so the
-    app can show an honest "no usage data" state instead of zeros.
-    """
-    try:
-        last = ""
-        with open(WINDOWS_PATH, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    last = line
-        if not last:
-            return {"ok": False, "error": "no_samples"}
-        sample = json.loads(last)
-    except (OSError, ValueError) as error:
-        return {"ok": False, "error": f"windows_read: {error}"}
-
-    providers = {}
-    for name in ("claude", "codex"):
-        windows = []
-        for win in (sample.get("providers", {}).get(name, {}) or {}).get("windows") or []:
-            windows.append(
-                {
-                    "label": win.get("label"),
-                    "slot": win.get("slot"),
-                    "windowMinutes": win.get("windowMinutes"),
-                    "usedPercent": win.get("usedPercent"),
-                    "resetsAt": win.get("resetsAt"),
-                }
-            )
-        providers[name] = {"windows": windows}
-    return {"ok": True, "sampledAt": sample.get("ts"), "providers": providers}
 
 
 def render_thread_groups(snapshot: dict) -> dict:
@@ -527,11 +485,6 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/health":
             self._json(200, {"ok": True, "service": "humanwareos-ingest"})
-        elif self.path == "/usage":
-            if not self._authorized():
-                self._json(401, {"ok": False, "error": "unauthorized"})
-                return
-            self._json(200, latest_usage())
         elif self.path == "/threads":
             if not self._authorized():
                 self._json(401, {"ok": False, "error": "unauthorized"})

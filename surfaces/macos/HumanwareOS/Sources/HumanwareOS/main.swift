@@ -66,8 +66,8 @@ if let index = CommandLine.arguments.firstIndex(of: "--selftest") {
 // app launched through LaunchServices (`open HumanwareOS.app --args
 // --selftest-net`) DOES enforce App Transport Security using the bundle's
 // Info.plist — so this is the honest test of the NSAllowsArbitraryLoads
-// exception. It fetches `/usage` (GET) and POSTs one `/capture`, then writes
-// both outcomes to a file (open() detaches stdout) and exits. Optional trailing
+// exception. It POSTs one `/capture`, then writes
+// the outcome to a file (open() detaches stdout) and exits. Optional trailing
 // argument overrides the capture text.
 if let index = CommandLine.arguments.firstIndex(of: "--selftest-net") {
     let text = CommandLine.arguments.count > index + 1
@@ -76,16 +76,6 @@ if let index = CommandLine.arguments.firstIndex(of: "--selftest-net") {
     let outPath = "/tmp/humanwareos-selftest-net.txt"
     var lines: [String] = []
     let group = DispatchGroup()
-
-    group.enter()
-    UsageClient.shared.fetch { snapshot in
-        if snapshot.ok {
-            lines.append("usage: OK — claude windows \(snapshot.claude.count), codex windows \(snapshot.codex.count)")
-        } else {
-            lines.append("usage: FAIL — \(snapshot.error ?? "unknown")")
-        }
-        group.leave()
-    }
 
     group.enter()
     IngestClient.shared.send(text: text) { result in
@@ -103,30 +93,6 @@ if let index = CommandLine.arguments.firstIndex(of: "--selftest-net") {
     try? report.write(toFile: outPath, atomically: true, encoding: .utf8)
     FileHandle.standardError.write((report + "\n").data(using: .utf8)!)
     exit(report.contains("FAIL") ? 1 : 0)
-}
-
-// Usage-only ATS check: fetch `/usage` (GET) and report. Launched through
-// LaunchServices (`open HumanwareOS.app --args --selftest-usage`) this enforces
-// App Transport Security using the bundle Info.plist, so a success proves the
-// NSAllowsArbitraryLoads exception unblocks plain-HTTP to the mini over the
-// tailnet — without posting anything to Slack. `/capture` rides the identical
-// ATS-governed path (same scheme/host; ATS gates by host, not HTTP method).
-if CommandLine.arguments.contains("--selftest-usage") {
-    let outPath = "/tmp/humanwareos-selftest-usage.txt"
-    let semaphore = DispatchSemaphore(value: 0)
-    var report = "selftest-usage: no result (timeout)"
-    UsageClient.shared.fetch { snapshot in
-        if snapshot.ok {
-            report = "usage: OK under ATS — claude windows \(snapshot.claude.count), codex windows \(snapshot.codex.count)"
-        } else {
-            report = "usage: FAIL — \(snapshot.error ?? "unknown")"
-        }
-        semaphore.signal()
-    }
-    _ = semaphore.wait(timeout: .now() + 20)
-    try? report.write(toFile: outPath, atomically: true, encoding: .utf8)
-    FileHandle.standardError.write((report + "\n").data(using: .utf8)!)
-    exit(report.contains("FAIL") || report.contains("no result") ? 1 : 0)
 }
 
 let app = NSApplication.shared

@@ -70,12 +70,12 @@ The instance declares routes as data:
 
 ```json
 {
-  "id": "stats",
+  "id": "sessions",
   "visibility": "private",
-  "mount": "/stats",
-  "source": "framework:stats",
-  "data": "data:generated/stats/current.json",
-  "health": "/health/stats"
+  "mount": "/sessions",
+  "source": "framework:sessions",
+  "data": "data:generated/sessions/current.json",
+  "health": "/health/sessions"
 }
 ```
 
@@ -85,7 +85,7 @@ Service control planes and independent public products remain separate hostnames
 
 ## Reference instance
 
-The reference instance serves its private Humanware OS frontend from one authenticated origin on the instance's private domain. It consolidates stats, usage, tokens, sessions, security, design review, and artifacts beneath that origin, and earlier per-module hostnames redirect into it during migration. Product and service-control hostnames remain separate where their trust boundary requires it.
+The reference instance serves its private Humanware OS frontend from one authenticated origin on the instance's private domain. It consolidates sessions, security, design review, and artifacts beneath that origin, and earlier per-module hostnames redirect into it during migration. Product and service-control hostnames remain separate where their trust boundary requires it.
 
 The current Mini/Caddy deployment is one adapter. The same instance route manifest must be renderable for a cloud-hosted private origin later without changing frontend components or data contracts.
 

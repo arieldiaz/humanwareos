@@ -158,29 +158,29 @@ test("exposes every allowed CLI profile through OpenClaw model visibility", () =
     executionMode: "general",
     runtime: "cli",
     harness: "cursor",
-    backend: "cursor-ask",
-    model: "cursor-ask/grok-4.7-low-fast",
+    backend: "cursor-agent",
+    model: "cursor-agent/grok-4.7-low-fast",
     reasoning: "low",
     fastMode: true,
   };
   cliCatalog.profiles["cursor-deep"] = {
     ...cliCatalog.profiles.cursor,
-    model: "cursor-ask/grok-4.7-high-fast",
+    model: "cursor-agent/grok-4.7-high-fast",
     reasoning: "high",
   };
 
   const rendered = applyRuntimeProfiles(source, cliCatalog);
   assert.deepEqual(Object.keys(rendered.agents.defaults.models).sort(), [
-    "cursor-ask/grok-4.7-high-fast",
-    "cursor-ask/grok-4.7-low-fast",
+    "cursor-agent/grok-4.7-high-fast",
+    "cursor-agent/grok-4.7-low-fast",
     "openai/gpt-5.6-sol",
   ]);
   assert.deepEqual(rendered.agents.defaults.modelPolicy.allow.sort(), [
-    "cursor-ask/grok-4.7-high-fast",
-    "cursor-ask/grok-4.7-low-fast",
+    "cursor-agent/grok-4.7-high-fast",
+    "cursor-agent/grok-4.7-low-fast",
     "openai/gpt-5.6-sol",
   ]);
-  assert.deepEqual(rendered.agents.defaults.models["cursor-ask/grok-4.7-high-fast"].agentRuntime, {id: "cursor-ask"});
+  assert.deepEqual(rendered.agents.defaults.models["cursor-agent/grok-4.7-high-fast"].agentRuntime, {id: "cursor-agent"});
   assert.equal(rendered.agents.defaults.models["local/fallback"], undefined);
 });
 
