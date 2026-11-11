@@ -44,6 +44,7 @@ export async function startSlackWorkThread({
   agentId,
   channel,
   title,
+  summary,
   detail,
   group,
   operationId,
@@ -51,11 +52,12 @@ export async function startSlackWorkThread({
   prepareScaffold,
   createSession,
 }) {
-  if (!accountId || !agentId || !channel || !title || !detail || !operationId) {
-    throw new Error("accountId, agentId, channel, title, detail, and operationId are required");
+  const heading = String(title ?? "").trim().split("\n")[0];
+  const overview = String(summary ?? "").trim();
+  const brief = String(detail ?? "").trim();
+  if (!accountId || !agentId || !channel || !heading || !overview || !brief || !operationId) {
+    throw new Error("accountId, agentId, channel, title, summary, detail, and operationId are required");
   }
-  const heading = String(title).trim().split("\n")[0];
-  const brief = String(detail).trim();
   // No sessionKey or threadId: stock gateway send posts top-level; the work session replies in its thread.
   const publication = await send({
     accountId,
@@ -73,14 +75,14 @@ export async function startSlackWorkThread({
     channel: "slack",
     to: `channel:${channel}`,
     threadId: String(rootMessageId),
-    message: brief,
-    idempotencyKey: `work-thread:${operationId}:brief`,
+    message: overview,
+    idempotencyKey: `work-thread:${operationId}:summary`,
   });
   await prepareScaffold({ channel, messageIds: [String(rootMessageId)] });
   const task = [
     "Begin this work now.",
-    `Use Slack channel ${channel}, thread root ${rootMessageId} for material progress, questions, and the final result.`,
-    `The title "${heading}" is the thread root and the brief below is its first reply; do not repeat either.`,
+    `Report in Slack channel ${channel}, thread root ${rootMessageId}: one report per milestone, decision, or blocker, then the final result. No interim progress posts.`,
+    `The title "${heading}" is the thread root and a short summary for the human is its first reply; do not repeat either. The brief below is not posted in Slack.`,
     "",
     brief,
   ].join("\n");

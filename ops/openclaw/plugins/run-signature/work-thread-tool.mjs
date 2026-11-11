@@ -55,14 +55,15 @@ export function registerWorkThreadTool(api, {
     if (!currentChannel || !agentId || !accountId) return;
     return {
       name: "start_work_thread",
-      description: "Start substantial Slack work in its normal shape with one call: the title as one top-level channel post and that thread's own root session, which receives the brief, replies in the thread, and begins immediately. Use this instead of separate message and sessions_spawn calls.",
+      description: "Start substantial Slack work in its normal shape with one call: the title as one top-level channel post, a short summary for the human as its first reply, and that thread's own root session, which receives the brief, replies in the thread, and begins immediately. Use this instead of separate message and sessions_spawn calls.",
       parameters: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "detail"],
+        required: ["title", "summary", "detail"],
         properties: {
           title: {type: "string", minLength: 1, description: "The whole top-level post: one line, type word, colon, short summary (e.g. \"Fix: raw JSON wrapper in Slack replies\")."},
-          detail: {type: "string", minLength: 1, description: "Complete work brief for the session; not posted at the root."},
+          summary: {type: "string", minLength: 1, maxLength: 600, description: "The first reply, written for the human: what this thread is for and what it will need from them, in a few plain lines."},
+          detail: {type: "string", minLength: 1, description: "Complete work brief for the session only; never posted in Slack."},
           channel: {type: "string", description: "Optional target channel: a loose name (\"humanware\", \"#inbox\") or ID. Defaults to the current channel."},
           group: {type: "string", description: "Optional dashboard group."},
         },
@@ -93,6 +94,7 @@ export function registerWorkThreadTool(api, {
             agentId,
             channel,
             title: args.title,
+            summary: args.summary,
             detail: args.detail,
             group: args.group,
             operationId: toolCallId,
