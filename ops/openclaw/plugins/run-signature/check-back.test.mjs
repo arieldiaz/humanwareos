@@ -184,7 +184,7 @@ test("the wake message is self-contained", async () => {
   assert.match(message, /Automatic check-back/);
   assert.match(message, /No human sent a message/);
   assert.match(message, /Slack channel C123, thread root 1790050400\.000001/);
-  assert.match(message, /scheduled is due \(CI for the migration\)/);
+  assert.match(message, /a check-back is due: CI for the migration/);
   assert.match(message, new RegExp(`${PR}: OPEN, checks failing, review none`));
   assert.match(message, /Continue the work if work remains/);
   assert.match(message, /Call check_back/);

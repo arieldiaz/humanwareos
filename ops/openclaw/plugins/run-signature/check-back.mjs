@@ -74,7 +74,7 @@ export function prChanged(recorded, next) {
 export function planCheck(entry, readings, now) {
   const reasons = [], prs = {}, readFailures = {...entry.readFailures};
   const due = entry.dueAt != null && now >= entry.dueAt;
-  if (due) reasons.push(`the check-back you scheduled is due (${entry.reason ?? "no reason recorded"})`);
+  if (due) reasons.push(`a check-back is due: ${entry.reason ?? "no reason recorded"}`);
   for (const [url, reading] of Object.entries(readings)) {
     if (reading.error != null) {
       readFailures[url] = (readFailures[url] ?? 0) + 1;
@@ -92,7 +92,7 @@ export function planCheck(entry, readings, now) {
   return {reasons, prs, readFailures, clearDue: due, after, ended: allDone(after) && (due || entry.dueAt == null)};
 }
 
-export function wakeMessage({sessionKey, entry, plan}) {
+export function wakeMessage({sessionKey, plan}) {
   const route = slackRouteFromSessionKey(sessionKey);
   const watched = Object.entries(plan.after).map(([url, fingerprint]) => `- ${url}: ${fingerprint ? describe(fingerprint) : "not yet read"}`);
   return [
@@ -205,7 +205,7 @@ async function checkEntry(entry, {checkBacks, now, isRunning, read, wake}) {
     catch (error) { return [url, {error: String(error?.message ?? error).split("\n")[0]}]; }
   })));
   const plan = planCheck(entry, readings, now);
-  if (plan.reasons.length) await wake(entry.sessionKey, wakeMessage({sessionKey: entry.sessionKey, entry, plan}), `${entry.sessionKey}:${now}`);
+  if (plan.reasons.length) await wake(entry.sessionKey, wakeMessage({sessionKey: entry.sessionKey, plan}), `${entry.sessionKey}:${now}`);
   // Applied to the current entry: events during the wake call (a new PR, a new deadline) are kept.
   await checkBacks.update(entry.sessionKey, (current) => {
     const next = {...current, prs: {...current.prs, ...plan.prs}, readFailures: plan.readFailures};
