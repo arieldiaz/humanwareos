@@ -34,19 +34,19 @@ An execution profile binds:
 
 Profiles are supported pairs, not an imaginary unrestricted model-by-harness matrix. Cursor can expose the models Cursor supports; Codex can expose its supported OpenAI models; native OpenClaw can use configured providers; Pi can expose the models its adapter supports. Both Liv and Max can select any profile allowed by the instance.
 
-The reference defaults Liv to Cursor with Grok and Max to Codex with Sol because an ordinary thread may progress from conversation through specification into implementation. Their high-reasoning variants are the escalation profiles. Native OpenClaw remains a selectable execution harness after its packaging, permissions, state paths, and context behavior are proven for the workload; it is not the reference default merely because it has fewer process and delivery boundaries.
+The reference defaults Liv to Claude Fable and Max to Codex Astra at high reasoning because a root agent orchestrates under [orchestration.md](orchestration.md). Each identity also declares a mid-cost default worker profile, used when the root names no other allowed profile. Native OpenClaw remains a selectable execution harness after its packaging, permissions, state paths, and context behavior are proven for the workload; it is not the reference default merely because it has fewer process and delivery boundaries.
 
-Removing, replacing, or simplifying dispatch infrastructure does not authorize a profile-policy change. Preserve each identity's default profile, escalation profile, and allowlist unless the human approves those values as a separate decision. Encode the approved tuple in the framework profile catalog, the reference template, renderer regression tests, instance configuration, and deployment verification so an implementation refactor cannot silently rewrite policy.
+Removing, replacing, or simplifying dispatch infrastructure does not authorize a profile-policy change. Preserve each identity's default, escalation, and worker profiles and its allowlist unless the human approves those values as a separate decision. Encode the approved tuple in the framework profile catalog, the reference template, renderer regression tests, instance configuration, and deployment verification so an implementation refactor cannot silently rewrite policy.
 
-A profile declares its reasoning and fast-mode defaults. The ordinary interactive profile should target a useful first response within 20 seconds and use medium-or-lower reasoning unless the model has a provider-specific equivalent. Coding, research, architecture, high-stakes work, and explicit requests for depth use a separate escalation profile. Fast mode changes latency, not permissions or privacy scope.
+A profile declares its reasoning and fast-mode defaults. A root agent's reasoning comes from its default profile and a worker's from the worker profile unless the spawn overrides it. Root conversations are exempt from a profile's response target. Fast mode changes latency, not permissions or privacy scope.
 
 ## Dispatch and switching
 
-Each identity has one default profile, one optional escalation profile, and an allowlist. An adapter may bind approved conversations to the default ACP profile only through concrete conversation identifiers; an account-wide or wildcard binding is not equivalent. A native route remains the fallback for new or unclassified conversations. Instance policy must exclude conversations whose privacy tier is outside the external harness profile.
+Each identity has one default profile, an optional escalation profile, an optional default worker profile, and an allowlist, optionally shared instance-wide. An adapter may bind approved conversations to the default ACP profile only through concrete conversation identifiers; an account-wide or wildcard binding is not equivalent. A native route remains the fallback for new or unclassified conversations. Instance policy must exclude conversations whose privacy tier is outside the external harness profile.
 
 OpenClaw remains owner of the conversation when it delegates a task to an external harness. The task receives an isolated worktree and a structured handoff containing objective, conversation root, agent identity, decisions, source references, branch, changed files, tests, and unresolved questions.
 
-Short work runs inline and returns results to the owning identity. Longer work may run as a durable child task with the escalation profile, while the control plane exposes working state without a model-authored acknowledgement. A long coding conversation may explicitly bind the thread to a persistent ACP session. Permanent channel-wide ACP bindings are exceptional because they couple delivery, permissions, model choice, and startup behavior to one harness.
+Short work runs inline. Other work follows the orchestration ladder: bounded work runs as a child task on a worker profile, while the control plane exposes working state without a model-authored acknowledgement. A long coding conversation may explicitly bind the thread to a persistent ACP session. Permanent channel-wide ACP bindings are exceptional because they couple delivery, permissions, model choice, and startup behavior to one harness.
 
 Switching profiles creates a handoff event; it does not pretend two harness session stores are one transcript. The run provenance records the selected harness, and the visible response signature reads it from the session's selected model rather than inferring it from the model name or provider.
 
@@ -56,7 +56,7 @@ A human request to change model or reasoning is control-plane input. The agent c
 
 Permissions belong to profiles, not personalities. Reference levels are read-only, standard-write inside an isolated worktree, and explicitly elevated. Flags equivalent to force, trust, approve-all, or unsandboxed execution cannot be a hidden permanent default for one identity.
 
-The control plane verifies the profile's data and tool scopes before dispatch. Selecting a coding harness does not grant raw evidence access, and selecting any model does not grant production mutation.
+Workers are leaves: the framework OpenClaw base caps spawn depth at one and denies sub-agents channel, memory, automation, and control tools. The control plane verifies the profile's data and tool scopes before dispatch. Selecting a coding harness does not grant raw evidence access, and selecting any model does not grant production mutation.
 
 ## Delivery
 

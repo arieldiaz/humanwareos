@@ -40,6 +40,10 @@
       "heartbeat": {
         "target": "none",
         "directPolicy": "block"
+      },
+      "subagents": {
+        "delegationMode": "prefer",
+        "maxSpawnDepth": 1
       }
     }
   },
@@ -51,7 +55,33 @@
   "tools": {
     "deny": [
       "image_generate"
-    ]
+    ],
+    "subagents": {
+      "tools": {
+        "deny": [
+          "message",
+          "sessions_send",
+          "conversations_send",
+          "conversations_turn",
+          "start_work_thread",
+          "slack_workspace",
+          "nodes",
+          "mobile_ui",
+          "memory_store",
+          "memory_forget",
+          "skill_workshop",
+          "cron",
+          "automations",
+          "gateway",
+          "openclaw",
+          "plugins",
+          "sessions",
+          "switch_model",
+          "close_thread",
+          "set_thread_status"
+        ]
+      }
+    }
   },
   "gateway": {
     "mode": "local",

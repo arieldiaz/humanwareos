@@ -89,24 +89,31 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
 
   const renderedAgents = entries.map(([id, agent]) => {
     const policy = requireObject(agentPolicies[id], `agent policy ${id}`);
+    const allowedProfiles = policy.allowedProfiles ?? catalog.allowedProfiles;
+    if (!Array.isArray(allowedProfiles)) fail(`agent ${id} has no allowed profiles`);
+    const selectable = (profileId, role) => {
+      if (!allowedProfiles.includes(profileId)) fail(`agent ${id} cannot ${role} profile ${profileId}`);
+      const selected = requireObject(profiles[profileId], `profile ${profileId}`);
+      if (selected.enabled === false) fail(`agent ${id} cannot ${role} disabled profile ${profileId}`);
+      return selected;
+    };
     const profileId = String(policy.defaultProfile ?? catalog.defaultProfile ?? "").trim();
     if (!profileId) fail(`agent ${id} has no selected profile`);
-    if (!Array.isArray(policy.allowedProfiles) || !policy.allowedProfiles.includes(profileId)) {
-      fail(`agent ${id} cannot select profile ${profileId}`);
-    }
-    const profile = requireObject(profiles[profileId], `profile ${profileId}`);
-    if (profile.enabled === false) fail(`agent ${id} selected disabled profile ${profileId}`);
+    const profile = selectable(profileId, "select");
     const escalationProfileId = String(policy.escalationProfile ?? "").trim();
-    if (escalationProfileId) {
-      if (!policy.allowedProfiles.includes(escalationProfileId)) fail(`agent ${id} cannot escalate to profile ${escalationProfileId}`);
-      const escalationProfile = requireObject(profiles[escalationProfileId], `profile ${escalationProfileId}`);
-      if (escalationProfile.enabled === false) fail(`agent ${id} escalation profile ${escalationProfileId} is disabled`);
-    }
+    if (escalationProfileId) selectable(escalationProfileId, "escalate to");
+    // The worker profile is what a spawned child runs on when the root names no
+    // model; an explicit sessions_spawn model from the allowlist still wins.
+    const workerProfileId = String(policy.workerProfile ?? "").trim();
+    const worker = workerProfileId ? selectable(workerProfileId, "delegate to") : null;
+    const subagents = worker
+      ? {subagents: {...(agent.subagents ?? {}), model: String(worker.model), ...(worker.reasoning ? {thinking: String(worker.reasoning)} : {})}}
+      : {};
     const defaults = profileDefaults(profile);
     const modelPolicies = agent.models && typeof agent.models === "object" && !Array.isArray(agent.models)
       ? structuredClone(agent.models)
       : {};
-    for (const allowedProfileId of policy.allowedProfiles) {
+    for (const allowedProfileId of allowedProfiles) {
       const allowedProfile = requireObject(profiles[allowedProfileId], `profile ${allowedProfileId}`);
       if (allowedProfile.enabled === false) continue;
       const model = String(allowedProfile.model ?? "").trim();
@@ -133,6 +140,7 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
         model: {...priorModel, primary: model},
         models: modelPolicies,
         ...defaults,
+        ...subagents,
         runtime: {type: "embedded"},
       };
     }
@@ -149,6 +157,7 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
         ...agent,
         models: modelPolicies,
         ...defaults,
+        ...subagents,
         runtime: {
           type: "acp",
           acp: {
@@ -167,8 +176,22 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
   if (keyed) source.agents.entries = Object.fromEntries(entries.map(([id], index) => [id, renderedAgents[index]]));
   else source.agents.list = renderedAgents;
 
+  // The instance default profile is the model for any agent without its own.
+  let defaultModel = {};
+  if (catalog.defaultProfile) {
+    const instanceDefault = requireObject(profiles[catalog.defaultProfile], `profile ${catalog.defaultProfile}`);
+    if (instanceDefault.enabled === false) fail(`default profile ${catalog.defaultProfile} is disabled`);
+    const instanceRuntime = instanceDefault.runtime === "acp" ? "" : runtimeId(instanceDefault);
+    if (instanceRuntime) {
+      const prior = source.agents.defaults?.model && typeof source.agents.defaults.model === "object" ? source.agents.defaults.model : {};
+      exposeGlobalModel(String(instanceDefault.model), instanceRuntime);
+      defaultModel = {model: {...prior, primary: String(instanceDefault.model)}};
+    }
+  }
+
   source.agents.defaults = {
     ...(source.agents.defaults ?? {}),
+    ...defaultModel,
     models: globalModelPolicies,
     modelPolicy: {
       ...(source.agents.defaults?.modelPolicy ?? {}),

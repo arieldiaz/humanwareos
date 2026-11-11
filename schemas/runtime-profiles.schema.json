@@ -7,15 +7,17 @@
   "properties": {
     "schemaVersion": {"const": 2},
     "defaultProfile": {"type": "string"},
+    "allowedProfiles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
     "agents": {
       "type": "object",
       "minProperties": 1,
       "additionalProperties": {
         "type": "object",
-        "required": ["defaultProfile", "allowedProfiles"],
+        "required": ["defaultProfile"],
         "properties": {
           "defaultProfile": {"type": "string", "minLength": 1},
           "escalationProfile": {"type": "string", "minLength": 1},
+          "workerProfile": {"type": "string", "minLength": 1},
           "allowedProfiles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
           "channelDefaults": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}}
         },

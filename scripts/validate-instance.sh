@@ -68,7 +68,8 @@ PROFILE_CATALOG="$FRAMEWORK_DIR/runtime/profile-catalog.json"
   (.defaultProfile | type == "string") and
   ($profiles[.defaultProfile] != null) and
   (.agents | type == "object") and
-  ([.agents[] | .defaultProfile, .escalationProfile?, .allowedProfiles[]] | all(. == null or $profiles[.] != null)) and
+  (([.agents[] | .allowedProfiles] | all(. != null)) or .allowedProfiles != null) and
+  ([.allowedProfiles[]?, (.agents[] | .defaultProfile, .escalationProfile?, .workerProfile?, .allowedProfiles[]?)] | all(. == null or $profiles[.] != null)) and
   ([$profiles[] | .executionMode] | all(. == "general" or . == "task" or . == "workspace")) and
   ([$profiles[] | .runtime] | all(. == "native" or . == "cli" or . == "acp" or . == "app-server"))
 ' "$INSTANCE_DIR/runtime/profiles.json" >/dev/null || {

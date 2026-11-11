@@ -104,3 +104,14 @@ test("drops the secrets provider template when the manifest names no OpenClaw pr
   assert.equal(rendered.channels.slack.enabled, false);
   assert.equal(rendered.gateway.mode, "local");
 });
+
+test("workers are leaves without channel, memory, automation, or control tools", () => {
+  const rendered = JSON.parse(renderOpenClawConfig({base, source, profiles, slack, manifest: {secrets: {openclawProvider: "private_secrets"}}, runtimeRoot}));
+  assert.equal(rendered.agents.defaults.subagents.maxSpawnDepth, 1);
+  assert.equal(rendered.agents.defaults.subagents.delegationMode, "prefer");
+  const denied = new Set(rendered.tools.subagents.tools.deny);
+  for (const tool of ["message", "conversations_send", "conversations_turn", "start_work_thread", "memory_store", "skill_workshop", "automations", "gateway", "openclaw", "sessions"]) {
+    assert.ok(denied.has(tool), tool);
+  }
+  assert.equal(rendered.tools.subagents.tools.allow, undefined);
+});
