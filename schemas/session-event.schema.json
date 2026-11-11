@@ -212,6 +212,7 @@
                 "output": {"type": "integer", "minimum": 0},
                 "cacheRead": {"type": "integer", "minimum": 0},
                 "cacheWrite": {"type": "integer", "minimum": 0},
+                "cacheWrite1h": {"type": "integer", "minimum": 0},
                 "total": {"type": "integer", "minimum": 0}
               },
               "required": [],

@@ -78,7 +78,7 @@ def cost_metadata(value, event_id):
         result['model'] = value['model']
     tokens = value.get('tokens', {})
     result['tokens'] = {key: number for key, number in tokens.items()
-                        if key in ('input', 'output', 'cacheRead', 'cacheWrite', 'total')
+                        if key in pricing.TOKEN_FIELDS + ('total',)
                         and type(number) is int and number >= 0} if isinstance(tokens, dict) else {}
     if status != 'unavailable':
         amount = value.get('amount')
@@ -310,7 +310,7 @@ def counted_usage(events):
 
 
 def has_tokens(row):
-    return any(key in row['cost']['tokens'] for key in pricing.TOKEN_CLASSES)
+    return any(key in row['cost']['tokens'] for key in pricing.TOKEN_FIELDS)
 
 
 def read_model(records):
@@ -367,7 +367,7 @@ def usage_total(reports):
     """Tokens and USD amount over counted reports; a report without an amount stays visible as unavailable.
 
     Harnesses disagree on what a reported total includes, so the total shown is the
-    sum of the four token classes whenever any class was observed.
+    sum of the token classes whenever any class was observed.
     """
     tokens, amount, priced = {}, Decimal(0), 0
     for row in reports:
@@ -376,8 +376,8 @@ def usage_total(reports):
         if row['cost'].get('currency') == 'USD':
             amount += Decimal(str(row['cost']['amount']))
             priced += 1
-    if any(key in tokens for key in pricing.TOKEN_CLASSES):
-        tokens['total'] = sum(tokens.get(key, 0) for key in pricing.TOKEN_CLASSES)
+    if any(key in tokens for key in pricing.TOKEN_FIELDS):
+        tokens['total'] = sum(tokens.get(key, 0) for key in pricing.TOKEN_FIELDS)
     return {'amount': float(round(amount, 6)) if priced else None, 'reports': len(reports),
             'unavailable': len(reports) - priced, 'tokens': tokens}
 

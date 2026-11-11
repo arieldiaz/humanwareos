@@ -339,6 +339,26 @@ class ActivityTest(unittest.TestCase):
                          self.usage('u5', 'root', million, ts='2025-12-31T23:59:59Z')):
             self.assertEqual(A.project(unpriced)['cost']['status'], 'unavailable')
 
+    def test_one_hour_cache_writes_are_kept_priced_and_totalled(self):
+        self.priced()
+        A.pricing.TABLE['models']['model-b'][0]['cacheWrite1h'] = 30
+        tokens = {'input': 1_000_000, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0, 'cacheWrite1h': 1_000_000}
+        validator = Draft202012Validator(json.loads((ROOT/'schemas/session-event.schema.json').read_text()), format_checker=FormatChecker())
+        stored = self.usage('u1', 'root', tokens, model='provider/model-b')
+        validator.validate(stored)
+        self.assertEqual(stored['cost']['tokens'], tokens)  # normalisation keeps the class
+        self.assertTrue(list(validator.iter_errors(dict(stored, cost=dict(stored['cost'], tokens={'cacheWrite1h': -1})))))
+        projected = A.project(stored)
+        validator.validate(projected)
+        self.assertEqual((projected['cost']['status'], projected['cost']['amount']), ('estimated', 40.0))  # $10 input and $30 for the hour of writes
+        rows = [stored, self.usage('u2', 'root', tokens, model='provider/model-a')]  # model-a has no 1-hour rate
+        scope, meta = A.read_model(rows)
+        self.assertEqual((sum(group['estimated'] for group in meta['spend']), sum(group['unavailable'] for group in meta['spend'])), (40.0, 1))
+        cost = A.cost_summary(scope, 'root')
+        self.assertEqual((cost['amount'], cost['reports'], cost['unavailable']), (40.0, 2, 1))
+        self.assertEqual((cost['root']['tokens']['cacheWrite1h'], cost['root']['tokens']['total']), (2_000_000, 4_000_000))
+        self.assertTrue(A.has_tokens(scope[0]) and A.has_tokens(dict(scope[0], cost={'tokens': {'cacheWrite1h': 1}})))
+
     def test_run_tree_and_session_rollup_by_run_model_and_day(self):
         self.priced()
         tokens = lambda count: {'input': count, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}

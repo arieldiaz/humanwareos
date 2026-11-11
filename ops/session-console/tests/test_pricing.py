@@ -67,6 +67,35 @@ class PricingTest(unittest.TestCase):
         exact = report(status='exact', amount=1.5, currency='USD', basisRef={'type': 'event', 'id': 'provider-report'})
         self.assertEqual(P.price(exact, '2026-01-15T12:00:00Z', TABLE), exact)
 
+    def test_one_hour_cache_writes_are_priced_at_their_own_rate_or_stay_unavailable(self):
+        table = copy.deepcopy(TABLE)
+        table['models']['model-a'][0]['cacheWrite1h'] = 4
+        tokens = dict(TOKENS, cacheWrite1h=500_000)
+        priced = P.price(report(tokens=tokens), '2026-01-15T12:00:00Z', table)
+        self.assertEqual((priced['status'], priced['amount'], priced['tokens']), ('estimated', 6.4, tokens))  # the 4.4 above, plus 0.5M*4
+        # The later row has no 1-hour rate, so a report with 1-hour writes is not priced; one without them still is.
+        self.assertEqual(P.price(report(tokens=tokens), '2026-03-15T12:00:00Z', table)['status'], 'unavailable')
+        self.assertEqual(P.price(report(), '2026-03-15T12:00:00Z', table)['amount'], 8.8)
+        self.assertEqual(P.price(report(tokens=dict(tokens, cacheWrite1h=1.5)), '2026-01-15T12:00:00Z', table)['status'], 'unavailable')
+        self.assertEqual(P.price(report(tokens=tokens), '2026-01-15T12:00:00Z', TABLE)['status'], 'unavailable')
+
+    def test_the_one_hour_rate_is_validated_and_published_for_anthropic_models(self):
+        def load(rate):
+            table = copy.deepcopy(TABLE)
+            table['models']['model-a'][0]['cacheWrite1h'] = rate
+            with tempfile.NamedTemporaryFile('w', suffix='.json') as handle:
+                json.dump(table, handle)
+                handle.flush()
+                return P.load(handle.name)
+        self.assertEqual(load(0)['models']['model-a'][0]['cacheWrite1h'], 0)
+        for rate in (-1, '4', None, True):
+            with self.assertRaises(ValueError):
+                load(rate)
+        # Published as twice the base input price for every Anthropic row, and for no other.
+        for model, rows in P.TABLE['models'].items():
+            for row in rows:
+                self.assertEqual(row.get('cacheWrite1h'), 2 * row['input'] if row['source'] == 'anthropic' else None, model)
+
     def test_shipped_table_states_its_basis_and_rejects_ambiguous_rows(self):
         self.assertEqual((P.TABLE['basis'], P.TABLE['currency']), ('api-list-price-equivalent', 'USD'))
         self.assertTrue(all(row.get('verified') for rows in P.TABLE['models'].values() for row in rows))
