@@ -125,14 +125,14 @@ test("reports a run that does not start", async () => {
 
 test("registers the thread's check-back before its first turn starts", async () => {
   const {tool, events, runs} = harness();
-  await tool.execute("tool-call-4", {title: "Fix: check-backs", detail: "Register first."});
+  await tool.execute("tool-call-4", {title: "Fix: check-backs", summary: "Registering it.", detail: "Register first."});
 
   assert.deepEqual(events, [`register:${runs[0].sessionKey}`, "run"]);
 });
 
 test("a thread whose check-back cannot be registered starts no session", async () => {
   const {tool, events, patches} = harness({register: async () => { throw new Error("registry unwritable"); }});
-  const result = await tool.execute("tool-call-5", {title: "Fix: check-backs", detail: "Fail closed."});
+  const result = await tool.execute("tool-call-5", {title: "Fix: check-backs", summary: "Registering it.", detail: "Fail closed."});
 
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /registry unwritable/);
@@ -142,7 +142,7 @@ test("a thread whose check-back cannot be registered starts no session", async (
 
 test("a first turn that fails to start does not leave a registered thread behind", async () => {
   const {tool, events} = harness({run: async () => { throw new Error("admission rejected"); }});
-  await tool.execute("tool-call-6", {title: "Fix: check-backs", detail: "Clean up."});
+  await tool.execute("tool-call-6", {title: "Fix: check-backs", summary: "Registering it.", detail: "Clean up."});
 
   assert.match(events.at(-1), /^remove:/);
 });
