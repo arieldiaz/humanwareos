@@ -24,7 +24,7 @@ Post-deploy canaries probe channels and run bounded synthetic turns but never re
 
 ## Source checkouts and worktrees
 
-The deployed framework and instance checkouts stay clean on their canonical branches; agents never get either as a writable task directory. Every mutating task gets an isolated worktree from the latest canonical remote branch. The session ledger records repository, branch, worktree, owner, status, and merge disposition; closing a task proves it merged, under review, or archived. Memory, sessions, and working documents belong to the data plane and create no Git branches.
+[Coding sessions](docs/coding-sessions.md) owns checkouts and worktrees.
 
 ## Configuration drift
 

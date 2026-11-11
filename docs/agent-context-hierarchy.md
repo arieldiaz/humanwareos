@@ -36,13 +36,7 @@ The immutable runtime carries one canonical skill directory and projects it into
 
 ## Three source classes
 
-Every loaded file comes from exactly one source class:
-
-- **Framework source:** reusable rules, specs, templates, and code.
-- **Instance source:** private configuration, approved policy narrowings, identifiers, and route selections.
-- **Data source:** evidence, memory, strategy, sessions, work, and artifacts.
-
-The generated runtime assembles references and rendered copies from those sources. A harness-required filename points into the runtime bundle; it is not another authored copy.
+Every loaded file comes from exactly one source class, framework, instance, or data, as [system-boundaries.md](docs/system-boundaries.md) defines them. The generated runtime assembles references and rendered copies from those sources. A harness-required filename points into the runtime bundle; it is not another authored copy.
 
 ## Why memory leaves Git
 

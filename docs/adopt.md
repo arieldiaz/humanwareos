@@ -55,13 +55,7 @@ The instance validator fails expired or unreferenced compatibility patches.
 
 ## What lives where
 
-Humanware OS contains reusable rules, specs, agent templates, skills, schemas, adapters, builders, generic services, frontend components, and tests.
-
-The private instance contains agent overlays, runtime-profile selections, channel and account identifiers, secret references, domain routes, private integration configuration, branding, and truly private plugins.
-
-The data plane contains strategy, memory evidence and projections, sessions, working documents, artifacts, media, records, stream events, and derived indexes. Ordinary data writes do not use PRs.
-
-Generated runtime contains rendered instructions and configuration from the two source revisions. It contains no personal data or mutable state and is never edited by hand.
+[System boundaries](docs/system-boundaries.md) owns what belongs in the framework, the private instance, the data plane, and the generated runtime.
 
 ## Configuration seam
 

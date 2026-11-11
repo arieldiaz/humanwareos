@@ -1,14 +1,12 @@
 # Traceable activity index
 
-Authorized implementation. Budget: 900 words.
+Owns the portable activity event envelope, the activity index, and its session and Activity trace surfaces. Budget: 900 words.
 
 ## Ownership
 
 Humanware owns a portable event envelope over the canonical [session ledger](docs/data-plane.md), not a platform's native store. Mastra, Agent Engine, and harnesses implement adapters. Evidence remains append-only; [permission-model.md](docs/permission-model.md) remains the authority. This feature observes decisions without granting permissions or promoting memory.
 
-The human authorized one coherent production slice: schema, adapter helper, index, Activity and session trace, tests, and documentation.
-
-The ledger is also the home for progress and operational detail that should not inflate channel replies. Adapters capture observed activity automatically; agents do not narrate it into Slack or self-report authoritative events. The conversation adapter publishes only the validated final response, once, while the private session surfaces retain the complete sanitized trace. Separate staged implementation PRs are not required. Merge and deployment still require separate human approval.
+The ledger is also the home for progress and operational detail that should not inflate channel replies. Adapters capture observed activity automatically; agents do not narrate it into Slack or self-report authoritative events. The conversation adapter publishes only the validated final response, once, while the private session surfaces retain the complete sanitized trace.
 
 ## Events
 

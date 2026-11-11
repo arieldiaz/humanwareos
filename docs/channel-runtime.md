@@ -8,7 +8,7 @@ Budget: 1,100 words. Over it, consolidate.
 
 OpenClaw owns identity routing, conversation state, adapters, tools, secrets, execution, delivery, and lifecycle. Slack, Campfire, Buzz, voice, and first-party applications are replaceable adapters. Campfire uses one native bot per identity and a private asynchronous bridge because its webhook response window is shorter than an agent turn. The first voice slice is defined in [voice-channel.md](voice-channel.md).
 
-An adapter converts inbound events into canonical account, conversation, thread, sender, mention, attachment, timestamp, and delivery fields, then renders the canonical response and lifecycle state. Rendering never owns identity or memory.
+An adapter converts inbound events into canonical account, conversation, thread, sender, mention, attachment, timestamp, and delivery fields, then renders the canonical response. Rendering never owns identity or memory.
 
 ## Identity
 
@@ -64,7 +64,7 @@ The adapter owns surface publication and appends provenance after confirmed deli
 
 ### Conversation lifecycle
 
-[status-framework.md](status-framework.md) is the single lifecycle contract, including silence, closure, reopening, and stale-work fencing. Admission and delivery use that authority; channel adapters do not maintain a second state machine.
+[status-framework.md](status-framework.md) is the single lifecycle contract. Admission and delivery use that authority; channel adapters do not maintain a second state machine.
 
 ## Health
 

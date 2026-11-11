@@ -2,6 +2,8 @@
 
 This guide creates one Humanware OS installation and verifies a real conversation through a channel adapter. The finish line is an agent whose identity survives model, harness, interface, and host changes because those concerns are configured separately.
 
+Budget: 1,000 words.
+
 ## 1. Prepare the host and accounts
 
 The reference host is an always-on Apple Silicon Mac. You need Git, `jq`, a supported model or subscription, a secrets manager, and a channel. GitHub CLI is recommended for the private instance. Slack plus OpenClaw is the supported first channel; neither is part of the core architecture.
@@ -16,14 +18,7 @@ Run the installer from a Humanware OS checkout:
 ./install.sh /absolute/path/to/my-instance --repo OWNER/my-instance
 ```
 
-It creates or resolves these independent roots:
-
-- a public Humanware OS checkout whose revision each build records;
-- a private instance repository containing configuration only;
-- an external data plane containing stream, memory, strategy, sessions, workspaces, and artifacts;
-- a generated runtime root containing immutable builds and the active `current` symlink.
-
-The runtime is output rather than a fourth source. The installer validates the boundaries and prints the exact paths.
+It creates or resolves a Humanware OS checkout, a configuration-only private instance repository, an external data plane, and a generated runtime root with the active `current` symlink. [System boundaries](system-boundaries.md) defines what each holds. The installer validates those boundaries and prints the exact paths.
 
 ## 3. Configure the first agent
 
@@ -80,9 +75,7 @@ Test a real reboot. Acceptance requires SSH, the runtime controller, each enable
 
 ## 9. Operate without drift
 
-Framework change: isolated Humanware worktree → pull request → CI → squash-merge → deploy.
-
-Instance change: isolated instance worktree → pull request → CI → squash-merge → build and activate a new runtime.
+Framework and instance changes follow [Coding sessions](coding-sessions.md) through pull request, CI, and squash-merge; a framework merge then deploys, and an instance merge builds and activates a new runtime.
 
 Data change: append an event or version a workspace object → update a current projection when useful. No pull request is required.
 
