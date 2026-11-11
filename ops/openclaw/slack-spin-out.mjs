@@ -46,7 +46,6 @@ export async function startSlackWorkThread({
   title,
   detail,
   group,
-  parentSessionKey,
   operationId,
   send,
   prepareScaffold,
@@ -86,12 +85,12 @@ export async function startSlackWorkThread({
     brief,
   ].join("\n");
   const session = await createSession({
-    agentId,
+    accountId,
+    channel,
+    rootMessageId: String(rootMessageId),
     label: heading,
     ...(group?.trim() ? { category: group.trim() } : {}),
-    thinkingLevel: "high",
     task,
-    ...(parentSessionKey ? { parentSessionKey } : {}),
     idempotencyKey: `work-thread:${operationId}:session`,
   });
   const childSessionKey = sessionKey(session);
@@ -103,6 +102,5 @@ export async function startSlackWorkThread({
     rootMessageId: String(rootMessageId),
     childSessionKey: String(childSessionKey),
     runId: String(childRunId),
-    thinkingLevel: "high",
   };
 }

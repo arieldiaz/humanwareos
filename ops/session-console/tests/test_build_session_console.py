@@ -207,6 +207,23 @@ class SubagentRunCaptureTest(unittest.TestCase):
         late = next(row for row in self.ledger() if row['id'] == 'openclaw:run.completed:run-d')
         self.assertEqual((late['cost']['status'], late['cost']['tokens'], late['outcome']), ('unavailable', {'input': 3}, 'failed'))
 
+    def test_plugin_started_root_thread_is_not_a_worker_run(self):
+        thread = 'agent:liv:slack:channel:c1:thread:678.90'
+        self.node(thread, 'thread', {'lastRunId': 'run-t', 'endedAt': 1787300060000, 'status': 'done'})
+        self.add_run('run-t', thread, 'agent:liv:main', ended=('ok', 60000))
+        self.add_run('run-e', 'agent:liv:subagent:e', thread, ended=('ok', 1000))
+        rows = MODULE.run_events(*self.run_inputs())
+        self.assertNotIn('run-t', {row['runId'] for row in rows})
+        spawned = next(row for row in rows if row['id'] == 'openclaw:run.spawned:run-e')
+        self.assertEqual(spawned['run']['rootSessionId'], spawned['run']['parentSessionId'])
+        self.assertTrue(MODULE.is_worker_session('agent:liv:dashboard:x', {'spawnDepth': 1, 'spawnedBy': thread}))
+        self.assertFalse(MODULE.is_worker_session(thread, {}))
+
+    def run_inputs(self):
+        entries, logical = {}, {}
+        MODULE.registry_index(str(self.root / 'agents'), {}, entries, logical)
+        return list(MODULE.iter_subagent_runs(self.root)), entries, logical, set()
+
     def test_per_invocation_usage_suppresses_session_counters(self):
         entries, logical = {}, {}
         MODULE.registry_index(str(self.root / 'agents'), {}, entries, logical)

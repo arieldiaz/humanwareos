@@ -14,7 +14,6 @@ function fixture(overrides = {}) {
       title: "  Fix: focused patch  ",
       detail: "Scope and first action are underway.",
       group: "Humanware OS",
-      parentSessionKey: "agent:max:slack:channel:C123:thread:1",
       operationId: "call-1",
       send: async (params) => {
         calls.push(["send", params]);
@@ -23,14 +22,14 @@ function fixture(overrides = {}) {
       prepareScaffold: async (params) => calls.push(["scaffold", params]),
       createSession: async (params) => {
         calls.push(["session", params]);
-        return { key: "agent:max:dashboard:child", runId: "run-1", runStarted: true };
+        return { key: "agent:max:slack:channel:c123:thread:1787000000.100000", runId: "run-1", runStarted: true };
       },
       ...overrides,
     },
   };
 }
 
-test("posts only the title as the top-level message and starts high before work begins", async () => {
+test("posts only the title as the top-level message and starts the thread's session", async () => {
   const { calls, input } = fixture();
   const result = await startSlackWorkThread(input);
 
@@ -42,15 +41,15 @@ test("posts only the title as the top-level message and starts high before work 
   assert.match(calls[3][1].task, /Scope and first action are underway\./);
   assert.deepEqual(calls[2][1], { channel: "C123", messageIds: ["1787000000.100000"] });
   assert.equal(calls[3][1].label, "Fix: focused patch");
-  assert.equal(calls[3][1].thinkingLevel, "high");
-  assert.equal(calls[3][1].parentSessionKey, input.parentSessionKey);
+  assert.deepEqual([calls[3][1].accountId, calls[3][1].channel, calls[3][1].rootMessageId], ["max", "C123", "1787000000.100000"]);
+  assert.equal("parentSessionKey" in calls[3][1], false);
+  assert.equal("thinkingLevel" in calls[3][1], false);
   assert.match(calls[3][1].task, /Slack channel C123, thread root 1787000000\.100000/);
   assert.match(calls[3][1].task, /Begin this work now/);
   assert.deepEqual(result, {
     rootMessageId: "1787000000.100000",
-    childSessionKey: "agent:max:dashboard:child",
+    childSessionKey: "agent:max:slack:channel:c123:thread:1787000000.100000",
     runId: "run-1",
-    thinkingLevel: "high",
   });
 });
 
@@ -65,7 +64,7 @@ test("does not write a root status if the session cannot start", async () => {
   const { calls, input } = fixture({
     createSession: async (params) => {
       calls.push(["session", params]);
-      return { key: "agent:max:dashboard:child", runStarted: false, runError: "launch failed" };
+      return { key: "agent:max:slack:channel:c123:thread:1787000000.100000", runStarted: false, runError: "launch failed" };
     },
   });
   await assert.rejects(startSlackWorkThread(input), /launch failed/);
