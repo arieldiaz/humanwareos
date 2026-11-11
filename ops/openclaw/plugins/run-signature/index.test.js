@@ -63,7 +63,7 @@ test("registers the Slack workflow tools with the thread's root session", () => 
     agentAccountId: "max",
   });
   assert.equal(tool.name, "start_work_thread");
-  assert.deepEqual(tool.parameters.required, ["title", "detail"]);
+  assert.deepEqual(tool.parameters.required, ["title", "summary", "detail"]);
   assert.ok(tool.parameters.properties.channel);
   assert.match(tool.description, /thread's own root session/);
 });

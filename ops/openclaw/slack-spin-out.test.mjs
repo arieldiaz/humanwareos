@@ -12,6 +12,7 @@ function fixture(overrides = {}) {
       agentId: "max",
       channel: "C123",
       title: "  Fix: focused patch  ",
+      summary: "  Patching the wrapper; nothing needed from you yet.  ",
       detail: "Scope and first action are underway.",
       group: "Humanware OS",
       operationId: "call-1",
@@ -29,7 +30,7 @@ function fixture(overrides = {}) {
   };
 }
 
-test("posts only the title as the top-level message and starts the thread's session", async () => {
+test("posts the title at the root, the summary as its first reply, and gives the brief only to the session", async () => {
   const { calls, input } = fixture();
   const result = await startSlackWorkThread(input);
 
@@ -38,6 +39,10 @@ test("posts only the title as the top-level message and starts the thread's sess
   assert.equal(calls[0][1].sessionKey, undefined);
   assert.equal(calls[0][1].threadId, undefined);
   assert.equal(calls[0][1].message, "Fix: focused patch");
+  assert.equal(calls[1][1].threadId, "1787000000.100000");
+  assert.equal(calls[1][1].message, "Patching the wrapper; nothing needed from you yet.");
+  assert.equal(calls.filter(([kind, params]) => kind === "send" && /Scope and first action/.test(params.message)).length, 0);
+  assert.match(calls[3][1].task, /No interim progress posts/);
   assert.match(calls[3][1].task, /Scope and first action are underway\./);
   assert.deepEqual(calls[2][1], { channel: "C123", messageIds: ["1787000000.100000"] });
   assert.equal(calls[3][1].label, "Fix: focused patch");
@@ -57,6 +62,7 @@ test("uses stable idempotency keys for a repeated tool call", async () => {
   const { calls, input } = fixture();
   await startSlackWorkThread(input);
   assert.equal(calls[0][1].idempotencyKey, "work-thread:call-1:publication");
+  assert.equal(calls[1][1].idempotencyKey, "work-thread:call-1:summary");
   assert.equal(calls[3][1].idempotencyKey, "work-thread:call-1:session");
 });
 
@@ -91,4 +97,10 @@ test("matches channels loosely by name and passes IDs through", () => {
   assert.equal(matchSlackChannel("works", channels), "C2");
   assert.throws(() => matchSlackChannel("garden", channels), /No Slack channel/);
   assert.throws(() => matchSlackChannel("os", [{ id: "C1", name: "humanware-os" }, { id: "C4", name: "acme-os" }]), /several channels/);
+});
+
+test("refuses to start without a summary for the human", async () => {
+  const { calls, input } = fixture({ summary: "  " });
+  await assert.rejects(startSlackWorkThread(input), /summary/);
+  assert.equal(calls.length, 0);
 });

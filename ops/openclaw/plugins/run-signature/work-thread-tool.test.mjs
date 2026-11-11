@@ -61,6 +61,7 @@ test("starts Slack work in the thread's own root session without privileged gate
 
   const result = await tool.execute("tool-call-1", {
     title: "Fix: work threads",
+    summary: "Repairing work threads; nothing needed from you yet.",
     detail: "Repair and verify the workflow.",
     group: "Humanware OS",
   });
@@ -77,9 +78,9 @@ test("starts Slack work in the thread's own root session without privileged gate
     },
     {
       to: "channel:C123456",
-      text: "Repair and verify the workflow.",
+      text: "Repairing work threads; nothing needed from you yet.",
       threadId: "1792416000.000001",
-      deliveryQueueId: "work-thread:tool-call-1:brief",
+      deliveryQueueId: "work-thread:tool-call-1:summary",
     },
   ]);
   assert.deepEqual(routes.map(({channel, accountId, peer}) => ({channel, accountId, peer})), [
@@ -89,17 +90,18 @@ test("starts Slack work in the thread's own root session without privileged gate
   assert.equal(runs[0].sessionKey, "agent:max:slack:channel:c123456:thread:1792416000.000001");
   assert.equal(result.details.childSessionKey, runs[0].sessionKey);
   assert.equal(runs[0].disableTools, undefined);
-  assert.match(runs[0].message, /Use Slack channel C123456, thread root 1792416000\.000001/);
+  assert.match(runs[0].message, /Report in Slack channel C123456, thread root 1792416000\.000001/);
   assert.deepEqual(patches, [{
     sessionKey: runs[0].sessionKey,
     update: {label: "Fix: work threads", displayName: "Fix: work threads", category: "Humanware OS"},
   }]);
-  assert.deepEqual([...workThreadPosts], ["Fix: work threads", "Repair and verify the workflow."]);
+  assert.deepEqual([...workThreadPosts], ["Fix: work threads", "Repairing work threads; nothing needed from you yet."]);
+  assert.match(runs[0].message, /Repair and verify the workflow\./);
 });
 
 test("the work-thread session is a root, never sub-agent-shaped", async () => {
   const {tool, runs} = harness();
-  const result = await tool.execute("tool-call-3", {title: "Fix: roots", detail: "Coordinate it."});
+  const result = await tool.execute("tool-call-3", {title: "Fix: roots", summary: "Fixing roots.", detail: "Coordinate it."});
 
   assert.equal(isSubagentShaped(result.details.childSessionKey), false);
   assert.equal(isSubagentShaped(runs[0].sessionKey), false);
@@ -108,7 +110,7 @@ test("the work-thread session is a root, never sub-agent-shaped", async () => {
 
 test("reports a run that does not start", async () => {
   const {tool, patches} = harness({run: async () => { throw new Error("admission rejected"); }});
-  const result = await tool.execute("tool-call-2", {title: "Fix: work threads", detail: "Repair it."});
+  const result = await tool.execute("tool-call-2", {title: "Fix: work threads", summary: "Repairing it.", detail: "Repair it."});
 
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /admission rejected/);
