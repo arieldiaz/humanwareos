@@ -14,7 +14,7 @@ A change belongs upstream when another installation could benefit from it. Frame
 
 ### Private instance
 
-The private instance owns one installation's selections and narrowings: framework revision, agent overlays, enabled runtime profiles, model preferences, channel/account identifiers, domain and route manifest, local-server service selection and host configuration, host inventory, secret key references, private integrations, branding, and truly instance-only plugins.
+The private instance owns one installation's selections and narrowings: agent overlays, enabled runtime profiles, model preferences, channel/account identifiers, domain and route manifest, local-server service selection and host configuration, host inventory, secret key references, private integrations, branding, and truly instance-only plugins.
 
 An instance must not copy generic framework files and edit them locally. It supplies typed overlays at declared extension points; framework release selection is an operator input recorded by the generated runtime. A local compatibility patch is temporary and records its upstream issue or PR, owner, reason, and removal condition. Instance deployment scripts and reusable service implementations are invalid ownership: generic mechanics belong here, while substantial private applications remain separate from the configuration repository. Launchd selection, Caddy routes, local ports, host paths, and secret references remain instance configuration.
 
@@ -42,7 +42,7 @@ If a file answers more than one, split it. A reusable instruction plus local cha
 ## Dependency direction
 
 ```text
-Humanware OS release ← private instance lock
+Humanware OS checkout     private instance
          │                    │
          └────────┬───────────┘
                   ▼

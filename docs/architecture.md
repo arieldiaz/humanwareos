@@ -1,6 +1,6 @@
 # Architecture
 
-Humanware OS is the reusable framework for durable human-agent systems. An installation combines a pinned framework release, a private instance configuration, and a separately governed data plane into an immutable runtime. Conversation surfaces, model providers, and coding harnesses are adapters around that core.
+Humanware OS is the reusable framework for durable human-agent systems. An installation combines a framework revision, a private instance configuration, and a separately governed data plane into an immutable runtime. Conversation surfaces, model providers, and coding harnesses are adapters around that core.
 
 Budget: 1,200 words. Over it, consolidate into the owning specification.
 
@@ -18,9 +18,7 @@ private instance config ┘          ▲                  ▲
                                 human
 ```
 
-The framework defines behavior, interfaces, validators, builders, and reusable frontends. The instance selects and narrows those capabilities for one person. The data plane contains what that person and their agents observe, learn, and produce. The runtime is generated from framework plus instance; it is never edited as source.
-
-The complete ownership contract is in [System boundaries](system-boundaries.md). Storage semantics are in [Data plane](data-plane.md). Build and deployment are in [Runtime and deployment](runtime.md).
+What the framework, instance, data plane, and generated runtime each own is in [System boundaries](system-boundaries.md). Storage semantics are in [Data plane](data-plane.md). Build and deployment are in [Runtime and deployment](runtime.md).
 
 ## Agent core
 
@@ -32,7 +30,7 @@ The detailed contract is in [Channels, agents, and execution profiles](channel-r
 
 ## Replaceable interfaces
 
-Slack is the supported reference channel, not the architecture. A first-party Humanware application can implement the same adapter contract. A channel adapter translates inbound identity and thread metadata into a canonical conversation event, then translates the agent's final response and lifecycle state back to the surface. Channel-specific rendering never owns agent identity or memory.
+Slack is the supported reference channel, not the architecture. A first-party Humanware application can implement the same adapter contract. A channel adapter translates inbound identity and thread metadata into a canonical conversation event, then translates the agent's final response back to the surface. Channel-specific rendering never owns agent identity or memory.
 
 ## Data and memory
 
@@ -45,8 +43,6 @@ The data plane separates evidence from current views:
 - Published artifact revisions are immutable.
 - Derived indexes, transcripts, summaries, and caches are rebuildable.
 
-Data does not live in either source repository. Behavioral rules never enter through memory: reusable rules change Humanware OS through review; private approved policy changes the instance through review.
-
 ## Domain surface
 
 A complete installation has a domain surface with public and private halves. The public half explains and publishes intentionally shared work. The private half exposes dashboards, usage, tokens, sessions, security, artifacts, and operational controls to authorized clients. The framework provides the shell, route contract, deployment adapters, and access-control hooks. The instance supplies the domain, branding, enabled routes, private origin, and publication policy.
@@ -55,9 +51,9 @@ The reference installation serves its private frontend from the instance's priva
 
 ## Source and deployment flow
 
-Humanware OS is the upstream. A private instance pins a tested framework revision and contains only instance-owned configuration or code. Generic improvements return upstream first; the instance adopts them by advancing its lock. Temporary downstream patches carry an upstream reference, owner, and expiration.
+Humanware OS is the upstream. A private instance contains only instance-owned configuration or code and does not pin the framework; each build records the framework revision it used ([Runtime and deployment](runtime.md)). Generic improvements return upstream first. Temporary downstream patches carry an upstream reference, owner, and expiration.
 
-All changes use isolated task worktrees. The deployed checkout and generated runtime are read-only. A deployment builds a new runtime directory, verifies its manifest and end-to-end health, then atomically changes a `current` reference. Rollback changes that reference to the previous verified build.
+Checkouts and worktrees follow [Coding sessions](coding-sessions.md); the generated runtime is read-only. A deployment builds a new runtime directory, verifies its manifest and end-to-end health, then atomically changes a `current` reference. Rollback changes that reference to the previous verified build.
 
 ## Failure boundaries
 
