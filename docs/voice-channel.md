@@ -36,4 +36,4 @@ The instance supplies the ingress hostname and tunnel, the private origin and au
 
 ## Root status
 
-Slack root workflow status remains human-controlled under `status-framework.md`; neither mode adds, removes, or replaces root status reactions. A future authenticated human-status control requires a separately reviewed contract.
+Slack root workflow status remains human-controlled under `status-framework.md`; neither mode adds, removes, or replaces root status reactions.
