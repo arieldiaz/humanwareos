@@ -5,7 +5,7 @@
   "unit": "per-million-tokens",
   "notes": [
     "Public API list prices, applied to observed tokens. A subscription-backed harness is not billed this amount.",
-    "A model's rows are ordered by effectiveFrom (UTC date); the latest row on or before the usage date applies, and usage before the first row stays unavailable.",
+    "A model's rows are ordered by effectiveFrom (UTC date); the latest row on or before the usage date applies, and usage before the first row or after a row's effectiveUntil (inclusive) stays unavailable until a published row is added.",
     "A first row dated 2026-01-01 is the price published on its verified date, applied back to that baseline.",
     "cacheWrite is the shortest-lived cache write price. Long-context, fast-mode, regional and longer-lived cache write premiums are not applied.",
     "A model with no row is unpriced: its tokens are reported and its cost stays unavailable."
@@ -49,8 +49,7 @@
       {"effectiveFrom": "2026-01-01", "input": 10, "output": 50, "cacheRead": 1, "cacheWrite": 12.5, "source": "openai", "verified": "2026-11-11"}
     ],
     "gpt-5.6-sol": [
-      {"effectiveFrom": "2026-01-01", "input": 4, "output": 20, "cacheRead": 0.4, "cacheWrite": 5, "source": "openai", "verified": "2026-11-11", "note": "Promotional price, published as ending 2026-11-30."},
-      {"effectiveFrom": "2026-12-01", "input": 5, "output": 30, "cacheRead": 0.5, "cacheWrite": 6.25, "source": "openai", "verified": "2026-11-11", "note": "Standard price implied by the published promotion (20% off input, 33% off output); confirm when it takes effect."}
+      {"effectiveFrom": "2026-01-01", "input": 4, "output": 20, "cacheRead": 0.4, "cacheWrite": 5, "effectiveUntil": "2026-11-30", "source": "openai", "verified": "2026-11-11", "note": "Promotional price, published as ending 2026-11-30."}
     ],
     "gpt-5.6-luna": [
       {"effectiveFrom": "2026-01-01", "input": 0.2, "output": 1.2, "cacheRead": 0.02, "cacheWrite": 0.25, "source": "openai", "verified": "2026-11-11"}

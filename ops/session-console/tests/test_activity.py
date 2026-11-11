@@ -415,6 +415,24 @@ class ActivityTest(unittest.TestCase):
         alone = A.cost_summary(A.read_model([rows[5]])[0], 'root')
         self.assertEqual((alone['amount'], alone['reports'], alone['unavailable']), (None, 1, 1))
 
+    def test_a_report_without_tokens_counts_as_unavailable_until_its_run_has_a_count(self):
+        self.priced()
+        tokens = {'input': 1_000_000, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}
+        mark = lambda event_id, run_id, session='root': self.usage(event_id, session, {}, run_id=run_id)
+        marks = [mark('m1', 'turn-1'), mark('m2', 'turn-2'), mark('m3', None), mark('m4', 'turn-1', session='other')]
+        counted = A.read_model(marks)[1]['spend'][0]
+        self.assertEqual((counted['estimated'], counted['unavailable']), (0, 4))
+        cost = A.cost_summary(A.read_model(marks)[0], 'root')
+        self.assertEqual((cost['amount'], cost['reports'], cost['unavailable'], cost['root']['unavailable']), (None, 4, 4, 3))
+        # A count for the same session and run replaces the mark; other runs and sessions keep theirs.
+        rows = marks + [self.usage('c1', 'root', tokens, run_id='turn-1')]
+        scope, meta = A.read_model(rows)
+        self.assertEqual(sorted(event_id for group in meta['spend'] for event_id in group['eventIds']), ['c1', 'm2', 'm3', 'm4'])
+        cost = A.cost_summary(scope, 'root')
+        self.assertEqual((cost['amount'], cost['reports'], cost['unavailable']), (1.0, 4, 3))
+        self.assertEqual([(row['runId'], row['amount'], row['unavailable']) for row in cost['byRun']],
+                         [(None, None, 1), ('turn-1', 1.0, 0), ('turn-2', None, 1)])  # a record without a run id is its own unit
+
     def test_contract_kinds_and_legacy_versions_are_explicit(self):
         schema = json.loads((ROOT/'schemas/session-event.schema.json').read_text())
         self.assertEqual(schema['oneOf'][0]['properties']['schemaVersion']['enum'], [1,2])

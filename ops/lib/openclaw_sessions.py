@@ -228,33 +228,43 @@ def iter_transcript_records(state_root, agent_id, entry):
 
 
 def iter_assistant_records(state_root, agent_id, cursors, archives):
-    """Yield (session_id, session_key, record) for assistant transcript records not read before.
+    """Yield (session_id, session_key, record, after_tool_result) for assistant transcript records not read before.
 
-    Live rows resume after each session's last seq in `cursors`. A deleted or reset
-    session's rows are gone, so its archived transcript is read once and its name
-    kept in `archives`. Both arguments are caller-owned caches and are updated here;
-    losing them only repeats reads, since a record keeps its id in both places.
+    `after_tool_result` says whether the row just before the record, in its session,
+    was a tool result (None when the store does not say). Live rows resume after each
+    session's last seq in `cursors`; the row at the cursor is context, not yielded
+    again. A deleted or reset session's rows are gone, so its archived transcript is
+    read once and its name kept in `archives`. Both arguments are caller-owned caches
+    and are updated here; losing them only repeats reads, since a record keeps its id
+    in both places.
     """
     path = database_path(state_root, agent_id)
     if not _canonical_sessions_present(path, agent_id):
         return
-    found = []  # (session_id, session_key, text or None when compressed, blob, is_jsonl)
+    found = []  # (session_id, session_key, text or None when compressed, blob, is_jsonl, after_tool_result)
     with _database(path) as connection:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         if "transcript_events" in tables:
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(transcript_events)")}
-            payload = "e.event_json, e.event_zstd" if "event_zstd" in columns else "e.event_json, NULL AS event_zstd"
-            role = "AND e.message_role = 'assistant'" if "message_role" in columns else ""
+            roles = "message_role" in columns
+            # Payloads are loaded for assistant rows only; other rows just say what they were.
+            wanted = "e.message_role = 'assistant'" if roles else "1"
+            fields = ", ".join((
+                "e.seq", "e.message_role AS role" if roles else "NULL AS role",
+                f"CASE WHEN {wanted} THEN e.event_json END AS event_json",
+                f"CASE WHEN {wanted} THEN e.event_zstd END AS event_zstd" if "event_zstd" in columns else "NULL AS event_zstd"))
             # The primary key answers this without touching transcript payloads.
             heads = connection.execute("SELECT session_id, MAX(seq) AS seq FROM transcript_events GROUP BY session_id").fetchall()
             for head in heads:
                 after = cursors.get(head["session_id"], -1)
                 if head["seq"] <= after:
                     continue
-                found += [(row["session_id"], row["session_key"], row["event_json"], row["event_zstd"], False) for row in connection.execute(
-                    f"SELECT e.session_id, w.session_key, {payload} FROM transcript_events e "
-                    f"JOIN session_windows w ON w.session_id = e.session_id WHERE e.session_id = ? AND e.seq > ? {role} ORDER BY e.seq",
-                    (head["session_id"], after))]
+                window = connection.execute("SELECT session_key FROM session_windows WHERE session_id = ?", (head["session_id"],)).fetchone()
+                after_tool = False if roles else None
+                for row in connection.execute(f"SELECT {fields} FROM transcript_events e WHERE e.session_id = ? AND e.seq >= ? ORDER BY e.seq", (head["session_id"], max(after, 0))):
+                    if window and row["seq"] > after and (row["event_json"] is not None or row["event_zstd"] is not None):
+                        found.append((head["session_id"], window["session_key"], row["event_json"], row["event_zstd"], False, after_tool))
+                    after_tool = row["role"] == "toolResult" if roles else None
                 cursors[head["session_id"]] = head["seq"]
             for gone in set(cursors) - {head["session_id"] for head in heads}:
                 del cursors[gone]
@@ -263,9 +273,9 @@ def iter_assistant_records(state_root, agent_id, cursors, archives):
                 if row["archive_name"] not in archives:
                     archives.append(row["archive_name"])
                     text = None if row["encoding"] == "zstd" else bytes(row["archive_blob"]).decode("utf-8", errors="replace")
-                    found.append((row["session_id"], row["session_key"], text, row["archive_blob"], True))
-    decoded = iter(_zstd_decompress([blob for _, _, text, blob, _ in found if text is None]))
-    for session_id, session_key, text, _, is_jsonl in found:
+                    found.append((row["session_id"], row["session_key"], text, row["archive_blob"], True, False))
+    decoded = iter(_zstd_decompress([blob for _, _, text, blob, _, _ in found if text is None]))
+    for session_id, session_key, text, _, is_jsonl, after_tool in found:
         text = text if text is not None else next(decoded)
         for raw in (text.split("\n") if is_jsonl else [text]):
             try:
@@ -273,8 +283,11 @@ def iter_assistant_records(state_root, agent_id, cursors, archives):
             except json.JSONDecodeError:
                 continue
             message = record.get("message") if isinstance(record, dict) else None
-            if isinstance(message, dict) and message.get("role") == "assistant":
-                yield session_id, session_key, record
+            role = message.get("role") if isinstance(message, dict) else None
+            if role == "assistant":
+                yield session_id, session_key, record, after_tool
+            if is_jsonl:
+                after_tool = role == "toolResult"
 
 
 def iter_subagent_runs(state_root):

@@ -282,8 +282,9 @@ def counted_usage(events):
     """Yield (first observed day, report) for each report that counts toward a total.
 
     One usage is counted once: the latest report per invocation replaces earlier
-    ones; a run total yields to invocation reports from its child session; and a
-    report with neither amount nor model yields to reports that name a model.
+    ones; a run total yields to invocation reports from its child session; a report
+    with neither amount nor model yields to reports that name a model; and a report
+    without tokens yields to a report with tokens for the same session and run.
     """
     usage = [row for row in events if row['kind'] in USAGE_KINDS]
     latest, first_day = {}, {}
@@ -293,6 +294,7 @@ def counted_usage(events):
         first_day.setdefault(key, row['ts'][:10])
     reported = {row['logicalSessionId'] for row in usage if row['kind'] == 'usage.cost'}
     modelled = {row['logicalSessionId'] for row in usage if row['kind'] == 'usage.cost' and 'model' in row['cost']}
+    observed = {(row['logicalSessionId'], row['runId']) for row in usage if row['kind'] == 'usage.cost' and row['runId'] and has_tokens(row)}
     for row in usage:
         key = (row['actor']['identity'], row['cost']['usageId'])
         if latest[key] != row['id']:
@@ -302,7 +304,13 @@ def counted_usage(events):
                 continue
         elif row['cost']['status'] == 'unavailable' and 'model' not in row['cost'] and row['logicalSessionId'] in modelled:
             continue
+        elif row['runId'] and not has_tokens(row) and (row['logicalSessionId'], row['runId']) in observed:
+            continue
         yield first_day[key], row
+
+
+def has_tokens(row):
+    return any(key in row['cost']['tokens'] for key in pricing.TOKEN_CLASSES)
 
 
 def read_model(records):

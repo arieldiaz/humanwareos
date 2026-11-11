@@ -41,6 +41,22 @@ class PricingTest(unittest.TestCase):
         self.assertIsNone(P.rate('model-a', '2025-12-31', TABLE))
         self.assertEqual(P.price(report(), '2025-12-31T23:59:59Z', TABLE)['status'], 'unavailable')
 
+    def test_a_row_ends_on_its_last_day_inclusive_and_later_usage_stays_unavailable(self):
+        table = copy.deepcopy(TABLE)
+        table['models']['model-a'][1]['effectiveUntil'] = '2026-03-31'
+        self.assertEqual(P.price(report(), '2026-03-31T23:59:59Z', table)['amount'], 8.8)
+        self.assertIsNone(P.rate('model-a', '2026-04-01', table))
+        self.assertEqual(P.price(report(), '2026-04-01T00:00:00Z', table)['status'], 'unavailable')
+        # A later published row prices later usage again.
+        table['models']['model-a'].append(dict(table['models']['model-a'][0], effectiveFrom='2026-05-01', input=1))
+        self.assertIsNone(P.rate('model-a', '2026-04-30', table))
+        self.assertEqual(P.rate('model-a', '2026-05-01', table)['input'], 1)
+        # The shipped promotional price ends on its published last day.
+        sol = P.TABLE['models']['gpt-5.6-sol']
+        self.assertEqual([row.get('effectiveUntil') for row in sol], ['2026-11-30'])
+        self.assertIsNotNone(P.rate('gpt-5.6-sol', '2026-11-30'))
+        self.assertIsNone(P.rate('gpt-5.6-sol', '2026-12-01'))
+
     def test_missing_tokens_or_price_stay_unavailable(self):
         partial = {key: TOKENS[key] for key in ('input', 'output')}
         for cost in (report(model='provider/unpriced-model'), report(model=None), report(tokens=partial),
@@ -69,6 +85,8 @@ class PricingTest(unittest.TestCase):
                        lambda table: table['models']['model-a'][1].update(effectiveFrom='2026-01-01'),
                        lambda table: table['models']['model-a'][0].pop('cacheWrite'),
                        lambda table: table['models']['model-a'][0].pop('source'),
+                       lambda table: table['models']['model-a'][0].update(effectiveUntil='2025-12-31'),
+                       lambda table: table['models']['model-a'][0].update(effectiveUntil='soon'),
                        lambda table: table['models'].update({'model-b': []})):
             with self.assertRaises(ValueError):
                 load(change)

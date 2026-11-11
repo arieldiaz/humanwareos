@@ -206,31 +206,57 @@ def run_events(runs, entries, logical_by_key):
     return rows
 
 
-def usage_events(state_root, cache, session_for):
-    """One usage.cost per assistant transcript record that reports tokens.
+def whole_run(tokens, usage, after_tool_result):
+    """Whether a run's token-bearing record counts the whole run, not one call of several.
 
-    The record carries observed token counts and the model, never an amount and
-    never message text. Live and archived copies of a record share one event ID.
+    The host sums per-call usage when it observed it, and falls back to the last
+    call otherwise. The two differ only when the run made several calls (a tool
+    result just before the record) and the prompt is not larger than the last
+    call's context.
+    """
+    prompt = sum(tokens.get(key, 0) for key in ("input", "cacheRead", "cacheWrite"))
+    context = usage.get("contextUsage") if isinstance(usage.get("contextUsage"), dict) else {}
+    return after_tool_result is False or (type(context.get("promptTokens")) is int and prompt > context["promptTokens"])
+
+
+def usage_events(state_root, cache, session_for):
+    """Usage reports from assistant transcript records: observed tokens, or an unavailable mark.
+
+    The transcript is the usage source only where a record holds a whole run's
+    count. A run's other records, a CLI-harness turn and a record without counts
+    produce a report without tokens, which is counted as unavailable and never
+    priced. Reports carry the model, never an amount and never message text. Live
+    and archived copies of a record share one event ID.
     """
     rows = []
     for agent in iter_agent_ids(state_root):
         cursors, archives = cache["cursors"].setdefault(agent, {}), cache["archives"].setdefault(agent, [])
-        for session_id, session_key, record in iter_assistant_records(state_root, agent, cursors, archives):
+        marked = set()
+        for session_id, session_key, record, after_tool_result in iter_assistant_records(state_root, agent, cursors, archives):
             message = record["message"]
+            if message.get("provider") == "openclaw":
+                continue  # A delivery mirror or injected message, not a model call.
             usage, host = (message.get(key) if isinstance(message.get(key), dict) else {} for key in ("usage", "__openclaw"))
             tokens = {key: usage[source] for key, source in TOKEN_FIELDS if type(usage.get(source)) is int and usage[source] >= 0}
-            record_id = activity.identifier(record.get("id"))
-            if not record_id or not any(tokens.get(key) for key in activity.pricing.TOKEN_CLASSES):
-                continue  # A mirrored fragment or a record without counts is not a usage report.
-            event_id = f"openclaw:usage:{agent}:{session_id}:{record_id}"
+            record_id, run_id = activity.identifier(record.get("id")), activity.identifier(host.get("runId"))
+            if not record_id:
+                continue
+            observed = any(tokens.get(key) for key in activity.pricing.TOKEN_CLASSES) and message.get("api") != "cli"
+            unit = f"{agent}:{session_id}:{record_id}"
+            if run_id and message.get("api") != "cli" and not (observed and whole_run(tokens, usage, after_tool_result)):
+                unit = f"{agent}:{session_id}:run:{run_id}"  # One mark for the run, however many records it has.
+                if unit in marked:
+                    continue
+                marked.add(unit)
+                observed = False
+            event_id = f"openclaw:usage:{unit}"
             try:
                 rows.append(activity.event(
                     event_id=event_id, ts=record.get("timestamp") or iso_from_ms(message.get("timestamp")),
                     session_id=session_for(agent, session_id, session_key), kind="usage.cost",
-                    actor={"identity": agent}, reason_code="observed", reversibility="unknown",
-                    run_id=host.get("runId"),
+                    actor={"identity": agent}, reason_code="observed", reversibility="unknown", run_id=run_id,
                     source_ref={"type": "raw", "id": f"openclaw:transcript:{agent}:{session_id}:{record_id}", "localOnly": True},
-                    cost={"status": "unavailable", "usageId": event_id, "tokens": tokens,
+                    cost={"status": "unavailable", "usageId": event_id, **({"tokens": tokens} if observed else {}),
                           "model": "/".join(filter(None, (message.get("provider"), message.get("model"))))}))
             except ValueError:
                 continue  # An unusable timestamp or identifier; nothing is guessed.

@@ -26,6 +26,9 @@ def load(path=None):
         if not rows or days != sorted(set(days)) or not all(isinstance(day, str) and DAY.fullmatch(day) for day in days):
             raise ValueError(f'Price rows for {model} need unique ascending effective dates')
         for row in rows:
+            until = row.get('effectiveUntil')
+            if until is not None and not (isinstance(until, str) and DAY.fullmatch(until) and until >= row['effectiveFrom']):
+                raise ValueError(f'Price row for {model} has an invalid effectiveUntil')
             if not row.get('source') or not all(type(row.get(key)) in (int, float) and row[key] >= 0 for key in TOKEN_CLASSES):
                 raise ValueError(f'Price row for {model} needs a source and a rate for every token class')
     return table
@@ -40,9 +43,13 @@ def model_id(model):
 
 
 def rate(model, day, table=None):
-    """The row in effect for a model on a UTC day, or None when no row covers it."""
+    """The row in effect for a model on a UTC day, or None when no row covers it.
+
+    A row's optional `effectiveUntil` is its last day (inclusive); later usage stays
+    unpriced until a published row is added.
+    """
     rows = [row for row in (table or TABLE)['models'].get(model_id(model), []) if row['effectiveFrom'] <= day]
-    return rows[-1] if rows else None
+    return rows[-1] if rows and day <= rows[-1].get('effectiveUntil', day) else None
 
 
 def price(cost, ts, table=None):
