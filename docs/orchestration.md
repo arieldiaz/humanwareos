@@ -2,7 +2,7 @@
 
 How a root agent turns a conversation into coordinated work. Layer 2 spec — see [agent-context-hierarchy.md](docs/agent-context-hierarchy.md).
 
-Status: proposed. Nothing here is live until the human approves this spec and its implementation.
+Status: proposed. Nothing here is live until the human approves the spec and implementation.
 
 Budget: 1,100 words. Over it, consolidate.
 
@@ -88,4 +88,4 @@ Quick-answer assistants outside the system stay outside. A later slice may expor
 5. Transcript retention job.
 6. First rung-one functions: pull-request and CI watching, and the scheduled check.
 
-Each step ships with tests for the behavior it adds. Step 3 is the switch-over and waits for steps 1 and 2 to be proven on real runs.
+Each step ships with tests. Step 3 is the switch-over and waits for steps 1 and 2 to be proven on real runs.
