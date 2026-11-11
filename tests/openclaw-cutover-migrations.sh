@@ -69,6 +69,10 @@ start=$(line '"$OPENCLAW_BIN" gateway install --force --json > "$report/gateway-
 rollback_stop=$(line '"$OPENCLAW_BIN" gateway stop --disable --force --json >/dev/null')
 restore=$(line 'copy_database "$copy" "$(dirname "$db")"')
 [ "$rollback_stop" -lt "$restore" ] && [ "$restore" -lt "$stop" ]
+# A rollback starts the previous gateway and then checks it answers, before the normal stop.
+rollback_start=$(line '"$OPENCLAW_BIN" gateway start --json > "$report/rollback-gateway-start.json"')
+rollback_check=$(line 'gateway status --require-rpc --json > "$report/rollback-gateway-status.json"')
+[ "$restore" -lt "$rollback_start" ] && [ "$rollback_start" -lt "$rollback_check" ] && [ "$rollback_check" -lt "$stop" ]
 grep -Fq 'migrations "$transaction/staged/node_modules/openclaw" "$HOME/.openclaw" > "$transaction/migrations"' "$CUTOVER"
 
 echo "openclaw cutover migrations: OK"
