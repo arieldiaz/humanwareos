@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 prepare FRAMEWORK_DIR INSTANCE_DIR | activate PREPARED_JSON APPROVAL_FILE | prune RUNTIME_ROOT DATA_ROOT [KEEP]" >&2
+  echo "Usage: $0 prepare FRAMEWORK_DIR INSTANCE_DIR | activate PREPARED_JSON APPROVAL_FILE | prune RUNTIME_ROOT DATA_ROOT [KEEP] | migrations OPENCLAW_PACKAGE STATE_DIR" >&2
   exit 2
 }
 
@@ -46,6 +46,41 @@ prune() {
   fi
 }
 
+# The shared state database and every agent database: the files whose schema an OpenClaw build owns.
+state_databases() {
+  local db
+  for db in "$1/state/openclaw.sqlite" "$1"/agents/*/agent/openclaw-agent.sqlite; do
+    [ ! -f "$db" ] || echo "$db"
+  done
+}
+
+# A package declares the schema version it writes; a database behind it is migrated on first
+# open, which the displaced package cannot read back, and one ahead of it cannot be opened at
+# all. Prints one "kind path found wanted" line per database the package would migrate and
+# fails when it could not open one. Reading the header with immutable=1 takes no lock and needs
+# no WAL sidecar, so it works beside a running gateway and after a stop; it can only lag a
+# header write still in the WAL, which overstates the pending migrations and never hides one.
+migrations() {
+  [ "$#" -eq 2 ] || usage
+  local package=$1 state=$2 db kind wanted found
+  while IFS= read -r db; do
+    case "$db" in */state/openclaw.sqlite) kind=state ;; *) kind=agent ;; esac
+    wanted=$($JQ -er ".openclaw.schemaVersions.$kind" "$package/package.json") || { echo "OpenClaw package $package does not declare its $kind schema version" >&2; return 1; }
+    found=$(/usr/bin/sqlite3 "file:$db?immutable=1" 'PRAGMA user_version')
+    [ "$found" -le "$wanted" ] || { echo "OpenClaw package $package writes $kind schema $wanted but $db is already at $found; it cannot open this state" >&2; return 1; }
+    [ "$found" -eq "$wanted" ] || printf '%s\t%s\t%s\t%s\n' "$kind" "$db" "$found" "$wanted"
+  done < <(state_databases "$state")
+}
+
+# A SQLite database travels with its -wal and -shm files; a stale journal beside a restored copy would corrupt it.
+copy_database() {
+  local source=$1 target=$2 part
+  mkdir -p "$target"
+  for part in "$source" "$source-wal" "$source-shm"; do
+    [ ! -f "$part" ] || /bin/cp -pc "$part" "$target/"
+  done
+}
+
 prepare() {
   [ "$#" -eq 2 ] || usage
   local framework instance data runtime_root version output runtime build_id transaction staged_bin candidate
@@ -69,6 +104,7 @@ prepare() {
   staged_bin="$transaction/staged/node_modules/openclaw/openclaw.mjs"
   candidate="$runtime/config/openclaw/openclaw.json"
   OPENCLAW_STATE_DIR="$transaction/validation-state" OPENCLAW_CONFIG_PATH="$candidate" "$NODE_BIN" "$staged_bin" config validate
+  migrations "$transaction/staged/node_modules/openclaw" "$HOME/.openclaw" > "$transaction/migrations"
   $JQ -n \
     --arg framework "$framework" --arg instance "$instance" --arg runtime "$runtime" \
     --arg transaction "$transaction" --arg version "$version" \
@@ -80,9 +116,9 @@ prepare() {
 
 activate() {
   [ "$#" -eq 2 ] || usage
-  local prepared approval framework instance runtime transaction version data runtime_root current control instance_id
-  local report previous_runtime live_config config_rollback workspace_rollback candidate_bin candidate_config active=1 previous_patch_set="" stock_needed=0
-  local cutover_started=0 package_installed=0 config_replaced=0 workspace_applied=0 runtime_switched=0
+  local prepared approval framework instance runtime transaction version data runtime_root current control instance_id db
+  local report previous_runtime live_state live_config config_rollback workspace_rollback state_rollback candidate_package candidate_bin candidate_config active=1 previous_patch_set="" stock_needed=0
+  local cutover_started=0 state_backed_up=0 package_installed=0 config_replaced=0 workspace_applied=0 runtime_switched=0
   prepared=$(CDPATH= cd -- "$(dirname "$1")" && pwd)/$(basename "$1")
   approval=$(CDPATH= cd -- "$(dirname "$2")" && pwd)/$(basename "$2")
   $JQ -e '.schemaVersion == 1' "$prepared" >/dev/null
@@ -99,10 +135,13 @@ activate() {
   control="$data/operations/control"
   instance_id=$($JQ -r .id "$instance/humanware.instance.json")
   report="$transaction/activation"
-  live_config="$HOME/.openclaw/openclaw.json"
+  live_state="$HOME/.openclaw"
+  live_config="$live_state/openclaw.json"
   config_rollback="$report/openclaw-before.json"
   workspace_rollback="$report/workspaces"
-  candidate_bin="$transaction/staged/node_modules/openclaw/openclaw.mjs"
+  state_rollback="$report/state"
+  candidate_package="$transaction/staged/node_modules/openclaw"
+  candidate_bin="$candidate_package/openclaw.mjs"
   candidate_config="$runtime/config/openclaw/openclaw.json"
   [ -f "$candidate_bin" ] || { echo "Prepared OpenClaw candidate is missing: $candidate_bin" >&2; exit 1; }
   [ -f "$candidate_config" ] || { echo "Prepared OpenClaw config is missing: $candidate_config" >&2; exit 1; }
@@ -113,6 +152,9 @@ activate() {
   }
   mkdir -p "$report"
   chmod 700 "$report"
+  # A candidate that cannot open the databases refuses here, before anything is drained,
+  # consumed, or stopped. One it would migrate makes this window back them up and run Doctor.
+  migrations "$candidate_package" "$live_state" > "$report/migrations"
 
   # Drain, then consume the approval, then stop: the suspension window is short,
   # so nothing slow may sit between the drain and the stop.
@@ -142,6 +184,14 @@ activate() {
       set +e
       if [ "$cutover_started" -eq 1 ]; then
         "$OPENCLAW_BIN" gateway stop --disable --force --json >/dev/null 2>&1
+      fi
+      if [ "$state_backed_up" -eq 1 ]; then
+        local copy db
+        while IFS= read -r copy; do
+          db="$live_state/${copy#"$state_rollback"/}"
+          rm -f "$db" "$db-wal" "$db-shm"
+          copy_database "$copy" "$(dirname "$db")"
+        done < <(find "$state_rollback" -name '*.sqlite')
       fi
       if [ "$workspace_applied" -eq 1 ]; then
         HUMANWARE_WORKSPACE_BACKUP_DIR="$workspace_rollback" "$NODE_BIN" "$framework/scripts/materialize-openclaw-workspaces.mjs" restore "$workspace_rollback"
@@ -178,6 +228,15 @@ activate() {
   else
     candidate_gateway stop --disable --force --json > "$report/gateway-stop.json"
   fi
+  # The first mutation below (a plugin update) already migrates the state database, so the
+  # copies are taken before any of it; every database is copied so rollback restores one
+  # consistent set, including the agent registry the state database keeps.
+  if [ -s "$report/migrations" ]; then
+    while IFS= read -r db; do
+      copy_database "$db" "$state_rollback/$(dirname "${db#"$live_state"/}")"
+    done < <(state_databases "$live_state")
+    state_backed_up=1
+  fi
   /usr/bin/python3 "$framework/scripts/openclaw-package-transaction.py" install --transaction "$transaction" --target "$PACKAGE_TARGET" $([ "$stock_needed" -eq 1 ] && echo --force)
   if $JQ -e '.replaced == true' "$transaction/installed.json" >/dev/null; then
     package_installed=1
@@ -200,6 +259,11 @@ activate() {
   runtime_switched=1
   "$OPENCLAW_BIN" plugins registry --refresh --json > "$report/plugin-registry.json"
   "$OPENCLAW_BIN" config validate
+  # Doctor owns the agent-database identity migration the new gateway refuses to start without;
+  # it exits 1 on an incomplete repair, which rolls the package and the database copies back.
+  if [ -s "$report/migrations" ]; then
+    "$OPENCLAW_BIN" doctor --fix --non-interactive > "$report/doctor.log" 2>&1
+  fi
   "$OPENCLAW_BIN" gateway install --force --json > "$report/gateway-install.json"
   "$OPENCLAW_BIN" gateway start --json > "$report/gateway-start.json"
   local attempt=1
@@ -216,5 +280,6 @@ case "$ACTION" in
   prepare) prepare "$@" ;;
   activate) activate "$@" ;;
   prune) prune "$@" ;;
+  migrations) migrations "$@" ;;
   *) usage ;;
 esac
