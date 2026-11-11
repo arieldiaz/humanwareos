@@ -31,7 +31,7 @@ export function closeThreadTool(context, {lifecycle}) {
 }
 
 export function registerHostClose(api, {
-  isExcludedChannel, recordRunLifecycle, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi,
+  isExcludedChannel, recordRunLifecycle, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi, checkBacks,
 }) {
   const tokenFor = async accountId => (await import(resolveSlackRuntimeModule("accounts"))).resolveSlackAccount({cfg: api.config, accountId})?.botToken;
 
@@ -59,6 +59,11 @@ export function registerHostClose(api, {
     excluded: isExcludedChannel,
     record: turn => recordRunLifecycle({dataRoot: resolveDataRoot(api.config, api.pluginConfig, turn.accountId),
       channel: turn.route.channel, threadId: turn.route.threadId, status: turn.status, agent: turn.accountId, sessionKey: turn.sessionKey, runId: turn.runId}),
+    // A closed thread is no longer checked back on. Best effort like the report: closure is already recorded.
+    closed: async turn => {
+      try { await checkBacks?.remove(turn.sessionKey); }
+      catch (error) { await appendFaultJournal({channel: turn.route.channel, rootTs: turn.route.threadId, reason: `Check-back removal: ${String(error)}`}); }
+    },
     // Best effort: lifecycle is already recorded, so a report failure is journaled, never surfaced.
     report: async turn => {
       try { await postCloseReport(turn); }

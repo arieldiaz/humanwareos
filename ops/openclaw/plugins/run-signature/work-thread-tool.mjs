@@ -23,14 +23,22 @@ function slackThreadSessionKey(api, {accountId, channel, rootMessageId}) {
   return `${route.sessionKey}:thread:${rootMessageId}`;
 }
 
-async function createWorkSession(api, params) {
+async function createWorkSession(api, params, checkBacks) {
   const key = slackThreadSessionKey(api, params);
-  const started = await api.runtime.subagent.run({
-    sessionKey: key,
-    message: params.task,
-    deliver: false,
-    idempotencyKey: params.idempotencyKey,
-  });
+  // No thread starts without a check-back: a registration failure stops here, before the first turn.
+  await checkBacks.register(key);
+  let started;
+  try {
+    started = await api.runtime.subagent.run({
+      sessionKey: key,
+      message: params.task,
+      deliver: false,
+      idempotencyKey: params.idempotencyKey,
+    });
+  } catch (error) {
+    await checkBacks.remove(key).catch(() => {});
+    throw error;
+  }
   await api.runtime.agent.session.patchSessionEntry({
     sessionKey: key,
     update: () => ({
@@ -46,6 +54,7 @@ export function registerWorkThreadTool(api, {
   resolveSlackRuntimeModule,
   retrySlackRateLimit,
   workThreadPosts,
+  checkBacks,
 }) {
   api.registerTool?.({contextVersion: 2, create: context => {
     if (context.messageChannel !== "slack") return;
@@ -110,7 +119,7 @@ export function registerWorkThreadTool(api, {
               });
             },
             prepareScaffold: clearScaffold,
-            createSession: (params) => createWorkSession(api, params),
+            createSession: (params) => createWorkSession(api, params, checkBacks),
           });
           return {content: [{type: "text", text: JSON.stringify(result)}], details: result};
         } catch (error) {
