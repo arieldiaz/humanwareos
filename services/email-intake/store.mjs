@@ -7,13 +7,14 @@ export class Store {
   constructor(path, {tablePrefix} = {}) {
     const prefix = tablePrefix ?? 'email_intake';
     if (!/^[a-z][a-z0-9_]{0,40}$/.test(prefix)) throw new Error('invalid_table_prefix');
-    this.tables = {evidence: `${prefix}_evidence`, delivery: `${prefix}_delivery`, faults: `${prefix}_faults`};
+    this.tables = {evidence: `${prefix}_evidence`, raw: `${prefix}_raw`, delivery: `${prefix}_delivery`, faults: `${prefix}_faults`};
     mkdirSync(dirname(path), {recursive: true, mode: 0o700});
     this.repository = new SQLiteIntakeRepository(path);
     chmodSync(path, 0o600);
     this.db = new DatabaseSync(path);
     this.db.exec(`PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS ${this.tables.evidence} (key TEXT PRIMARY KEY, value TEXT NOT NULL, domain_result TEXT);
+      CREATE TABLE IF NOT EXISTS ${this.tables.raw} (sha256 TEXT PRIMARY KEY, raw BLOB NOT NULL);
       CREATE TABLE IF NOT EXISTS ${this.tables.delivery} (key TEXT PRIMARY KEY, started_at TEXT NOT NULL, result TEXT);
       CREATE TABLE IF NOT EXISTS ${this.tables.faults} (key TEXT PRIMARY KEY, code TEXT NOT NULL, created_at TEXT NOT NULL);`);
   }
@@ -21,6 +22,12 @@ export class Store {
     if (value) this.db.prepare(`INSERT OR IGNORE INTO ${this.tables.evidence} VALUES (?, ?, NULL)`).run(key, JSON.stringify(value));
     const row = this.db.prepare(`SELECT * FROM ${this.tables.evidence} WHERE key=?`).get(key);
     return row ? {value: JSON.parse(row.value), domain: row.domain_result ? JSON.parse(row.domain_result) : null} : null;
+  }
+  // Original MIME as a content-addressed blob, kept out of the evidence JSON.
+  raw(sha256, bytes) {
+    if (bytes) this.db.prepare(`INSERT OR IGNORE INTO ${this.tables.raw} VALUES (?, ?)`).run(sha256, bytes);
+    const row = this.db.prepare(`SELECT raw FROM ${this.tables.raw} WHERE sha256=?`).get(sha256);
+    return row ? Buffer.from(row.raw) : null;
   }
   domain(key, result) { this.db.prepare(`UPDATE ${this.tables.evidence} SET domain_result=? WHERE key=?`).run(JSON.stringify(result), key); }
   delivery(key) {

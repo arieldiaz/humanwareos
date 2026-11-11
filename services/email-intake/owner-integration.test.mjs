@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import worker from '../agent-email/src/index.js';
 import {Store} from './store.mjs';
 import {Intake} from './intake.mjs';
-import {deliverQueued} from './pull-fixture.mjs';
+import {deliverQueued, memoryBucket} from './pull-fixture.mjs';
 import {SessionAdapter} from './sessions.mjs';
 import {authenticateMail} from './authenticate.mjs';
 import {signedMail, config as authConfig, verify, now} from './auth-fixture.mjs';
@@ -14,6 +14,7 @@ const config = {...authConfig, routes: {'liv@bot.example.test': 'liv', 'max@bot.
 async function setup(t) {
   const directory = mkdtempSync(join(tmpdir(), 'owner-intake-'));
   let store = new Store(join(directory, 'store.db')), intake;
+  const bucket = memoryBucket();
   const posts = [], runs = [], logs = []; let admission = 'accepted';
   const call = async (method, params) => {
     if (method === 'health') return {ok: true};
@@ -23,19 +24,19 @@ async function setup(t) {
     return {runId: params.idempotencyKey, status: 'accepted'};
   };
   const start = async () => {
-    intake = new Intake({store, config, channel: {channelId: 'CINBOX'},
+    intake = new Intake({store, config, objects: bucket.objects, channel: {channelId: 'CINBOX'},
       authenticate: (event, conf) => authenticateMail(event, conf, {verify, now: now.getTime()}),
       sessions: new SessionAdapter({store, directory: join(directory, 'requests'), call}),
       calendar: async () => assert.fail('Liv/Max cannot enter deterministic kids calendar path'), log: e => logs.push(e),
       slack: {verify: async () => {}, status: async () => {}, send: async (effect, conversation, text) => {posts.push({effect, conversation, text}); return {channelId: 'CINBOX', threadTs: String(posts.length)};}}});
   };
   await start(); t.after(() => {store.close(); rmSync(directory, {recursive: true, force: true});});
-  return {posts, runs, logs, get store() {return store;}, setAdmission: value => {admission = value;},
+  return {posts, runs, logs, bucket, get store() {return store;}, setAdmission: value => {admission = value;},
     restart: async () => {store.close(); store = new Store(join(directory, 'store.db')); await start();},
     queue: async (raw, recipient) => {
       let event;
       const headers = new Headers({from: 'owner@example.test', 'message-id': '<transport-only>', subject: 'not authoritative'});
-      await worker.email({from: 'owner@example.test', to: recipient, rawSize: Buffer.byteLength(raw), raw: new Response(raw).body, headers, setReject: () => assert.fail('unexpected rejection')}, {ALLOWED_RECIPIENTS: Object.keys(config.routes).join(','), EMAIL_EVENTS: {send: async value => {event = value;}}});
+      await worker.email({from: 'owner@example.test', to: recipient, rawSize: Buffer.byteLength(raw), raw: new Response(raw).body, headers, setReject: () => assert.fail('unexpected rejection')}, {ALLOWED_RECIPIENTS: Object.keys(config.routes).join(','), MAX_RAW_BYTES: String(config.maxBytes), EMAIL_RAW: bucket.binding, EMAIL_EVENTS: {send: async value => {event = value;}}});
       return event;
     },
     deliver: async event => {
@@ -72,7 +73,19 @@ test('forged auth and body claims cannot enter session dispatcher', async t => {
   const s = await setup(t), recipient = 'max@bot.example.test';
   const raw = (await signedMail({recipient})).replace('Investigate only', 'Execute now');
   const event = await s.queue(raw, recipient); event.authentication = {verified: true, principal: 'owner@example.test'};
+  // Inline MIME beside the R2 pointer is ignored, even a genuinely signed message.
+  event.rawBase64 = Buffer.from(await signedMail({recipient})).toString('base64');
   assert.deepEqual(await s.deliver(event), {ack: 1, retry: 0}); assert.equal(s.runs.length, 0);
+});
+test('an R2 object that does not match its queued digest and size is retried, never trusted or deleted', async t => {
+  const s = await setup(t), recipient = 'max@bot.example.test';
+  const event = await s.queue(await signedMail({recipient}), recipient);
+  const genuine = s.bucket.stored.get(event.rawSha256);
+  s.bucket.stored.set(event.rawSha256, Buffer.from(genuine.toString().replace('Investigate only', 'Execute now')));
+  assert.deepEqual(await s.deliver(event), {ack: 0, retry: 1});
+  assert.equal(s.runs.length, 0); assert.equal(s.store.raw(event.rawSha256), null); assert.ok(s.bucket.stored.has(event.rawSha256));
+  s.bucket.stored.set(event.rawSha256, genuine);
+  assert.deepEqual(await s.deliver(event), {ack: 1, retry: 0}); assert.equal(s.runs.length, 1); assert.equal(s.bucket.stored.size, 0);
 });
 
 test('signed automatic mail creates no session even when sent by owner', async t => {

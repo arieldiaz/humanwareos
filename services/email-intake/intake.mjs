@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {EmailIntakeService, normalizeMessage, digest} from './framework.mjs';
 import {authenticateMail} from './authenticate.mjs';
 import {headline, render} from './render.mjs';
@@ -17,8 +18,8 @@ export function normalizeEvent(event, config = {}) {
 }
 
 export class Intake {
-  constructor({store, config, channel, slack, calendar, sessions = null, authenticate = authenticateMail, log = (event) => console.log(JSON.stringify(event))}) {
-    Object.assign(this, {store, config, channel, slack, calendar, sessions, authenticate, log});
+  constructor({store, config, channel, slack, calendar, objects = null, sessions = null, authenticate = authenticateMail, log = (event) => console.log(JSON.stringify(event))}) {
+    Object.assign(this, {store, config, channel, slack, calendar, objects, sessions, authenticate, log});
     this.serial = Promise.resolve(); this.ready = false;
     this.service = new EmailIntakeService({repository: store.repository, ...config, intakeChannelId: channel.channelId,
       authenticateOwner: (message) => {
@@ -39,16 +40,20 @@ export class Intake {
     if (message.sizeBytes > this.config.maxBytes) throw Object.assign(new Error('oversized'), {status: 413});
     if (typeof event.textBody !== 'undefined' && (typeof event.textBody !== 'string' || event.textBody.length > 32768)) throw Object.assign(new Error('invalid_text'), {status: 400});
     if (event.calendarPayload != null && (typeof event.calendarPayload !== 'string' || event.calendarPayload.length > 65536)) throw Object.assign(new Error('invalid_calendar'), {status: 400});
-    const verified = await this.authenticate(event, this.config);
+    const verified = await this.authenticate(await this.resolveRaw(event), this.config);
     event = verified.event;
     message = normalizeEvent(event, this.config);
     // First immutable evidence wins across redelivery, including altered bodies.
-    const evidence = this.store.evidence(message.key, {message, textBody: event.textBody ?? '', calendarPayload: event.calendarPayload ?? null, authentication: verified.authentication, attachments: verified.attachments, htmlOnly: event.htmlOnly ?? false, rawBase64: event.rawBase64 ?? null});
+    const evidence = this.store.evidence(message.key, {message, textBody: event.textBody ?? '', calendarPayload: event.calendarPayload ?? null, authentication: verified.authentication, attachments: verified.attachments, htmlOnly: event.htmlOnly ?? false, rawSha256: event.rawSha256 ?? null});
     message = evidence.value.message;
     if (!evidence.domain) {
-      const domain = (this.config.calendarRecipients ?? []).includes(message.recipient) ? await this.calendar({recipient: message.recipient, messageId: message.messageId ?? message.deliveryId,
-        eventId: message.deliveryId, receivedAt: message.receivedAt, subject: message.subject, replyTo: message.sender,
-        textBody: evidence.value.textBody, calendarPayload: evidence.value.calendarPayload}) : {ok: true, status: 'context_only'};
+      // Large mail must fit the calendar service's 1 MiB request bound; the full text stays in evidence.
+      const {textBody, calendarPayload} = evidence.value;
+      const domain = !(this.config.calendarRecipients ?? []).includes(message.recipient) ? {ok: true, status: 'context_only'}
+        : calendarPayload?.length > 65536 ? {status: 'rejected'}
+        : await this.calendar({recipient: message.recipient, messageId: message.messageId ?? message.deliveryId,
+          eventId: message.deliveryId, receivedAt: message.receivedAt, subject: message.subject, replyTo: message.sender,
+          textBody: textBody.slice(0, 32768), calendarPayload});
       this.store.domain(message.key, domain);
     }
     const result = this.service.receive(message);
@@ -64,6 +69,23 @@ export class Intake {
     if (pending) throw new Error('delivery_pending');
     return {ok: true, replay: result.replay, state: result.value.state};
   }); }
+  // MIME arrives only as the Worker's R2 pointer, untrusted until the bytes match
+  // its digest and size. They are committed locally before the cloud copy is
+  // deleted, so a replay after deletion resolves from private evidence.
+  async resolveRaw({rawBase64, ...event}) {
+    const sha256 = event.rawSha256;
+    if (sha256 === undefined) return event;
+    if (typeof sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(sha256)) throw Object.assign(new Error('invalid_event'), {status: 400});
+    let raw = this.store.raw(sha256);
+    if (!raw) {
+      if (!this.objects) throw new Error('raw_store_unavailable');
+      raw = await this.objects.get(sha256);
+      if (raw.length !== event.rawSize || raw.length > this.config.maxBytes || createHash('sha256').update(raw).digest('hex') !== sha256) throw new Error('raw_mismatch');
+      this.store.raw(sha256, raw);
+    }
+    await this.objects?.delete(sha256);
+    return {...event, rawBase64: raw.toString('base64')};
+  }
   async drain() {
     if (!this.ready) await this.verify();
     const repository = this.store.repository;

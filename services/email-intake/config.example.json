@@ -12,7 +12,7 @@
   "calendarRecipients": ["kids@bot.example.test"],
   "tablePrefix": "email_intake",
   "slackEventType": "email_intake",
-  "maxBytes": 65536,
+  "maxBytes": 26214400,
   "subjectWindowMs": 604800000,
   "calendarUrl": "http://127.0.0.1:8794/inbound/email",
   "ownerMailbox": "owner@example.test",
@@ -25,5 +25,9 @@
     "accountId": "00000000000000000000000000000000",
     "ingressId": "11111111111111111111111111111111",
     "deadLetterId": "22222222222222222222222222222222"
+  },
+  "raw": {
+    "bucket": "agent-email-raw",
+    "tokenSecretId": "agents/CLOUDFLARE_AGENT_EMAIL_RAW_TOKEN"
   }
 }
