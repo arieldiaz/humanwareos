@@ -24,8 +24,12 @@ KINDS = (
     'action.tool', 'action.write', 'action.send', 'action.approval', 'action.schedule',
     'context.selected', 'context.assembled', 'model.invoked', 'usage.cost',
     'memory.retrieved', 'memory.proposed', 'memory.promoted', 'memory.superseded',
-    'memory.suppressed', 'memory.deleted',
+    'memory.suppressed', 'memory.deleted', 'run.spawned', 'run.completed',
 )
+# Usage reports that count toward spend; a run total is only emitted when its
+# child has no per-invocation reports, so the two never describe the same usage.
+USAGE_KINDS = ('usage.cost', 'run.completed')
+RUN_STATUSES = ('ok', 'error', 'timeout', 'killed', 'reset', 'deleted', 'unknown')
 AUTHORITY_RESULTS = ('not_required', 'human_message', 'standing_grant', 'delegated', 'denied', 'unknown')
 REFERENCE_TYPES = ('event', 'human_message', 'grant', 'delegation', 'context', 'memory_claim', 'raw')
 TOKEN = re.compile(r'^[A-Za-z0-9_./:@+\-]{1,256}$')
@@ -82,11 +86,27 @@ def cost_metadata(value, event_id):
     return result
 
 
+def run_metadata(value, kind):
+    """Spawned-run identity from the host's run registry; links are observed, never inferred."""
+    value = value if isinstance(value, dict) else {}
+    child_run, child_session = identifier(value.get('childRunId')), identifier(value.get('childSessionId'))
+    if not (child_run and child_session):
+        raise ValueError('Run events require observed child run and session identifiers')
+    result = {'childRunId': child_run, 'childSessionId': child_session,
+              **{key: identifier(value.get(key)) for key in ('parentRunId', 'parentSessionId', 'rootSessionId', 'model', 'reasoning')}}
+    if kind == 'run.completed':
+        status, duration = value.get('status', 'unknown'), value.get('durationMs')
+        if status not in RUN_STATUSES:
+            raise ValueError('Invalid run status')
+        result.update(status=status, durationMs=duration if type(duration) is int and duration >= 0 else None)
+    return result
+
+
 def event(*, event_id, ts, session_id, kind, actor, source_ref, run_id=None,
           trace_id=None, parent_ids=(), authority=None, target=None,
           reversibility='reversible', outcome='unknown', reason_code='unavailable',
           policy=None, entered_context=None, source_refs=(), memory=None, cost=None,
-          tool=None, channel=None):
+          tool=None, channel=None, run=None):
     """Host/adapter emit helper. Inputs are observed metadata, never model reports.
 
     Required IDs fail closed. Optional free text is omitted rather than redacted.
@@ -155,7 +175,9 @@ def event(*, event_id, ts, session_id, kind, actor, source_ref, run_id=None,
             'visibility': identifier(memory.get('visibility'), 'unknown'),
             'projections': sorted(set(filter(None, (identifier(v) for v in memory.get('projections', []))))),
         }
-    if kind == 'usage.cost':
+    if kind.startswith('run.'):
+        record['run'] = run_metadata(run, kind)
+    if kind in USAGE_KINDS:
         record['cost'] = cost_metadata(cost, event_id)
     return record
 
@@ -200,7 +222,7 @@ def emit(data_root, **fields):
 def project(record):
     """Re-allowlist even persisted events. Legacy details/summary never escape."""
     kind = record.get('kind')
-    if kind not in KINDS:
+    if kind not in KINDS or (kind.startswith('run.') and record.get('schemaVersion') != 3):
         return None
     return event(event_id=record.get('id'), ts=record.get('ts'),
                  session_id=record.get('logicalSessionId'), kind=kind,
@@ -211,7 +233,8 @@ def project(record):
                  outcome=record.get('outcome', 'unknown'), reason_code=record.get('reasonCode'),
                  policy=record.get('policy'), entered_context=record.get('enteredContext'),
                  source_refs=record.get('sourceRefs', []), memory=record.get('memory'),
-                 cost=record.get('cost'), tool=record.get('tool'), channel=record.get('channel'))
+                 cost=record.get('cost'), tool=record.get('tool'), channel=record.get('channel'),
+                 run=record.get('run'))
 
 
 def evidence_records(data_root, areas=('sessions', 'memory')):
@@ -268,7 +291,7 @@ def read_model(records):
     latest_usage = {}
     usage_day = {}
     for row in events:
-        if row['kind'] == 'usage.cost':
+        if row['kind'] in USAGE_KINDS:
             usage_key = (row['actor']['identity'], row['cost']['usageId'])
             latest_usage[usage_key] = row['id']
             usage_day.setdefault(usage_key, row['ts'][:10])
@@ -290,7 +313,7 @@ def read_model(records):
                         lineage[previous].update(state='superseded', projections=[])
             if row['kind'] in ('memory.suppressed', 'memory.deleted'):
                 lineage[claim['claimId']]['projections'] = []
-        if row['kind'] == 'usage.cost':
+        if row['kind'] in USAGE_KINDS:
             cost = row['cost']
             if latest_usage[(row['actor']['identity'], cost['usageId'])] != row['id']:
                 continue
@@ -305,6 +328,49 @@ def read_model(records):
             group['eventIds'].append(row['id'])
     totals = [dict(value, exact=float(value['exact']), estimated=float(value['estimated'])) for value in spend.values()]
     return events, {'lineage': list(lineage.values()), 'spend': totals, 'unindexedEvents': skipped}
+
+
+def run_tree(events, root_session_id):
+    """Worker runs under one root session, nested by observed parent session."""
+    runs = {}
+    for row in sorted(events, key=lambda e: (e['ts'], e['id'])):
+        if not row['kind'].startswith('run.') or row['run']['rootSessionId'] != root_session_id:
+            continue
+        run = row['run']
+        node = runs.setdefault(run['childRunId'], {
+            'runId': run['childRunId'], 'sessionId': run['childSessionId'], 'parentRunId': run['parentRunId'],
+            'parentSessionId': run['parentSessionId'], 'model': None, 'reasoning': None, 'status': None,
+            'startedAt': None, 'endedAt': None, 'durationMs': None, 'tokens': {}, 'cost': None, 'children': []})
+        node['model'] = node['model'] or run['model']
+        node['reasoning'] = node['reasoning'] or run['reasoning']
+        if row['kind'] == 'run.spawned':
+            node['startedAt'] = row['ts']
+        else:
+            cost = row['cost']
+            node.update(status=run['status'], endedAt=row['ts'], durationMs=run['durationMs'], tokens=cost['tokens'],
+                        cost={key: cost[key] for key in ('status', 'amount', 'currency') if key in cost})
+    by_session = {}
+    for node in runs.values():
+        by_session.setdefault(node['sessionId'], node)
+    roots = []
+    for node in runs.values():
+        parent = runs.get(node['parentRunId']) or by_session.get(node['parentSessionId'])
+        (parent['children'] if parent and parent is not node else roots).append(node)
+    return roots
+
+
+def cost_rollup(events):
+    """Sum observed usage per currency across days; unknown is counted, never zero."""
+    totals = {}
+    for group in read_model(events)[1]['spend']:
+        total = totals.setdefault(group['currency'], {'currency': group['currency'], 'exact': Decimal(0),
+                                                     'estimated': Decimal(0), 'unavailable': 0, 'eventIds': []})
+        total['exact'] += Decimal(str(group['exact']))
+        total['estimated'] += Decimal(str(group['estimated']))
+        total['unavailable'] += group['unavailable']
+        total['eventIds'] += group['eventIds']
+    return [dict(total, exact=float(total['exact']), estimated=float(total['estimated']), eventIds=sorted(total['eventIds']))
+            for _, total in sorted(totals.items(), key=lambda item: item[0] or '')]
 
 
 def rebuild(data_root, records=None):

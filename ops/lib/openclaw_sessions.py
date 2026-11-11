@@ -227,6 +227,20 @@ def iter_transcript_records(state_root, agent_id, entry):
                 yield record
 
 
+def iter_subagent_runs(state_root):
+    """Yield the gateway's sub-agent run registry payloads (shared state database)."""
+    path = Path(state_root) / "state" / "openclaw.sqlite"
+    if not _present(path):
+        return
+    with _database(path) as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "subagent_runs" not in tables:
+            return
+        rows = connection.execute("SELECT run_id, payload_json FROM subagent_runs ORDER BY created_at, run_id").fetchall()
+    for row in rows:
+        yield dict(_object(row["payload_json"], "sub-agent run"), runId=row["run_id"])
+
+
 def iter_trajectory_events(state_root, agent_id):
     """Yield the canonical provider-visible activity stream in persisted order."""
     path = database_path(state_root, agent_id)

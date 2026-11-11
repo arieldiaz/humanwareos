@@ -19,7 +19,7 @@ import activity
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
-from openclaw_sessions import iter_agent_ids, iter_sessions, iter_trajectory_events, iter_transcript_records
+from openclaw_sessions import iter_agent_ids, iter_sessions, iter_subagent_runs, iter_trajectory_events, iter_transcript_records
 
 
 SCHEMA_VERSION = 2
@@ -130,7 +130,8 @@ def normalize(record: dict, raw: str, source_path: str, logical_id: str) -> dict
             cost = {"status": "unavailable", "tokens": usage, "usageId": record.get("invocationId") or event_id}
             if isinstance(data.get("cost"), dict):
                 cost = dict(data["cost"], tokens=usage, usageId=record.get("invocationId") or event_id)
-    if normalized_kind not in activity.KINDS:
+    # Spawned-run events come only from the run registry, never trajectory lifecycle types.
+    if normalized_kind not in activity.KINDS or normalized_kind.startswith("run."):
         return {"schemaVersion": 2, "id": event_id, "traceId": trace_id,
                 "logicalSessionId": logical_id, "runId": activity.identifier(record.get("runId")),
                 "ts": activity.timestamp(ts), "agent": agent, "source": "openclaw",
@@ -150,6 +151,65 @@ def normalize(record: dict, raw: str, source_path: str, logical_id: str) -> dict
                           source_refs=record.get("sourceRefs", []), memory=record.get("memory"))
 
 
+RUN_OUTCOMES = {"ok": "succeeded", "error": "failed", "timeout": "failed", "killed": "failed"}
+TOKEN_FIELDS = (("input", "inputTokens"), ("output", "outputTokens"), ("cacheRead", "cacheRead"),
+                ("cacheWrite", "cacheWrite"), ("total", "totalTokens"))
+
+
+def run_events(runs, entries, logical_by_key, usage_sessions):
+    """One run.spawned and, once ended, one run.completed per registry run.
+
+    The child session's counters are the run total only when that session's last
+    run is this run and the adapter saw no per-invocation usage for it.
+    """
+    parents = {run.get("childSessionKey"): run.get("requesterSessionKey") for run in runs}
+    logical = lambda key: logical_by_key.get(key, key)
+
+    def root(key):
+        seen = set()
+        while key in parents and key not in seen:
+            seen.add(key)
+            key = parents[key]
+        return key
+
+    rows = []
+    for run in runs:
+        run_id, child_key, parent_key = (activity.identifier(run.get(key)) for key in ("runId", "childSessionKey", "requesterSessionKey"))
+        created = iso_from_ms(run.get("createdAt"))
+        if not (run_id and child_key and parent_key and created):
+            continue
+        entry = entries.get(child_key) or {}
+        model = run.get("model") or "/".join(filter(None, (entry.get("modelProvider"), entry.get("model")))) or None
+        meta = {"childRunId": run_id, "childSessionId": logical(child_key), "parentRunId": run.get("requesterTurnRunId"),
+                "parentSessionId": logical(parent_key), "rootSessionId": logical(root(child_key)),
+                "model": model, "reasoning": entry.get("thinkingLevel")}
+        common = {"session_id": meta["parentSessionId"], "run_id": run_id, "reason_code": "observed",
+                  "actor": {"identity": run.get("requesterAgentId")},
+                  "source_ref": {"type": "raw", "id": f"openclaw:subagent-run:{run_id}", "localOnly": True}}
+        rows.append(activity.event(event_id=f"openclaw:run.spawned:{run_id}", ts=created, kind="run.spawned",
+                                   outcome="succeeded", run=meta, **common))
+        execution = run.get("execution") if isinstance(run.get("execution"), dict) else {}
+        outcome = execution.get("outcome") if isinstance(execution.get("outcome"), dict) else {}
+        ended = iso_from_ms(outcome.get("endedAt") or execution.get("endedAt"))
+        if not ended or (entry and not entry.get("endedAt")):
+            continue  # Not ended, or the child's counters have not settled yet.
+        status = outcome.get("status") if outcome.get("status") in activity.RUN_STATUSES else "unknown"
+        duration = outcome.get("elapsedMs")
+        if type(duration) is not int and type(execution.get("startedAt")) is int and type(execution.get("endedAt")) is int:
+            duration = execution["endedAt"] - execution["startedAt"]
+        own = entry.get("lastRunId") == run_id and meta["childSessionId"] not in usage_sessions
+        cost = {"status": "unavailable", "usageId": f"run:{run_id}",
+                "tokens": {key: entry[source] for key, source in TOKEN_FIELDS if own and type(entry.get(source)) is int}}
+        amount = entry.get("estimatedCostUsd")
+        if own and type(amount) in (int, float) and amount >= 0:
+            cost.update(status="estimated", amount=amount, currency="USD", basisRef={
+                "type": "raw", "id": f"openclaw:session-entry:{child_key}", "localOnly": True})
+        rows.append(activity.event(event_id=f"openclaw:run.completed:{run_id}", ts=ended, kind="run.completed",
+                                   outcome=RUN_OUTCOMES.get(status, "unknown"), cost=cost,
+                                   run=dict(meta, status=status, durationMs=duration), **common))
+    return rows
+
+
 def projected_session_event(record):
     projected = activity.project(record)
     if projected is not None:
@@ -166,9 +226,11 @@ def projected_session_event(record):
     }.items() if value is not None}
 
 
-def registry_index(openclaw_root: str, state: dict):
+def registry_index(openclaw_root: str, state: dict, entries: dict | None = None, logical_by_key: dict | None = None):
     runtime_to_logical = {}
     descriptors = {}
+    entries = {} if entries is None else entries
+    logical_by_key = {} if logical_by_key is None else logical_by_key
     runtime_cache = state.setdefault("runtimeByPath", {})
     trajectory_files = glob(os.path.join(openclaw_root, "*", "sessions", "*.trajectory.jsonl"))
 
@@ -190,6 +252,8 @@ def registry_index(openclaw_root: str, state: dict):
             )
             logical_id = f"slack:{channel_id}:{thread_id}" if slack_backed and channel_id and thread_id else f"openclaw:{agent}:{runtime_id}"
             runtime_to_logical[runtime_id] = logical_id
+            entries.setdefault(key, meta)
+            logical_by_key.setdefault(key, logical_id)
             descriptor = descriptors.setdefault(logical_id, {
                 "id": logical_id, "agents": set(), "models": set(), "providers": set(),
                 "channel": None, "channelId": None, "threadId": None, "title": None,
@@ -331,6 +395,16 @@ def session_summary_path(logical_id: str) -> str:
     return os.path.join("summaries", hashlib.sha256(logical_id.encode()).hexdigest()[:24] + ".md")
 
 
+def cost_text(rollup: list[dict]) -> str:
+    parts = []
+    for group in rollup:
+        if group["currency"]:
+            parts.append(f"{group['exact']:g} {group['currency']} exact + {group['estimated']:g} {group['currency']} estimated")
+        if group["unavailable"]:
+            parts.append(f"{group['unavailable']} reports unavailable")
+    return "; ".join(parts) or "Unavailable"
+
+
 def render_session_summary(session: dict, summary: dict) -> str:
     def value(item):
         return str(item) if item not in (None, "") else "Unavailable"
@@ -347,6 +421,8 @@ def render_session_summary(session: dict, summary: dict) -> str:
         f"- **Models:** {models}",
         f"- **Started:** {value(summary['startedAt'])}",
         f"- **Closed:** {value(summary['closedAt'])}",
+        f"- **Worker runs:** {session.get('workerRuns', 0)}",
+        f"- **Cost:** {cost_text(session.get('costRollup') or [])}",
         "",
     ])
 
@@ -463,7 +539,8 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
     state.setdefault("sources", {})
     state.pop("titles", None)
     state.setdefault("runtimeByPath", {})
-    trajectory_files, runtime_map, descriptors = registry_index(openclaw_root, state)
+    entries, logical_by_key = {}, {}
+    trajectory_files, runtime_map, descriptors = registry_index(openclaw_root, state, entries, logical_by_key)
     seen, ledger = existing_events(events_root)
     full_seen, full_trace = existing_full_trace(raw_root)
     additions = []
@@ -532,6 +609,12 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
                 committed_offset += len(line)
         state["sources"][path] = {"inode": stat.st_ino, "offset": committed_offset, "mtimeNs": stat.st_mtime_ns}
 
+    usage_sessions = {event.get("logicalSessionId") for event in ledger + additions if event.get("kind") == "usage.cost"}
+    for event in run_events(list(iter_subagent_runs(state_root)), entries, logical_by_key, usage_sessions):
+        if event["id"] not in seen:
+            seen.add(event["id"])
+            additions.append(event)
+
     if source_event_ids - full_seen:
         raise RuntimeError("OpenClaw activity capture did not reach the canonical trajectory source")
     if full_additions and not dry_run:
@@ -545,6 +628,11 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
     grouped = defaultdict(list)
     for event in ledger:
         grouped[event.get("logicalSessionId")].append(event)
+
+    runs_by_root = defaultdict(list)
+    for event in ledger:
+        if str(event.get("kind")).startswith("run.") and (row := activity.project(event)):
+            runs_by_root[row["run"]["rootSessionId"]].append(row)
 
     lifecycle = workflow_states(ledger)
     by_thread = {key: value for key, value in lifecycle.items()}
@@ -577,8 +665,14 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
             f"{descriptor.get('channel')} · {', '.join(sorted(descriptor['agents']))}"
             if descriptor.get("channel") else f"OpenClaw · {', '.join(sorted(descriptor['agents'])) or 'session'}"
         )
+        run_rows = runs_by_root.get(logical_id, [])
+        workers = {row["run"]["childSessionId"] for row in run_rows}
         sessions.append({
             "id": logical_id,
+            "runs": activity.run_tree(run_rows, logical_id),
+            "workerRuns": len({row["run"]["childRunId"] for row in run_rows}),
+            # Root plus every worker session: observed reports only, unknown stays counted.
+            "costRollup": activity.cost_rollup(events + run_rows + [e for child in workers for e in grouped.get(child, [])]),
             "title": title,
             "status": status,
             "outboundStatus": (workflow or {}).get("outbound"),
