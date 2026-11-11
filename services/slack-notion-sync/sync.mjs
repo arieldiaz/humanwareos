@@ -201,16 +201,20 @@ function formatDuration(milliseconds) {
 
 function moneyForSession(session) {
   let total = 0;
+  let estimated = 0;
   let unavailable = 0;
   let currency = null;
   for (const item of session.spend || []) {
     unavailable += Number(item.unavailable || 0);
+    estimated += Number(item.estimated || 0);
     total += Number(item.exact || 0) + Number(item.estimated || 0);
     currency ||= item.currency || null;
   }
   if (unavailable && total === 0) return "$—";
-  if (currency && currency !== "USD") return `${currency} ${total.toFixed(2)}`;
-  return `$${total.toFixed(2)}`;
+  // An estimate is what the observed tokens cost at API list price, not a bill.
+  const basis = estimated ? " list-price equivalent" : "";
+  if (currency && currency !== "USD") return `${currency} ${total.toFixed(2)}${basis}`;
+  return `$${total.toFixed(2)}${basis}`;
 }
 
 export function sessionStats(session, replyCount, record = {}) {

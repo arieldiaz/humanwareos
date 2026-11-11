@@ -121,9 +121,16 @@ class SessionConsoleTest(unittest.TestCase):
 
 class SubagentRunCaptureTest(unittest.TestCase):
     ROOT_KEY = 'agent:liv:slack:channel:c1:thread:123.45'
+    # Synthetic list prices: one dollar per million input tokens, ten per million output.
+    PRICES = {'basis': 'api-list-price-equivalent', 'currency': 'USD', 'unit': 'per-million-tokens', 'models': {'model-a': [
+        {'effectiveFrom': '2026-01-01', 'input': 1, 'output': 10, 'cacheRead': 0, 'cacheWrite': 0, 'source': 'synthetic'}]}}
 
     def setUp(self):
         import sqlite3
+        from unittest import mock
+        patcher = mock.patch.object(MODULE.activity.pricing, 'TABLE', self.PRICES)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
@@ -141,9 +148,14 @@ class SubagentRunCaptureTest(unittest.TestCase):
                 started_at INTEGER, ended_at INTEGER, status TEXT, chat_type TEXT, channel TEXT,
                 account_id TEXT, model_provider TEXT, model TEXT, agent_harness_id TEXT,
                 parent_session_key TEXT, spawned_by TEXT, display_name TEXT);
+            CREATE TABLE transcript_events (session_id TEXT, seq INTEGER, event_json TEXT, created_at INTEGER,
+                event_zstd BLOB, message_role TEXT, PRIMARY KEY(session_id, seq));
+            CREATE TABLE session_transcript_archives (session_id TEXT, generation TEXT, session_key TEXT, reason TEXT,
+                encoding TEXT, archive_blob BLOB, archive_name TEXT UNIQUE, created_at INTEGER);
         ''')
         self.state.execute('CREATE TABLE subagent_runs (run_id TEXT PRIMARY KEY, child_session_key TEXT, created_at INTEGER, payload_json TEXT)')
         self.node(self.ROOT_KEY, 'root', {'groupId': 'C1', 'lastThreadId': '123.45', 'status': 'done'})
+        # Session counters describe the last call only; they are never a run total.
         self.node('agent:liv:subagent:a', 'child-a', {'lastRunId': 'run-a', 'thinkingLevel': 'high', 'model': 'm', 'modelProvider': 'p',
                                                   'inputTokens': 10, 'outputTokens': 5, 'totalTokens': 15,
                                                   'estimatedCostUsd': 0.25, 'endedAt': 1787300060000, 'status': 'done'})
@@ -152,10 +164,41 @@ class SubagentRunCaptureTest(unittest.TestCase):
         self.add_run('run-b', 'agent:liv:subagent:b', 'agent:liv:subagent:a', ended=('timeout', 30000))  # child session deleted
         self.add_run('run-c', 'agent:liv:subagent:c', self.ROOT_KEY)
         self.add_run('run-d', 'agent:liv:subagent:d', self.ROOT_KEY, ended=('error', 1000))
+        self.say('root', 1, 'r1', {'input': 2_000_000, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0, 'totalTokens': 2_000_000}, run_id='turn-1')
+        self.say('root', 2, 'r2', {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0, 'totalTokens': 0})  # mirrored fragment
+        self.say('root', 3, 'r3', None, role='user')
+        self.say('child-a', 1, 'a1', {'input': 1_000_000, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0, 'totalTokens': 1_000_000})
+        self.say('child-a', 2, 'a2', {'input': 0, 'output': 100_000, 'cacheRead': 0, 'cacheWrite': 0, 'totalTokens': 100_000})
+        self.archive('child-b', 'agent:liv:subagent:b', [self.record('b1', {'input': 500_000, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0})])
 
     def node(self, key, session_id, entry):
         entry = dict(entry, sessionId=session_id, updatedAt=1787300000000)
         self.agent.execute('INSERT OR REPLACE INTO session_nodes VALUES (?, ?, ?, ?)', (key, session_id, json.dumps(entry), entry['updatedAt']))
+        self.agent.execute('INSERT OR IGNORE INTO session_windows (session_id, session_key, created_at, updated_at) VALUES (?, ?, ?, ?)',
+                           (session_id, key, entry['updatedAt'], entry['updatedAt']))
+        self.agent.commit()
+
+    def record(self, record_id, usage, role='assistant', run_id=None):
+        message = {'role': role, 'content': 'SYNTHETIC PRIVATE REPLY', 'provider': 'provider', 'model': 'model-a'}
+        if usage is not None:
+            message['usage'] = usage
+        if run_id:
+            message['__openclaw'] = {'runId': run_id}
+        return {'type': 'message', 'id': record_id, 'timestamp': '2026-08-21T12:00:30.000Z', 'message': message}
+
+    def say(self, session_id, seq, record_id, usage, role='assistant', run_id=None):
+        self.agent.execute('INSERT INTO transcript_events VALUES (?, ?, ?, ?, NULL, ?)',
+                           (session_id, seq, json.dumps(self.record(record_id, usage, role, run_id)), seq, role))
+        self.agent.commit()
+
+    def archive(self, session_id, key, records, compress=False):
+        blob = ''.join(json.dumps(record) + '\n' for record in records).encode()
+        if compress:
+            node = os.environ.get('NODE_BIN') or shutil.which('node')
+            blob = subprocess.run([node, '-e', 'process.stdout.write(require("zlib").zstdCompressSync(require("fs").readFileSync(0)))'],
+                                  input=blob, capture_output=True, check=True).stdout
+        self.agent.execute('INSERT INTO session_transcript_archives VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                           (session_id, 'g1', key, 'deleted', 'zstd' if compress else 'identity', blob, f'{session_id}.jsonl.deleted', 1))
         self.agent.commit()
 
     def add_run(self, run_id, child, parent, ended=None):
@@ -174,63 +217,89 @@ class SubagentRunCaptureTest(unittest.TestCase):
         return [json.loads(line) for path in sorted((self.root / 'data/evidence/sessions/events').glob('*.jsonl'))
                 for line in path.read_text().splitlines()]
 
-    def test_runs_are_captured_once_with_observed_usage_and_tree(self):
+    def session(self, result):
+        return next(item for item in result['sessions'] if item['id'] == 'slack:C1:123.45')
+
+    def test_runs_and_transcript_usage_are_captured_once_and_priced_by_code(self):
         from jsonschema import Draft202012Validator, FormatChecker
         result, additions = self.build()
-        self.assertEqual(additions, 6)  # four spawns; run-c running, run-d counters not settled
+        self.assertEqual(additions, 11)  # four spawns, three ended runs, four records that report tokens
         validator = Draft202012Validator(json.loads((SCRIPT.parents[2] / 'schemas/session-event.schema.json').read_text()), format_checker=FormatChecker())
         for row in self.ledger():
             validator.validate(row)
-        self.assertNotIn('SYNTHETIC PRIVATE BRIEF', json.dumps(self.ledger()) + json.dumps(result))
+        self.assertNotIn('SYNTHETIC PRIVATE', json.dumps(self.ledger()) + json.dumps(result))
+        usage = {row['id']: row for row in self.ledger() if row['kind'] == 'usage.cost'}
+        self.assertEqual(sorted(usage), [f'openclaw:usage:liv:{name}' for name in ('child-a:a1', 'child-a:a2', 'child-b:b1', 'root:r1')])
+        # Evidence holds observed tokens and the model; the amount is computed when read.
+        self.assertEqual({row['cost']['status'] for row in usage.values()}, {'unavailable'})
+        root_call = usage['openclaw:usage:liv:root:r1']
+        self.assertEqual((root_call['logicalSessionId'], root_call['runId'], root_call['cost']['model'], root_call['cost']['tokens']['input']),
+                         ('slack:C1:123.45', 'turn-1', 'provider/model-a', 2_000_000))
+        self.assertEqual(usage['openclaw:usage:liv:child-b:b1']['logicalSessionId'], 'agent:liv:subagent:b')
         completed = {row['runId']: row for row in self.ledger() if row['kind'] == 'run.completed'}
-        self.assertEqual(completed['run-a']['cost']['tokens'], {'input': 10, 'output': 5, 'total': 15})
-        self.assertEqual((completed['run-a']['cost']['status'], completed['run-a']['outcome']), ('estimated', 'succeeded'))
-        self.assertEqual((completed['run-b']['cost']['status'], completed['run-b']['cost']['tokens']), ('unavailable', {}))
+        self.assertEqual({(row['cost']['status'], json.dumps(row['cost']['tokens'])) for row in completed.values()}, {('unavailable', '{}')})
+        self.assertEqual((completed['run-a']['outcome'], completed['run-d']['outcome']), ('succeeded', 'failed'))
         self.assertEqual((completed['run-b']['run']['parentSessionId'], completed['run-b']['run']['rootSessionId']), ('openclaw:liv:child-a', 'slack:C1:123.45'))
 
-        session = next(item for item in result['sessions'] if item['id'] == 'slack:C1:123.45')
+        session = self.session(result)
         self.assertEqual(session['workerRuns'], 4)
         self.assertEqual([run['runId'] for run in session['runs']], ['run-a', 'run-c', 'run-d'])
         worker = session['runs'][0]
         self.assertEqual((worker['model'], worker['reasoning'], worker['durationMs']), ('p/m', 'high', 60000))
-        self.assertEqual([run['runId'] for run in worker['children']], ['run-b'])
-        usd = next(group for group in session['costRollup'] if group['currency'] == 'USD')
-        self.assertEqual((usd['estimated'], next(g for g in session['costRollup'] if g['currency'] is None)['unavailable']), (0.25, 1))
+        self.assertEqual((worker['tokens']['total'], worker['cost']), (1_100_000, {'amount': 2.0, 'reports': 2, 'unavailable': 0}))
+        self.assertEqual([(run['runId'], run['cost']['amount']) for run in worker['children']], [('run-b', 0.5)])  # from the archive
+        self.assertEqual([run['cost']['amount'] for run in session['runs'][1:]], [None, None])
+        cost = session['cost']
+        self.assertEqual((cost['basis'], cost['amount'], cost['root']['amount'], cost['workers']['amount']), ('api-list-price-equivalent', 4.5, 2.0, 2.5))
+        self.assertEqual((cost['reports'], cost['unavailable']), (5, 1))  # run-d ended with no observable usage
+        self.assertEqual([(row['runId'], row['amount']) for row in cost['byRun']], [('turn-1', 2.0)])
+        self.assertEqual(sum(group['estimated'] for group in session['spend']), 4.5)
+        self.assertNotIn('eventIds', session['spend'][0])
         summary = (self.root / 'data/generated/sessions' / session['summaryMarkdown']).read_text()
         self.assertIn('**Worker runs:** 4', summary)
-        self.assertIn('0.25 USD estimated', summary)
-
+        self.assertIn('**Cost:** $4.50 API list-price equivalent (root $2.00, workers $2.50); 1 of 5 usage reports unpriced', summary)
         self.assertEqual(self.build()[1], 0)
-        self.node('agent:liv:subagent:d', 'child-d', {'lastRunId': 'run-d', 'inputTokens': 3, 'status': 'failed', 'endedAt': 1787300001000})
-        self.assertEqual(self.build()[1], 1)
-        self.assertEqual(self.build()[1], 0)
-        late = next(row for row in self.ledger() if row['id'] == 'openclaw:run.completed:run-d')
-        self.assertEqual((late['cost']['status'], late['cost']['tokens'], late['outcome']), ('unavailable', {'input': 3}, 'failed'))
+        # An unknown part of the total is named, never shown as zero.
+        workers_only = dict(cost, root=dict(cost['root'], amount=None))
+        self.assertIn('(root unavailable, workers $2.50)', MODULE.cost_text(workers_only))
+        self.assertEqual(MODULE.cost_text(dict(cost, amount=None)), 'Unavailable')
+        self.assertEqual(MODULE.cost_text(None), 'Unavailable')
 
     def test_plugin_started_root_thread_is_not_a_worker_run(self):
         thread = 'agent:liv:slack:channel:c1:thread:678.90'
         self.node(thread, 'thread', {'lastRunId': 'run-t', 'endedAt': 1787300060000, 'status': 'done'})
         self.add_run('run-t', thread, 'agent:liv:main', ended=('ok', 60000))
         self.add_run('run-e', 'agent:liv:subagent:e', thread, ended=('ok', 1000))
-        rows = MODULE.run_events(*self.run_inputs())
+        entries, logical = {}, {}
+        MODULE.registry_index(str(self.root / 'agents'), {}, entries, logical)
+        rows = MODULE.run_events(list(MODULE.iter_subagent_runs(self.root)), entries, logical)
         self.assertNotIn('run-t', {row['runId'] for row in rows})
         spawned = next(row for row in rows if row['id'] == 'openclaw:run.spawned:run-e')
         self.assertEqual(spawned['run']['rootSessionId'], spawned['run']['parentSessionId'])
         self.assertTrue(MODULE.is_worker_session('agent:liv:dashboard:x', {'spawnDepth': 1, 'spawnedBy': thread}))
         self.assertFalse(MODULE.is_worker_session(thread, {}))
 
-    def run_inputs(self):
-        entries, logical = {}, {}
-        MODULE.registry_index(str(self.root / 'agents'), {}, entries, logical)
-        return list(MODULE.iter_subagent_runs(self.root)), entries, logical, set()
+    def test_usage_survives_child_cleanup_state_loss_and_resumes_after_new_calls(self):
+        before = self.session(self.build()[0])['cost']
+        # The host deletes the finished child and archives its transcript.
+        records = [json.loads(row[0]) for row in self.agent.execute("SELECT event_json FROM transcript_events WHERE session_id = 'child-a' ORDER BY seq")]
+        for table, column in (('transcript_events', 'session_id'), ('session_windows', 'session_id'), ('session_nodes', 'current_session_id')):
+            self.agent.execute(f'DELETE FROM {table} WHERE {column} = ?', ('child-a',))
+        self.archive('child-a', 'agent:liv:subagent:a', records, compress=True)
+        result, additions = self.build()
+        self.assertEqual((additions, self.session(result)['cost']), (0, before))
+        os.unlink(self.root / 'data/generated/sessions/state.json')
+        self.assertEqual(self.build()[1], 0)
+        self.say('root', 4, 'r4', {'input': 1_000_000, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}, run_id='turn-2')
+        result, additions = self.build()
+        self.assertEqual((additions, self.session(result)['cost']['root']['amount']), (1, 3.0))
+        self.assertEqual(self.build()[1], 0)
 
-    def test_per_invocation_usage_suppresses_session_counters(self):
-        entries, logical = {}, {}
-        MODULE.registry_index(str(self.root / 'agents'), {}, entries, logical)
-        runs = list(MODULE.iter_subagent_runs(self.root))
-        rows = MODULE.run_events(runs, entries, logical, {'openclaw:liv:child-a'})
-        completed = next(row for row in rows if row['id'] == 'openclaw:run.completed:run-a')
-        self.assertEqual((completed['cost']['status'], completed['cost']['tokens']), ('unavailable', {}))
+    def test_a_run_first_seen_after_cleanup_still_gets_its_archived_usage(self):
+        self.add_run('run-e', 'agent:liv:subagent:e', self.ROOT_KEY, ended=('ok', 5))
+        self.archive('child-e', 'agent:liv:subagent:e', [self.record('e1', {'input': 3_000_000, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0})])
+        late = next(run for run in self.session(self.build()[0])['runs'] if run['runId'] == 'run-e')
+        self.assertEqual((late['sessionId'], late['cost']['amount']), ('agent:liv:subagent:e', 3.0))
 
 
 class CanonicalSessionReaderTest(unittest.TestCase):

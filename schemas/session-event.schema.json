@@ -6,7 +6,7 @@
     "reference": {
       "type": "object",
       "properties": {
-        "type": {"enum": ["event", "human_message", "grant", "delegation", "context", "memory_claim", "raw"]},
+        "type": {"enum": ["event", "human_message", "grant", "delegation", "context", "memory_claim", "raw", "rate"]},
         "id": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
         "localOnly": {"const": true}
       },
@@ -204,6 +204,7 @@
           "properties": {
             "status": {"enum": ["exact", "estimated", "unavailable"]},
             "usageId": {"type": "string", "minLength": 1, "maxLength": 256},
+            "model": {"type": "string", "pattern": "^[A-Za-z0-9_./:@+\\-]{1,256}$"},
             "tokens": {
               "type": "object",
               "properties": {
