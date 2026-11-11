@@ -212,7 +212,17 @@ activate() {
         "$OPENCLAW_BIN" gateway install --force --json >/dev/null 2>&1
       fi
       "$OPENCLAW_BIN" gateway resume --json >/dev/null 2>&1
-      "$OPENCLAW_BIN" gateway start --json >/dev/null 2>&1
+      "$OPENCLAW_BIN" gateway start --json > "$report/rollback-gateway-start.json" 2>&1
+      # A rollback that leaves the gateway down is a second failure; say so instead of implying recovery.
+      local attempt=1
+      until "$OPENCLAW_BIN" gateway status --require-rpc --json > "$report/rollback-gateway-status.json" 2>&1; do
+        if [ "$attempt" -ge 12 ]; then
+          echo "OpenClaw rollback left the gateway down: $report/rollback-gateway-status.json" >&2
+          break
+        fi
+        attempt=$((attempt + 1))
+        sleep 5
+      done
       echo "OpenClaw activation failed; rollback was attempted. Inspect the report before retrying: $report" >&2
     fi
     exit "$status"
