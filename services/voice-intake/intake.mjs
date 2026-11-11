@@ -104,7 +104,7 @@ export function shortcutVersion(form) {
   const value = Number(String(form.get('shortcutVersion') ?? '').trim());
   return Number.isInteger(value) && value > 0 ? value : null;
 }
-export const versionLabel = (version) => version == null ? `pre-v${SHORTCUT_VERSION}` : `v${version}`;
+export const versionLabel = (version) => version == null ? 'pre-v4' : `v${version}`;
 export const outdatedShortcut = (version) => (version ?? 0) < SHORTCUT_VERSION;
 // What the Shortcut shows as its notification after an upload: the version it
 // runs, and when behind, that a newer build exists.
