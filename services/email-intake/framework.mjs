@@ -10,3 +10,4 @@ export const {SQLiteIntakeRepository} = await framework('ops/email-intake/reposi
 export const {normalizeMessage, digest} = await framework('ops/email-intake/model.mjs');
 
 export const {ownerSessionRequest, splitOwnerText} = await framework("ops/email-intake/owner-session.mjs");
+export const {outboundDraft, approvalPhrase, isApproval, previewText, sendRequest} = await framework('ops/email-intake/outbound.mjs');

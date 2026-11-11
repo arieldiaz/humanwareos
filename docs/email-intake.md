@@ -34,6 +34,10 @@ Follow-up mail preserves ownership and thread identity. Correlation never crosse
 
 Durable effect kinds are `intake_root`, `intake_append`, `quick_dispatch`, `owner_dispatch`, `promotion_question`, `promoted_work`, and `operational_fault`. Slack adapters resolve private references into compact safe summaries without lifecycle reactions. Quick dispatch is limited to its declared bounded scope. A promoted-work adapter creates one linked work root and, when requested and qualified, a session according to [docs/coding-sessions.md](docs/coding-sessions.md). It uses the stable effect key as its downstream idempotency key. `owner-session.mjs` builds the same canonical Slack thread session key used by ordinary Slack replies. Its prompt requires semantic interpretation of owner-authored text: research permits investigation/reporting only, execution permits reversible authorized work, context invents no task, and ambiguity requires clarification. Forwarded/quoted bodies and attachments remain untrusted context. The instance retains private MIME and attachment references, dispatches through the gateway, and persists confirmed admission. Unknown admission outcomes require reconciliation, never blind re-execution.
 
+## Outbound
+
+[outbound.mjs](ops/email-intake/outbound.mjs) owns outbound policy: plain text from an instance-declared sender, at most ten recipients, never a routed domain. Mail addressed beyond the owner mailbox is outward-facing: the adapter posts the exact draft in Slack and sends only after the declared human replies with that draft's approval phrase. A reply to an intake thread copies In-Reply-To and References from its latest message. Each draft, approval and provider result is recorded; an unknown provider outcome is a fault, never a retry.
+
 ## Repository and replay
 
 [repository.mjs](ops/email-intake/repository.mjs) declares the synchronous repository interface and a built-in `node:sqlite` implementation (Node 22.13 or later). The instance supplies a dedicated database path; initialization creates only namespaced v1 tables and indexes. Future table changes require reviewed migrations, never destructive initialization.

@@ -36,28 +36,34 @@ export function handler(intake, secret, transport = null) {
 
 export function ownersOf(config) { return [...new Set(Object.values(config.routes ?? {}))]; }
 
+// One Slack bot per routed owner; tokens come from <OWNER>_SLACK_BOT_TOKEN.
+export function slackTokens(config, env = process.env) {
+  return Object.fromEntries(ownersOf(config).map(owner => [owner, env[`${owner.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_SLACK_BOT_TOKEN`]]));
+}
+
+// <runtime>/framework/services/email-intake/server.mjs → <runtime>
+export function locations(env = process.env) {
+  const runtime = env.HUMANWARE_RUNTIME_ROOT ?? join(import.meta.dirname, '..', '..', '..');
+  if (!env.HUMANWARE_DATA_ROOT) throw new Error('HUMANWARE_DATA_ROOT is required');
+  return {runtime, config: env.EMAIL_INTAKE_CONFIG ?? join(runtime, 'config/services/email-intake/config.json'),
+    state: env.EMAIL_INTAKE_DATA_DIR ?? join(env.HUMANWARE_DATA_ROOT, 'working/projects/email-intake')};
+}
+
 export function isMainModule(moduleUrl, argvPath) {
   return Boolean(argvPath) && moduleUrl === pathToFileURL(realpathSync(argvPath)).href;
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {
   process.umask(0o077);
-  // <runtime>/framework/services/email-intake/server.mjs → <runtime>
-  const runtime = process.env.HUMANWARE_RUNTIME_ROOT ?? join(import.meta.dirname, '..', '..', '..');
-  const data = process.env.HUMANWARE_DATA_ROOT;
-  if (!data) throw new Error('HUMANWARE_DATA_ROOT is required');
-  const configPath = process.env.EMAIL_INTAKE_CONFIG ?? join(runtime, 'config/services/email-intake/config.json');
+  const {runtime, config: configPath, state: stateDir} = locations();
   const config = JSON.parse(readFileSync(configPath));
-  const stateDir = process.env.EMAIL_INTAKE_DATA_DIR ?? join(data, 'working/projects/email-intake');
   const channel = JSON.parse(readFileSync(join(runtime, 'config/channels/slack.json'))).registry.inbox;
   const secret = process.env.EMAIL_INTAKE_SECRET;
   if (!secret || !process.env.CALENDAR_INGEST_SECRET) throw new Error('intake_credentials_missing');
   const tokenSecretId = config.queue?.tokenSecretId;
   if (!tokenSecretId) throw new Error('email-intake config.queue.tokenSecretId is required');
   const store = new Store(join(stateDir, 'intake.sqlite3'), {tablePrefix: config.tablePrefix});
-  // One Slack bot per routed owner; tokens come from <OWNER>_SLACK_BOT_TOKEN.
-  const tokens = Object.fromEntries(ownersOf(config).map(owner => [owner, process.env[`${owner.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_SLACK_BOT_TOKEN`]]));
-  const slack = new SlackAdapter({channel, tokens, eventType: config.slackEventType});
+  const slack = new SlackAdapter({channel, tokens: slackTokens(config), eventType: config.slackEventType});
   const intake = new Intake({store, config, channel, slack, sessions: new SessionAdapter({store, directory: join(stateDir, 'requests')}), calendar: calendarClient({url: config.calendarUrl, secret: process.env.CALENDAR_INGEST_SECRET})});
   // Protected provider output is captured in-process, never shell interpolation,
   // argv, a file, or diagnostics. Reuse the existing Cloudflare credential.

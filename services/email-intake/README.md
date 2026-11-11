@@ -9,7 +9,8 @@ Instance config is read from `$EMAIL_INTAKE_CONFIG`, else `$HUMANWARE_RUNTIME_RO
 - `routes` (address → owning agent id), `labels` (address → display label), `sessionRecipients` (addresses that may start owner sessions), `ownerMailbox` (the owner principal), `trustedMailboxes` (optional additional exact principals with the same session authority; default none), `calendarRecipients` (addresses using the deterministic calendar path; default none).
 - `maxBytes`, `subjectWindowMs`, `calendarUrl`.
 - `queue.accountId`, `queue.ingressId`, `queue.deadLetterId` (32-hex Cloudflare ids) and `queue.tokenSecretId` (secret id resolved through `ops/openclaw/runtime/secret-exec.sh` for Queues pull/ack). Required.
-- `tablePrefix` (SQLite evidence/delivery/fault table prefix, default `email_intake`) and `slackEventType` (Slack message metadata event type used for reconciliation, default `email_intake`). Keep these stable once data exists.
+- `outbound.senders` (addresses agents may send from) and `outbound.approverSlackUserId` (the one Slack user whose reply approves third-party mail). Optional; without it `send.mjs` refuses. Sending reuses `queue.accountId`.
+- `tablePrefix` (SQLite evidence/delivery/fault/outbound table prefix, default `email_intake`) and `slackEventType` (Slack message metadata event type used for reconciliation, default `email_intake`). Keep these stable once data exists.
 
 Environment: `HUMANWARE_DATA_ROOT` (required), `HUMANWARE_RUNTIME_ROOT` (default: derived from the file location `<runtime>/framework/services/email-intake/`), `HUMANWARE_FRAMEWORK_ROOT` (default `<runtime>/framework`), `EMAIL_INTAKE_DATA_DIR` (default `$HUMANWARE_DATA_ROOT/working/projects/email-intake`), `EMAIL_INTAKE_PORT`, `OPENCLAW_BIN` (default `openclaw` on `PATH`), `EMAIL_INTAKE_SECRET`, `CALENDAR_INGEST_SECRET`, and one `<AGENT>_SLACK_BOT_TOKEN` per distinct agent in `routes`. The Slack inbox channel comes from `config/channels/slack.json` (`registry.inbox`).
 
@@ -34,6 +35,19 @@ SQLite persists effect intents and admission results. Queue/service replay canno
 `package.json` declares runtime dependencies (`humanwareRuntime: true`); the framework builder installs the lock with `npm ci --omit=dev --ignore-scripts`. The service uses the OpenClaw CLI's protected gateway credential resolution, never a token argument.
 
 DLQ messages, including malformed envelopes, are exclusively written and flushed to the private `dead-letter` directory before acknowledgement; lease credentials are excluded. A durable SQLite fault makes health fail until operator reconciliation. Cloudflare queue retention is finite; this is not an indefinite mailbox.
+
+## Outbound mail
+
+`send.mjs` is the agents' only send path, through the Cloudflare Email Sending REST API (`POST /accounts/{id}/email/sending/send`). The sending domain must be onboarded to Email Sending, the account needs Workers Paid for arbitrary recipients, and `EMAIL_SENDING_TOKEN` needs Email Sending Edit. The Worker stays producer-only and needs no `send_email` binding.
+
+```sh
+node send.mjs draft --to ADDR [--to ADDR] [--cc ADDR] [--from SENDER] [--subject TEXT] --text-file PATH|- [--thread CHANNEL:TS] [--reply]
+node send.mjs send --id DRAFT_ID
+```
+
+`draft` records the message. Mail only to `ownerMailbox` is approved at once. Any other recipient requires `--thread`: the sender's Slack bot posts the exact draft there with a phrase `approve email <code>`, and `send` succeeds only after `approverSlackUserId` replies in that thread with it after the preview; otherwise it reports `awaiting_approval`. `--reply` resolves `--thread` as an intake thread, threads to its latest message, and defaults the sender and `Re:` subject. Records live in the `<tablePrefix>_outbound` table. `sent` and `rejected` (a Cloudflare 4xx refusal) are final and idempotent; a timeout or 5xx leaves `sending` with a fault, so health fails until the operator checks the Email Sending activity log. Replies to a new (non-reply) message start a new intake conversation because the provider assigns its Message-ID.
+
+These are tooling boundaries for cooperative agents, not a sandbox: a process with the host's secrets could call the provider directly.
 
 ## Queue setup
 
