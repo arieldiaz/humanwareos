@@ -80,7 +80,10 @@ export function missingRequiredConfig({ dryRun = false } = {}) {
 }
 
 export function isMainModule(moduleUrl, entrypoint) {
-  return Boolean(entrypoint) && moduleUrl === pathToFileURL(entrypoint).href;
+  if (!entrypoint) return false;
+  let resolved = entrypoint;
+  try { resolved = fs.realpathSync(entrypoint); } catch {}
+  return moduleUrl === pathToFileURL(resolved).href;
 }
 
 export function isSlackMessageRoot(message) {

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
@@ -31,6 +34,18 @@ test("recognizes a runtime entrypoint whose path contains spaces", () => {
   const entrypoint = "/Users/admin/Library/Application Support/HumanwareOS/sync.mjs";
   assert.equal(isMainModule(pathToFileURL(entrypoint).href, entrypoint), true);
   assert.equal(isMainModule(pathToFileURL(entrypoint).href, undefined), false);
+});
+
+test("recognizes an entrypoint reached through a symlinked runtime", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sync main "));
+  const real = path.join(root, "runtime");
+  fs.mkdirSync(real);
+  const entrypoint = path.join(real, "sync.mjs");
+  fs.writeFileSync(entrypoint, "");
+  fs.symlinkSync(real, path.join(root, "current"));
+  const moduleUrl = pathToFileURL(fs.realpathSync(entrypoint)).href;
+  assert.equal(isMainModule(moduleUrl, path.join(root, "current", "sync.mjs")), true);
+  fs.rmSync(root, { recursive: true, force: true });
 });
 
 test("builds a bounded title without Slack mentions or links", () => {
