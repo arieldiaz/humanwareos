@@ -112,7 +112,7 @@ test("renders every enabled framework catalog profile", () => {
   const rendered = applyRuntimeProfiles(source, policy);
   const enabledModels = new Set(allowedProfiles.filter((id) => frameworkCatalog.profiles[id].enabled !== false).map((id) => frameworkCatalog.profiles[id].model));
   assert.deepEqual(Object.keys(rendered.agents.defaults.models).sort(), [...enabledModels].sort());
-  assert.equal(rendered.agents.defaults.models["anthropic/claude-fable-5-1"].agentRuntime.id, "claude-cli");
+  assert.equal(rendered.agents.defaults.models["anthropic/claude-fable-5-2"].agentRuntime.id, "claude-cli");
   assert.equal(rendered.agents.defaults.models["openai/gpt-6-astra"].agentRuntime.id, "codex");
 });
 

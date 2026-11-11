@@ -219,7 +219,7 @@
       "harness": "claude",
       "backend": "claude-cli",
       "family": "claude-fable",
-      "model": "anthropic/claude-fable-5-1",
+      "model": "anthropic/claude-fable-5-2",
       "aliases": [
         "claude/fable",
         "fable"
@@ -237,7 +237,7 @@
       "harness": "claude",
       "backend": "claude-cli",
       "family": "claude-fable",
-      "model": "anthropic/claude-fable-5-1",
+      "model": "anthropic/claude-fable-5-2",
       "aliases": [
         "claude/fable",
         "fable"
