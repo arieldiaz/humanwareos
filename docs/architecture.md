@@ -12,7 +12,7 @@ Humanware OS framework ─┐
 private instance config ┘          ▲                  ▲
                                   │                  │
                         channel adapters          data plane
-                        Slack · app · Buzz     stream · memory · work
+                        Slack · app            stream · memory · work
                                   │
                                   ▼
                                 human
@@ -30,7 +30,7 @@ The detailed contract is in [Channels, agents, and execution profiles](channel-r
 
 ## Replaceable interfaces
 
-Slack is the supported reference channel, not the architecture. Buzz and a first-party Humanware application can implement the same adapter contract. A channel adapter translates inbound identity and thread metadata into a canonical conversation event, then translates the agent's final response back to the surface. Channel-specific rendering never owns agent identity or memory.
+Slack is the supported reference channel, not the architecture. A first-party Humanware application can implement the same adapter contract. A channel adapter translates inbound identity and thread metadata into a canonical conversation event, then translates the agent's final response back to the surface. Channel-specific rendering never owns agent identity or memory.
 
 ## Data and memory
 

@@ -23,7 +23,7 @@ Read [System boundaries](docs/system-boundaries.md), [Architecture](docs/archite
 
 An agent identity is not a model or coding harness. Liv, Max, or another durable identity can use the native OpenClaw path for ordinary work and select Pi, Cursor, Codex, or another adapter for a particular task. The private instance grants the same profile catalog to equivalent agents; the chosen profile controls permissions, workspace isolation, model, and data scope.
 
-Slack is the supported first channel, not a core dependency. Buzz and a future native application are replaceable adapters over the same agent runtime. The framework owns reply semantics and lifecycle; each adapter owns transport and rendering.
+Slack is the supported first channel, not a core dependency. A future native application is a replaceable adapter over the same agent runtime. The framework owns reply semantics and lifecycle; each adapter owns transport and rendering.
 
 A full installation can also expose one domain with public and private halves. The framework supplies the frontend shell and route contracts; the instance supplies domain names, enabled modules, origins, and deployment adapter. A private surface can run on an always-on Mac today and move to a cloud adapter later without changing agent identity or data ownership. See [Domain surface](docs/domain-surface.md).
 
@@ -73,7 +73,7 @@ Framework and instance repositories use trunk-based development: branch in an is
 
 ## Status
 
-Humanware OS is early. OpenClaw plus Slack is the supported starting path. Alternative harnesses and channels are selectable adapters, not forks of an agent. Buzz remains experimental and is not required for a reliable installation.
+Humanware OS is early. OpenClaw plus Slack is the supported starting path. Alternative harnesses and channels are selectable adapters, not forks of an agent.
 
 ## License
 

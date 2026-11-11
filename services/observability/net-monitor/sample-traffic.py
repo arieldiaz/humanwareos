@@ -7,7 +7,7 @@ MacBook, where a human is present to answer its GUI prompts. On the headless
 mini we skip enforcement and just observe: who is this machine talking to, and
 (best effort) how much.
 
-Design mirrors ops/token-tracking: a low-frequency launchd sampler appends to a
+Design: a low-frequency launchd sampler appends to a
 durable JSONL history; a separate builder aggregates the latest window into the
 dashboard's data.json. Kept apart so a slow reverse-DNS lookup never stalls the
 page build.

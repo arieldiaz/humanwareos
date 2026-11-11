@@ -2,37 +2,35 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import plugin, {buildCursorCliBackends} from "./index.js";
 
-test("registers parallel ask and workspace backends against the secret-safe wrapper", () => {
+test("registers the workspace backend against the secret-safe wrapper", () => {
   const backends = buildCursorCliBackends("/runtime/cursor-agent-launch.sh");
-  assert.deepEqual(backends.map((entry) => entry.id), ["cursor-ask", "cursor-agent"]);
-  assert.equal(backends[0].config.command, "/runtime/cursor-agent-launch.sh");
-  assert.equal(backends[0].config.jsonlDialect, "claude-stream-json");
-  assert.equal(backends[0].config.serialize, false);
-  assert.deepEqual(backends[0].config.modelAliases, {
-    "grok-4.6-low-fast": "cursor-grok-4.6-low-fast",
-    "grok-4.6-high-fast": "cursor-grok-4.6-high-fast",
+  assert.deepEqual(backends.map((entry) => entry.id), ["cursor-agent"]);
+  const [agent] = backends;
+  assert.equal(agent.config.command, "/runtime/cursor-agent-launch.sh");
+  assert.equal(agent.config.jsonlDialect, "claude-stream-json");
+  assert.equal(agent.config.serialize, false);
+  assert.deepEqual(agent.config.modelAliases, {
     "grok-4.7-low-fast": "grok-4.7-low-fast",
     "grok-4.7-high-fast": "grok-4.7-high-fast"
   });
-  assert.deepEqual(backends[0].config.sessionIdFields, ["session_id"]);
-  assert.ok(backends[0].config.args.includes("ask"));
-  assert.deepEqual(backends[1].config.args.slice(0, 2), ["--trust", "--auto-review"]);
-  assert.equal(backends[1].config.args.includes("--mode"), false);
-  assert.equal(backends[1].config.resumeArgs.includes("--mode"), false);
-  assert.ok(backends[1].config.args.includes("--auto-review"));
-  assert.ok(backends[1].config.args.includes("enabled"));
+  assert.deepEqual(agent.config.sessionIdFields, ["session_id"]);
+  assert.deepEqual(agent.config.args.slice(0, 2), ["--trust", "--auto-review"]);
+  assert.equal(agent.config.args.includes("--mode"), false);
+  assert.equal(agent.config.resumeArgs.includes("--mode"), false);
+  assert.ok(agent.config.args.includes("--auto-review"));
+  assert.ok(agent.config.args.includes("enabled"));
 });
 
 
 test("registers provider bindings without changing the selected backend or command", () => {
   const registered = [];
   plugin.register({pluginConfig: {command: "/runtime/cursor-agent-launch.sh"}, registerCliBackend: (backend) => registered.push(backend)});
-  assert.deepEqual(registered.map(({id, modelProvider}) => [id, modelProvider]), [["cursor-ask", "cursor-ask"], ["cursor-agent", "cursor-agent"]]);
+  assert.deepEqual(registered.map(({id, modelProvider}) => [id, modelProvider]), [["cursor-agent", "cursor-agent"]]);
   assert.ok(registered.every(backend => backend.config.command === "/runtime/cursor-agent-launch.sh"));
 });
 
 // Run against the locally installed reviewed core without loading plugins or state.
-test("OpenClaw 11.2 accepts both CLI runtimes without requiring a native harness", {skip: !process.env.OPENCLAW_TEST_PACKAGE_ROOT}, async () => {
+test("OpenClaw 11.2 accepts the CLI runtime without requiring a native harness", {skip: !process.env.OPENCLAW_TEST_PACKAGE_ROOT}, async () => {
   const {readFile, readdir} = await import("node:fs/promises");
   const {join} = await import("node:path");
   const {pathToFileURL} = await import("node:url");
@@ -61,7 +59,7 @@ test("OpenClaw 11.2 accepts both CLI runtimes without requiring a native harness
   await withRegistry(registry, async () => {
     for (const backend of registered) {
       assert.equal(matches({provider: backend.id, runtime: backend.id}), true);
-      await ensure({provider: backend.id, modelId: "grok-4.6-low-fast", agentHarnessRuntimeOverride: backend.id, config: {}, pluginRegistry: registry});
+      await ensure({provider: backend.id, modelId: "grok-4.7-low-fast", agentHarnessRuntimeOverride: backend.id, config: {}, pluginRegistry: registry});
     }
     assert.equal(matches({provider: "openai", runtime: "cursor-agent"}), false);
   });
@@ -72,6 +70,6 @@ test("OpenClaw 11.2 accepts both CLI runtimes without requiring a native harness
   };
   await withRegistry(unboundRegistry, async () => {
     assert.equal(matches({provider: "cursor-agent", runtime: "cursor-agent"}), false);
-    await assert.rejects(ensure({provider: "cursor-agent", modelId: "grok-4.6-low-fast", agentHarnessRuntimeOverride: "cursor-agent", config: {}, pluginRegistry: unboundRegistry}), /owner-plugin-not-activatable/);
+    await assert.rejects(ensure({provider: "cursor-agent", modelId: "grok-4.7-low-fast", agentHarnessRuntimeOverride: "cursor-agent", config: {}, pluginRegistry: unboundRegistry}), /owner-plugin-not-activatable/);
   });
 });

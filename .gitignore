@@ -14,9 +14,6 @@
 .obsidian/cache
 .obsidian/plugins/*/data.json
 
-# Machine-local pipeline config.
-ops/stream-paths.env
-
 # Secrets.
 # Real values live in the secrets manager (infra/secrets/runbook.md;
 # Doppler by default). .env files never get committed; .env.example

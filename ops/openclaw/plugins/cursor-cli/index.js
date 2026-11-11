@@ -7,8 +7,6 @@ export function buildCursorCliBackends(command) {
     input: "arg",
     modelArg: "--model",
     modelAliases: {
-      "grok-4.6-low-fast": "cursor-grok-4.6-low-fast",
-      "grok-4.6-high-fast": "cursor-grok-4.6-high-fast",
       "grok-4.7-low-fast": "grok-4.7-low-fast",
       "grok-4.7-high-fast": "grok-4.7-high-fast"
     },
@@ -18,17 +16,6 @@ export function buildCursorCliBackends(command) {
     serialize: false
   };
   return [
-    {
-      id: "cursor-ask",
-      modelProvider: "cursor-ask",
-      liveTest: {defaultModelRef: "cursor-ask/grok-4.7-low-fast", defaultImageProbe: false, defaultMcpProbe: false},
-      nativeToolMode: "always-on",
-      config: {
-        ...common,
-        args: ["--trust", "--mode", "ask", "--print", "--output-format", "stream-json"],
-        resumeArgs: ["--trust", "--mode", "ask", "--print", "--output-format", "stream-json", "--resume", "{sessionId}"]
-      }
-    },
     {
       id: "cursor-agent",
       modelProvider: "cursor-agent",

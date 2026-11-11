@@ -13,5 +13,3 @@ The private instance supplies typed configuration. Generated launchd jobs and se
 - Restart policies are bounded and observable. A crash loop becomes a failed health state rather than silent repeated execution.
 - Every write is idempotent or append-only. A transfer that deletes a spool item verifies the destination checksum first.
 - Backup is verified by restore, not by process exit.
-
-`ops/stream-paths.env.example` remains a legacy compatibility example while stream mechanisms move to typed instance configuration. Do not copy it into the framework checkout with real values.

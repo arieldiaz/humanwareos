@@ -1,6 +1,6 @@
 # Capture ingest
 
-The menu bar app's backend (`server/ingest.py`, stdlib Python). The app POSTs captures here over a private network; the service posts them to a Slack inbox channel (as the capturing user when they have authorized the capture Slack app via `/oauth/start`, otherwise as the bot), and writes a durable Markdown copy under the data root. It also serves `GET /usage` (latest rate-limit window sample) and `GET /threads` (open Slack threads from the session ledger, enriched with Slack root titles) and `GET /health`.
+The menu bar app's backend (`server/ingest.py`, stdlib Python). The app POSTs captures here over a private network; the service posts them to a Slack inbox channel (as the capturing user when they have authorized the capture Slack app via `/oauth/start`, otherwise as the bot), and writes a durable Markdown copy under the data root. It also serves `GET /threads` (open Slack threads from the session ledger, enriched with Slack root titles) and `GET /health`.
 
 In an assembled runtime the code lives at `<runtime>/framework/services/ingest/server/ingest.py` and imports `thread_status` from `<framework>/ops/menubar` (derived from the file location; override with `HUMANWARE_FRAMEWORK_OPS`). The instance supplies the LaunchAgent and a run script that hydrates secrets and exports configuration, under `<runtime>/config/services/ingest/`.
 

@@ -19,11 +19,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
     private let captureField: NSTextField
     private let captureItemView: NSView
 
-    /// Latest usage snapshot, refreshed in the background so the menu can render
-    /// real numbers the instant it opens (and updated live if a refresh lands
-    /// while the menu is showing). Never fabricated — absence renders as a reason.
-    private var usageSnapshot: UsageSnapshot?
-    private var usageError: String?
     private var threadSnapshot: ThreadSnapshot?
     private var threadError: String?
 
@@ -76,7 +71,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
         }
         statusItem.menu = buildMenu()
 
-        refreshUsage()
         refreshThreads()
     }
 
@@ -85,7 +79,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
     // MARK: Menu construction
 
     /// Builds the whole menu from stock primitives. Rebuilt on each open via
-    /// `menuNeedsUpdate` so usage lines reflect the newest snapshot.
+    /// `menuNeedsUpdate` so thread lines reflect the newest snapshot.
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
@@ -124,12 +118,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
         allThreads.target = self
         menu.addItem(allThreads)
 
-        // Usage — real numbers from the ingest /usage feed, rendered as plain
-        // text menu items (text is the stock primitive; no custom bars/colors).
-        menu.addItem(.separator())
-        addSectionHeader(menu, usageHeader)
-        populateUsage(menu)
-
         // Footer.
         menu.addItem(.separator())
         let settings = NSMenuItem(title: "Settings…", action: nil, keyEquivalent: ",")
@@ -144,21 +132,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
         let quit = NSMenuItem(title: "Quit HumanwareOS", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
-    }
-
-    private func populateUsage(_ menu: NSMenu) {
-        if let snapshot = usageSnapshot, snapshot.ok {
-            addUsageProvider(menu, "Claude", windows: snapshot.claude)
-            addUsageProvider(menu, "Codex", windows: snapshot.codex)
-            if snapshot.claude.isEmpty && snapshot.codex.isEmpty {
-                addInfo(menu, "No usage windows")
-            }
-        } else if let error = usageError {
-            NSLog("HumanwareOS usage unavailable: \(error)")
-            addInfo(menu, "Usage unavailable")
-        } else {
-            addInfo(menu, "Loading…")
-        }
     }
 
     private func populateThreads(_ menu: NSMenu) {
@@ -216,16 +189,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
         return NSImage(systemSymbolName: symbol, accessibilityDescription: label)
     }
 
-    private func addUsageProvider(_ menu: NSMenu, _ name: String, windows: [UsageWindow]) {
-        guard !windows.isEmpty else { return }
-        for win in windows {
-            // Each window is a custom-view row: label + "NN% · resets …" + a thin
-            // stock ProgressView bar. `NSMenuItem.view` is the sanctioned primitive
-            // for a control inside a standard menu; the styling stays system-derived.
-            menu.addItem(UsageRow.menuItem(provider: name, window: win, resetText: resetText(win.resetsAt)))
-        }
-    }
-
     // MARK: Stock item helpers
 
     /// A section header — the real macOS 14+ primitive when available, otherwise a
@@ -251,23 +214,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
         menu.addItem(item)
     }
 
-    private func resetText(_ date: Date?) -> String? {
-        guard let date else { return nil }
-        let formatter = DateFormatter()
-        if Calendar.current.isDate(date, inSameDayAs: Date()) {
-            formatter.dateFormat = "h:mm a"
-        } else {
-            formatter.dateFormat = "EEE h a"
-        }
-        return "resets \(formatter.string(from: date))"
-    }
-
-    private var usageHeader: String {
-        guard let sampledAt = usageSnapshot?.sampledAt else { return "Usage" }
-        let minutes = max(0, Int(Date().timeIntervalSince(sampledAt) / 60))
-        return minutes < 1 ? "Usage · updated now" : "Usage · updated \(minutes)m ago"
-    }
-
     private var threadHeader: String {
         guard let snapshot = threadSnapshot, snapshot.ok else { return "Active Threads" }
         return "Active Threads: \(snapshot.activeCount)"
@@ -280,7 +226,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        refreshUsage()
         refreshThreads()
         // Best-effort focus of the in-menu field. Whether keystrokes actually
         // reach it during menu tracking is validated by `focusDiagnostics`.
@@ -313,25 +258,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
         IngestClient.shared.send(text: text) { result in
             if case .failure(let error) = result {
                 NSLog("HumanwareOS capture failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    // MARK: Usage refresh
-
-    private func refreshUsage() {
-        UsageClient.shared.fetch { [weak self] snapshot in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                if snapshot.ok {
-                    self.usageSnapshot = snapshot
-                    self.usageError = nil
-                } else {
-                    self.usageSnapshot = nil
-                    self.usageError = snapshot.error ?? "no usage data"
-                }
-                // The menu is rebuilt from this cache on every open
-                // (`menuNeedsUpdate`), so the next open shows the fresh numbers.
             }
         }
     }
@@ -406,11 +332,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate, NSTextFieldDelegate 
     /// during tracking), then blocks in `performClick`.
     func showMenuForScreenshot(outPath: String) {
         guard let button = statusItem.button else { return }
-        // Warm the usage cache so the screenshot shows real numbers, not
+        // Warm the thread cache so the screenshot shows real data, not
         // "Loading…". Spin the run loop so the async fetch completion can land.
         let deadline = Date().addingTimeInterval(3)
-        while (usageSnapshot == nil && usageError == nil ||
-               threadSnapshot == nil && threadError == nil) && Date() < deadline {
+        while threadSnapshot == nil && threadError == nil && Date() < deadline {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in

@@ -6,7 +6,6 @@ import {feedRevision, renderICalendar} from "./ical.js";
 import {normalizeEvent, reviseEvent} from "./model.js";
 import {authorizeMutation} from "./policy.js";
 import {CalendarService} from "./service.js";
-import {calendarToolContract} from "./tool-contract.js";
 
 const agentPolicy = {origin: "agent", actor: "agent:max", approved: true, operationId: "op-1", reason: "Requested calendar change"};
 
@@ -103,13 +102,4 @@ test("named time zones require a complete VTIMEZONE component", () => {
   assert.throws(() => renderICalendar([event], {calendarId: "family"}), /missing VTIMEZONE/);
   const feed = renderICalendar([event], {calendarId: "family", timeZones: {"America/New_York": "BEGIN:VTIMEZONE\r\nTZID:America/New_York\r\nEND:VTIMEZONE"}});
   assert.match(feed.body, /DTSTART;TZID=America\/New_York:20260922T080000/);
-});
-
-test("agent tool contract exposes reads and auditable mutations without invitation or UI mutation tools", () => {
-  assert.equal(calendarToolContract.calendar_list_calendars.readOnly, true);
-  assert.equal(calendarToolContract.calendar_create_calendar.readOnly, false);
-  assert.equal(calendarToolContract.calendar_list_events.readOnly, true);
-  assert.equal(calendarToolContract.calendar_create_event.readOnly, false);
-  assert.deepEqual(calendarToolContract.calendar_update_event.parameters.required, ["id", "expectedRevision", "event", "policy"]);
-  assert.equal(Object.keys(calendarToolContract).some((name) => /google|caldav|invitation|ui/.test(name)), false);
 });

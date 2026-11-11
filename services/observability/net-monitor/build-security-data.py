@@ -3,7 +3,7 @@
 
 Output: $HUMANWARE_DATA_ROOT/generated/reports/security/current.json
 
-Split from sample-traffic.py on purpose (same shape as ops/token-tracking): the
+Split from sample-traffic.py on purpose: the
 sampler is dumb, frequent and append-only, so a slow reverse-DNS lookup or a
 change to the page can never cost us history. This is the only thing that reads
 the history, and it is safe to re-run at any time — it derives everything and
