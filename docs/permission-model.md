@@ -42,9 +42,11 @@ The name states the owner, the verb states the capability, and the reason states
 
 ## Conversation authority
 
-An explicit request authorizes reversible work inside the selected execution profile's declared workspace and data scope. That authority travels with the task; the agent does not ask again before creating or updating the requested working document or artifact. The enforcement layer still blocks paths and capabilities outside the profile.
+Human approval belongs to the agreed outcome, not each tool call or delivery step. An explicit “yes” approves the proposal it answers. “Fix everything” authorizes completing the identified fixes end to end, including necessary implementation, verification, merge, deployment, and recovery within that scope. Carry that authority across turns, workers, CI waits, and retries; do not ask again merely because the task reaches another step. A request limited to investigation, a draft, or a pull request does not authorize release. Completed-task approval does not authorize unrelated work or later releases.
 
-Irreversible, outward-facing, costly, elevated, or newly private access requires a real decision under the format above. If a harness produces a technical approval request, the control plane either resolves it from existing profile authority or presents the exact actor, capability, scope, and consequence. The agent never paraphrases it as “allow that write,” invents an approval after failure, or treats conversational permission as a substitute for an enforceable grant.
+Ask again only for a material change in scope, risk, cost, privacy access, or disruption not covered by the decision, or when the human revokes or explicitly limits it. Before asking, inspect the current task's existing authorization and finish independent authorized work. Name the uncovered action and changed consequence; do not repeat an approval request for an unchanged outcome.
+
+Task authority does not bypass execution-profile boundaries, operating-system grants, required reviews, tests, restart freezes, or other enforcement. If a harness produces a technical approval request, the control plane resolves it from existing authority where supported or presents the exact actor, capability, scope, and consequence that still needs a human decision. Never invent approval after failure or treat conversation as a substitute for an enforceable grant. [Runtime deployment](docs/runtime.md) owns bounded cutover records; those records implement task authority, not a fresh conversational decision for every step.
 
 ## Surfaces and privacy
 
