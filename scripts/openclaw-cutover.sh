@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 prepare FRAMEWORK_DIR INSTANCE_DIR | activate PREPARED_JSON APPROVAL_FILE | prune RUNTIME_ROOT DATA_ROOT [KEEP] | migrations OPENCLAW_PACKAGE STATE_DIR" >&2
+  echo "Usage: $0 prepare FRAMEWORK_DIR INSTANCE_DIR | activate PREPARED_JSON APPROVAL_FILE | prune RUNTIME_ROOT DATA_ROOT [KEEP] | migrations OPENCLAW_PACKAGE STATE_DIR | services PREVIOUS_RUNTIME RUNTIME" >&2
   exit 2
 }
 
@@ -14,6 +14,7 @@ JQ=${JQ:-/usr/bin/jq}
 NODE_BIN=${NODE_BIN:-/opt/homebrew/opt/node/bin/node}
 OPENCLAW_BIN=${OPENCLAW_BIN:-/opt/homebrew/bin/openclaw}
 PACKAGE_TARGET=${OPENCLAW_PACKAGE_ROOT:-/opt/homebrew/lib/node_modules/openclaw}
+LAUNCHCTL=${LAUNCHCTL:-/bin/launchctl}
 
 # Builds and cutover transactions are rebuildable. Keep the newest KEEP of each
 # plus whatever `current` points at, so a rollback target always survives.
@@ -73,6 +74,39 @@ migrations() {
 }
 
 # A SQLite database travels with its -wal and -shm files; a stale journal beside a restored copy would corrupt it.
+# A local service loads its code once, so switching `current` does not reach a
+# running one. Restart each running keepalive service whose own files differ
+# between the two builds; a scheduled job picks the build up on its next run.
+services() {
+  [ "$#" -eq 2 ] || usage
+  local previous=$1 runtime=$2 domain plist dir label state program failed=0
+  domain="gui/$(id -u)"
+  while IFS= read -r plist; do
+    dir=${plist#"$runtime/config/services/"}
+    dir=${dir%%/*}
+    [ "$(/usr/bin/plutil -extract KeepAlive raw -o - "$plist" 2>/dev/null)" = true ] || continue
+    if /usr/bin/diff -rq "$previous/config/services/$dir" "$runtime/config/services/$dir" >/dev/null 2>&1 &&
+      { [ ! -e "$runtime/framework/services/$dir" ] || /usr/bin/diff -rq "$previous/framework/services/$dir" "$runtime/framework/services/$dir" >/dev/null 2>&1; }; then
+      continue
+    fi
+    label=$(/usr/bin/plutil -extract Label raw -o - "$plist")
+    state=$("$LAUNCHCTL" print "$domain/$label" 2>/dev/null) || continue
+    printf '%s\n' "$state" | grep -q '^[[:space:]]*pid = ' || continue
+    # Killing a service whose installed definition points at a deleted build leaves it down.
+    program=$(printf '%s\n' "$state" | sed -n 's/^[[:space:]]*program = //p' | head -1)
+    if [ ! -x "$program" ]; then
+      echo "not restarted: $label runs a program that no longer exists; reinstall its LaunchAgent" >&2
+      failed=1
+    elif "$LAUNCHCTL" kickstart -k "$domain/$label"; then
+      echo "restarted $label"
+    else
+      echo "restart failed: $label" >&2
+      failed=1
+    fi
+  done < <(find "$runtime/config/services" -name '*.plist' 2>/dev/null | sort)
+  return "$failed"
+}
+
 copy_database() {
   local source=$1 target=$2 part
   mkdir -p "$target"
@@ -283,6 +317,9 @@ activate() {
     sleep 5
   done
   trap - EXIT HUP INT TERM
+  # The gateway is live; a local service that fails to restart is reported, never rolled back.
+  [ -z "$previous_runtime" ] || services "$previous_runtime" "$runtime" > "$report/services.log" 2>&1 ||
+    echo "A local service did not restart: $report/services.log" >&2
   echo "OpenClaw $version active. Report: $report"
 }
 
@@ -291,5 +328,6 @@ case "$ACTION" in
   activate) activate "$@" ;;
   prune) prune "$@" ;;
   migrations) migrations "$@" ;;
+  services) services "$@" ;;
   *) usage ;;
 esac
