@@ -27,7 +27,7 @@ while [ "$pid" -gt 1 ] && [ "$depth" -lt 64 ]; do
   fi
   case "$command_line" in
     *openclaw.mjs\ gateway*|*openclaw\ gateway*)
-      echo "Refusing direct gateway-descended deployment: stopping the gateway would terminate the cutover before rollback or restart. After fresh human approval, use scripts/deploy-once.py launch; it records the approval and hands the cutover to an independent one-shot job. A human-operated Terminal is not required." >&2
+      echo "Refusing direct gateway-descended deployment: stopping the gateway would terminate the cutover before rollback or restart. With task authority covering this cutover, use scripts/deploy-once.py launch; it records that approval and hands the cutover to an independent one-shot job. A human-operated Terminal is not required." >&2
       exit 2
       ;;
   esac
