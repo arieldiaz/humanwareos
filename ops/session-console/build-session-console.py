@@ -20,12 +20,14 @@ import activity
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
-from openclaw_sessions import iter_agent_ids, iter_sessions, iter_subagent_runs, iter_trajectory_events, iter_transcript_records
+from claude_calls import moment, read_calls
+from openclaw_sessions import iter_agent_ids, iter_assistant_records, iter_sessions, iter_subagent_runs, iter_trajectory_events, iter_transcript_records
 
 
 SCHEMA_VERSION = 2
 DEFAULT_DATA_ROOT = os.environ.get("HUMANWARE_DATA_ROOT", os.path.expanduser("~/humanware-data"))
 DEFAULT_OPENCLAW_ROOT = os.path.expanduser("~/.openclaw/agents")
+DEFAULT_CLAUDE_ROOT = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
 SLACK_TEAM_ID = os.environ.get("HUMANWARE_SLACK_TEAM_ID", "")
 SLACK_WORKSPACE_DOMAIN = os.environ.get("HUMANWARE_SLACK_WORKSPACE_DOMAIN", "")
 MAX_SESSIONS = 150
@@ -122,16 +124,8 @@ def normalize(record: dict, raw: str, source_path: str, logical_id: str) -> dict
                     target = {"type": "host", "id": host}
             except ValueError:
                 pass
-    cost = None
-    if kind in ("model.completed", "turn.completed", "run.completed"):
-        # Only a per-invocation report is billable, never cumulative run counters.
-        if kind == "model.completed":
-            normalized_kind = "usage.cost"
-            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-            cost = {"status": "unavailable", "tokens": usage, "usageId": record.get("invocationId") or event_id}
-            if isinstance(data.get("cost"), dict):
-                cost = dict(data["cost"], tokens=usage, usageId=record.get("invocationId") or event_id)
-    # Spawned-run events come only from the run registry, never trajectory lifecycle types.
+    # Usage comes only from transcripts and spawned runs only from the run registry,
+    # never from trajectory lifecycle types.
     if normalized_kind not in activity.KINDS or normalized_kind.startswith("run."):
         return {"schemaVersion": 2, "id": event_id, "traceId": trace_id,
                 "logicalSessionId": logical_id, "runId": activity.identifier(record.get("runId")),
@@ -143,7 +137,7 @@ def normalize(record: dict, raw: str, source_path: str, logical_id: str) -> dict
                           kind=normalized_kind, actor={"identity": agent, "profileId": record.get("profileId")},
                           source_ref=source_ref, run_id=record.get("runId"), trace_id=trace_id,
                           target=target, reversibility=reversibility, outcome=outcome, tool=tool,
-                          channel=record.get("channel"), cost=cost,
+                          channel=record.get("channel"),
                           # These are host trajectory metadata, not tool response contents.
                           authority=record.get("authority"), policy=record.get("policy"),
                           parent_ids=record.get("parentIds", []),
@@ -153,7 +147,7 @@ def normalize(record: dict, raw: str, source_path: str, logical_id: str) -> dict
 
 
 RUN_OUTCOMES = {"ok": "succeeded", "error": "failed", "timeout": "failed", "killed": "failed"}
-TOKEN_FIELDS = (("input", "inputTokens"), ("output", "outputTokens"), ("cacheRead", "cacheRead"),
+TOKEN_FIELDS = (("input", "input"), ("output", "output"), ("cacheRead", "cacheRead"),
                 ("cacheWrite", "cacheWrite"), ("total", "totalTokens"))
 
 
@@ -164,13 +158,13 @@ def is_worker_session(key, entry):
     return bool(entry.get("spawnedBy")) or bool(re.search(r"(^|:)subagent:", str(key or "")))
 
 
-def run_events(runs, entries, logical_by_key, usage_sessions):
+def run_events(runs, entries, logical_by_key):
     """One run.spawned and, once ended, one run.completed per worker registry run.
 
     Plugin-started root conversations, such as a Slack work thread, also appear
-    in the registry; they are roots, not workers. The child session's counters
-    are the run total only when that session's last run is this run and the
-    adapter saw no per-invocation usage for it.
+    in the registry; they are roots, not workers. A run carries no usage of its
+    own: the child session's counters describe its last call, not the run. Its
+    cost is the child's transcript usage reports.
     """
     runs = [run for run in runs if is_worker_session(run.get("childSessionKey"), entries.get(run.get("childSessionKey")) or {})]
     parents = {run.get("childSessionKey"): run.get("requesterSessionKey") for run in runs}
@@ -202,22 +196,118 @@ def run_events(runs, entries, logical_by_key, usage_sessions):
         execution = run.get("execution") if isinstance(run.get("execution"), dict) else {}
         outcome = execution.get("outcome") if isinstance(execution.get("outcome"), dict) else {}
         ended = iso_from_ms(outcome.get("endedAt") or execution.get("endedAt"))
-        if not ended or (entry and not entry.get("endedAt")):
-            continue  # Not ended, or the child's counters have not settled yet.
+        if not ended:
+            continue
         status = outcome.get("status") if outcome.get("status") in activity.RUN_STATUSES else "unknown"
         duration = outcome.get("elapsedMs")
         if type(duration) is not int and type(execution.get("startedAt")) is int and type(execution.get("endedAt")) is int:
             duration = execution["endedAt"] - execution["startedAt"]
-        own = entry.get("lastRunId") == run_id and meta["childSessionId"] not in usage_sessions
-        cost = {"status": "unavailable", "usageId": f"run:{run_id}",
-                "tokens": {key: entry[source] for key, source in TOKEN_FIELDS if own and type(entry.get(source)) is int}}
-        amount = entry.get("estimatedCostUsd")
-        if own and type(amount) in (int, float) and amount >= 0:
-            cost.update(status="estimated", amount=amount, currency="USD", basisRef={
-                "type": "raw", "id": f"openclaw:session-entry:{child_key}", "localOnly": True})
         rows.append(activity.event(event_id=f"openclaw:run.completed:{run_id}", ts=ended, kind="run.completed",
-                                   outcome=RUN_OUTCOMES.get(status, "unknown"), cost=cost,
+                                   outcome=RUN_OUTCOMES.get(status, "unknown"), cost={"status": "unavailable", "usageId": f"run:{run_id}"},
                                    run=dict(meta, status=status, durationMs=duration), **common))
+    return rows
+
+
+def whole_run(tokens, usage, after_tool_result):
+    """Whether a run's token-bearing record counts the whole run, not one call of several.
+
+    The host sums per-call usage when it observed it, and falls back to the last
+    call otherwise. The two differ only when the run made several calls (a tool
+    result just before the record) and the prompt is not larger than the last
+    call's context.
+    """
+    prompt = sum(tokens.get(key, 0) for key in ("input", "cacheRead", "cacheWrite"))
+    context = usage.get("contextUsage") if isinstance(usage.get("contextUsage"), dict) else {}
+    return after_tool_result is False or (type(context.get("promptTokens")) is int and prompt > context["promptTokens"])
+
+
+def cli_turn_tokens(calls, after, until):
+    """Token sums per model for the CLI calls in (after, until]; {} when there are none or one is unusable."""
+    window = [call for call in calls if (after is None or call[0] > after) and call[0] <= until]
+    if not window or any(tokens is None for _, _, tokens in window):
+        return {}
+    sums = {}
+    for _, model, tokens in window:
+        total = sums.setdefault(model, dict.fromkeys(activity.pricing.TOKEN_FIELDS, 0))
+        for key, count in tokens.items():
+            total[key] += count
+    return sums if all(activity.identifier(f"claude-cli/{model}") for model in sums) else {}
+
+
+def usage_events(state_root, cache, session_for, claude_root=None):
+    """Usage reports from assistant transcript records: observed tokens, or an unavailable mark.
+
+    The transcript is the usage source only where a record holds a whole run's
+    count. A run's other records, a record without counts and a CLI-harness turn
+    that the CLI's own call log does not cover produce a report without tokens,
+    which is counted as unavailable and never priced. A CLI turn the log covers
+    (a live session binding and every call in the turn's window) is reported with
+    the sum of its calls per model. Reports carry the model, never an amount and
+    never message text. Live and archived copies of a record share one event ID.
+    """
+    rows = []
+    for agent in iter_agent_ids(state_root):
+        cursors, archives = cache["cursors"].setdefault(agent, {}), cache["archives"].setdefault(agent, [])
+        last_cli = cache.setdefault("lastCli", {})
+        if agent not in last_cli:  # A cache from before call logs: what its sessions' earlier turns ended is unknown.
+            last_cli[agent] = dict.fromkeys(cursors)
+        last_cli = last_cli[agent]
+        bound, logs, marked = {}, {}, set()
+        if claude_root:
+            for _, entry in iter_sessions(state_root, agent):
+                bindings = entry.get("cliSessionBindings")
+                binding = bindings.get("claude-cli") if isinstance(bindings, dict) else None
+                if isinstance(binding, dict) and isinstance(binding.get("sessionId"), str):
+                    bound[str(entry["sessionId"])] = binding["sessionId"]
+        for session_id, session_key, record, after_tool_result in iter_assistant_records(state_root, agent, cursors, archives):
+            message = record["message"]
+            if message.get("provider") == "openclaw":
+                continue  # A delivery mirror or injected message, not a model call.
+            usage, host = (message.get(key) if isinstance(message.get(key), dict) else {} for key in ("usage", "__openclaw"))
+            tokens = {key: usage[source] for key, source in TOKEN_FIELDS if type(usage.get(source)) is int and usage[source] >= 0}
+            record_id, run_id = activity.identifier(record.get("id")), activity.identifier(host.get("runId"))
+            ts = record.get("timestamp") or iso_from_ms(message.get("timestamp"))
+            cli = message.get("api") == "cli"
+            by_model = {}
+            if cli and message.get("provider") == "claude-cli" and (until := moment(ts)):
+                after = moment(last_cli.get(session_id))
+                known = session_id not in last_cli or after is not None
+                last_cli[session_id] = max(filter(None, (after, until))).isoformat()
+                if known and session_id in bound:
+                    if bound[session_id] not in logs:
+                        logs[bound[session_id]] = read_calls(claude_root, bound[session_id])
+                    by_model = cli_turn_tokens(logs[bound[session_id]], after, until)
+            if not record_id:
+                continue
+            observed = any(tokens.get(key) for key in activity.pricing.TOKEN_CLASSES) and not cli
+            unit = f"{agent}:{session_id}:{record_id}"
+            if run_id and not cli and not (observed and whole_run(tokens, usage, after_tool_result)):
+                unit = f"{agent}:{session_id}:run:{run_id}"  # One mark for the run, however many records it has.
+                if unit in marked:
+                    continue
+                marked.add(unit)
+                observed = False
+            elif not run_id and not cli and not observed:
+                unit = f"{agent}:{session_id}:uncounted"  # One mark for a session's records without counts.
+                if unit in marked:
+                    continue
+                marked.add(unit)
+            own = "/".join(filter(None, (message.get("provider"), message.get("model"))))
+            reports = [(unit, own, by_model.pop(message.get("model"), {}) if by_model else tokens if observed else {})]
+            reports += [(f"{unit}:{model}", f"claude-cli/{model}", counted) for model, counted in by_model.items()]
+            for report_unit, model, counted in reports:
+                event_id = f"openclaw:usage:{report_unit}"
+                try:
+                    rows.append(activity.event(
+                        event_id=event_id, ts=ts,
+                        session_id=session_for(agent, session_id, session_key), kind="usage.cost",
+                        actor={"identity": agent}, reason_code="observed", reversibility="unknown", run_id=run_id,
+                        source_ref={"type": "raw", "id": f"openclaw:transcript:{agent}:{session_id}:{record_id}", "localOnly": True},
+                        cost={"status": "unavailable", "usageId": event_id, **({"tokens": counted} if counted else {}), "model": model}))
+                except ValueError:
+                    continue  # An unusable timestamp or identifier; nothing is guessed.
+        for gone in set(last_cli) - set(cursors):
+            del last_cli[gone]
     return rows
 
 
@@ -406,14 +496,15 @@ def session_summary_path(logical_id: str) -> str:
     return os.path.join("summaries", hashlib.sha256(logical_id.encode()).hexdigest()[:24] + ".md")
 
 
-def cost_text(rollup: list[dict]) -> str:
-    parts = []
-    for group in rollup:
-        if group["currency"]:
-            parts.append(f"{group['exact']:g} {group['currency']} exact + {group['estimated']:g} {group['currency']} estimated")
-        if group["unavailable"]:
-            parts.append(f"{group['unavailable']} reports unavailable")
-    return "; ".join(parts) or "Unavailable"
+def cost_text(cost: dict | None) -> str:
+    """The session total as API list-price equivalent; the Slack conversation summary reuses this line."""
+    cost = cost or {}
+    if cost.get("amount") is None:
+        return "Unavailable"
+    part = lambda total: "unavailable" if total["amount"] is None else f"${total['amount']:.2f}"
+    missing = f"; {cost['unavailable']} of {cost['reports']} usage reports unpriced" if cost["unavailable"] else ""
+    split = f" (root {part(cost['root'])}, workers {part(cost['workers'])})" if cost["workers"]["reports"] else ""
+    return f"${cost['amount']:.2f} API list-price equivalent{split}{missing}"
 
 
 def render_session_summary(session: dict, summary: dict) -> str:
@@ -433,7 +524,7 @@ def render_session_summary(session: dict, summary: dict) -> str:
         f"- **Started:** {value(summary['startedAt'])}",
         f"- **Closed:** {value(summary['closedAt'])}",
         f"- **Worker runs:** {session.get('workerRuns', 0)}",
-        f"- **Cost:** {cost_text(session.get('costRollup') or [])}",
+        f"- **Cost:** {cost_text(session.get('cost'))}",
         "",
     ])
 
@@ -541,7 +632,7 @@ def classify(descriptor: dict, workflow: dict | None, now: datetime) -> str:
     return "idle"
 
 
-def build(data_root: str, openclaw_root: str, dry_run=False):
+def build(data_root: str, openclaw_root: str, dry_run=False, claude_root=DEFAULT_CLAUDE_ROOT):
     events_root = os.path.join(data_root, "evidence", "sessions", "events")
     raw_root = os.path.join(data_root, "evidence", "sessions", "raw", "openclaw")
     derived_root = os.path.join(data_root, "generated", "sessions")
@@ -620,8 +711,16 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
                 committed_offset += len(line)
         state["sources"][path] = {"inode": stat.st_ino, "offset": committed_offset, "mtimeNs": stat.st_mtime_ns}
 
-    usage_sessions = {event.get("logicalSessionId") for event in ledger + additions if event.get("kind") == "usage.cost"}
-    for event in run_events(list(iter_subagent_runs(state_root)), entries, logical_by_key, usage_sessions):
+    runs = list(iter_subagent_runs(state_root))
+    for event in run_events(runs, entries, logical_by_key):
+        if event["id"] not in seen:
+            seen.add(event["id"])
+            additions.append(event)
+    # A worker's usage joins the child session its run was recorded under, even after that session is deleted.
+    recorded = {event["run"]["childRunId"]: event["run"]["childSessionId"] for event in ledger + additions if event.get("kind") == "run.spawned" and event.get("schemaVersion") == 3}
+    child_session = {run["childSessionKey"]: recorded[run["runId"]] for run in runs if run.get("runId") in recorded}
+    usage_cache = state.setdefault("usage", {"cursors": {}, "archives": {}})
+    for event in usage_events(state_root, usage_cache, lambda agent, session_id, key: child_session.get(key) or runtime_map.get(session_id) or f"openclaw:{agent}:{session_id}", claude_root):
         if event["id"] not in seen:
             seen.add(event["id"])
             additions.append(event)
@@ -678,12 +777,13 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
         )
         run_rows = runs_by_root.get(logical_id, [])
         workers = {row["run"]["childSessionId"] for row in run_rows}
+        # Root plus every worker session: observed reports only, unknown stays counted.
+        scope, meta = activity.read_model(events + run_rows + [e for child in workers for e in grouped.get(child, [])])
         sessions.append({
             "id": logical_id,
-            "runs": activity.run_tree(run_rows, logical_id),
+            "runs": activity.run_tree(scope, logical_id),
             "workerRuns": len({row["run"]["childRunId"] for row in run_rows}),
-            # Root plus every worker session: observed reports only, unknown stays counted.
-            "costRollup": activity.cost_rollup(events + run_rows + [e for child in workers for e in grouped.get(child, [])]),
+            "cost": activity.cost_summary(scope, logical_id),
             "title": title,
             "status": status,
             "outboundStatus": (workflow or {}).get("outbound"),
@@ -702,7 +802,7 @@ def build(data_root: str, openclaw_root: str, dry_run=False):
             "runtimeMs": descriptor.get("runtimeMs") or 0,
             "inputTokens": descriptor.get("inputTokens") or 0,
             "outputTokens": descriptor.get("outputTokens") or 0,
-            "spend": activity.read_model(events)[1]["spend"],
+            "spend": [{key: value for key, value in group.items() if key != "eventIds"} for group in meta["spend"]],
             "eventCount": len(events),
             "errors": errors,
             "lastEvent": projected_session_event(events[-1])["summary"] if events else None,
@@ -761,9 +861,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-root", default=DEFAULT_DATA_ROOT)
     parser.add_argument("--openclaw-root", default=DEFAULT_OPENCLAW_ROOT)
+    parser.add_argument("--claude-root", default=DEFAULT_CLAUDE_ROOT)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    result, additions = build(args.data_root, args.openclaw_root, args.dry_run)
+    result, additions = build(args.data_root, args.openclaw_root, args.dry_run, args.claude_root)
     print(json.dumps({"sessions": result["summary"]["total"], "newEvents": additions, "dryRun": args.dry_run}))
 
 

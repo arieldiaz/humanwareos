@@ -18,7 +18,11 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import sys
 import tempfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pricing
 
 KINDS = (
     'action.tool', 'action.write', 'action.send', 'action.approval', 'action.schedule',
@@ -26,12 +30,12 @@ KINDS = (
     'memory.retrieved', 'memory.proposed', 'memory.promoted', 'memory.superseded',
     'memory.suppressed', 'memory.deleted', 'run.spawned', 'run.completed',
 )
-# Usage reports that count toward spend; a run total is only emitted when its
-# child has no per-invocation reports, so the two never describe the same usage.
+# Usage reports. Evidence holds observed tokens and model; `project` prices them
+# at read time, so a corrected price row reprices history without new events.
 USAGE_KINDS = ('usage.cost', 'run.completed')
 RUN_STATUSES = ('ok', 'error', 'timeout', 'killed', 'reset', 'deleted', 'unknown')
 AUTHORITY_RESULTS = ('not_required', 'human_message', 'standing_grant', 'delegated', 'denied', 'unknown')
-REFERENCE_TYPES = ('event', 'human_message', 'grant', 'delegation', 'context', 'memory_claim', 'raw')
+REFERENCE_TYPES = ('event', 'human_message', 'grant', 'delegation', 'context', 'memory_claim', 'raw', 'rate')
 TOKEN = re.compile(r'^[A-Za-z0-9_./:@+\-]{1,256}$')
 
 
@@ -70,9 +74,11 @@ def cost_metadata(value, event_id):
     if status not in ('exact', 'estimated', 'unavailable'):
         raise ValueError('Invalid cost status')
     result = {'status': status, 'usageId': identifier(value.get('usageId'), event_id)}
+    if identifier(value.get('model')):
+        result['model'] = value['model']
     tokens = value.get('tokens', {})
     result['tokens'] = {key: number for key, number in tokens.items()
-                        if key in ('input', 'output', 'cacheRead', 'cacheWrite', 'total')
+                        if key in pricing.TOKEN_FIELDS + ('total',)
                         and type(number) is int and number >= 0} if isinstance(tokens, dict) else {}
     if status != 'unavailable':
         amount = value.get('amount')
@@ -224,7 +230,7 @@ def project(record):
     kind = record.get('kind')
     if kind not in KINDS or (kind.startswith('run.') and record.get('schemaVersion') != 3):
         return None
-    return event(event_id=record.get('id'), ts=record.get('ts'),
+    row = event(event_id=record.get('id'), ts=record.get('ts'),
                  session_id=record.get('logicalSessionId'), kind=kind,
                  actor=record.get('actor'), source_ref=record.get('sourceRef'),
                  run_id=record.get('runId'), trace_id=record.get('traceId'),
@@ -235,6 +241,9 @@ def project(record):
                  source_refs=record.get('sourceRefs', []), memory=record.get('memory'),
                  cost=record.get('cost'), tool=record.get('tool'), channel=record.get('channel'),
                  run=record.get('run'))
+    if 'cost' in row:
+        row['cost'] = pricing.price(row['cost'], row['ts'])
+    return row
 
 
 def evidence_records(data_root, areas=('sessions', 'memory')):
@@ -269,6 +278,41 @@ def atomic_json(path, value):
             os.unlink(temp)
 
 
+def counted_usage(events):
+    """Yield (first observed day, report) for each report that counts toward a total.
+
+    One usage is counted once: the latest report per invocation replaces earlier
+    ones; a run total yields to invocation reports from its child session; a report
+    with neither amount nor model yields to reports that name a model; and a report
+    without tokens yields to a report with tokens for the same session and run.
+    """
+    usage = [row for row in events if row['kind'] in USAGE_KINDS]
+    latest, first_day = {}, {}
+    for row in usage:
+        key = (row['actor']['identity'], row['cost']['usageId'])
+        latest[key] = row['id']
+        first_day.setdefault(key, row['ts'][:10])
+    reported = {row['logicalSessionId'] for row in usage if row['kind'] == 'usage.cost'}
+    modelled = {row['logicalSessionId'] for row in usage if row['kind'] == 'usage.cost' and 'model' in row['cost']}
+    observed = {(row['logicalSessionId'], row['runId']) for row in usage if row['kind'] == 'usage.cost' and row['runId'] and has_tokens(row)}
+    for row in usage:
+        key = (row['actor']['identity'], row['cost']['usageId'])
+        if latest[key] != row['id']:
+            continue
+        if row['kind'] == 'run.completed':
+            if row['run']['childSessionId'] in reported:
+                continue
+        elif row['cost']['status'] == 'unavailable' and 'model' not in row['cost'] and row['logicalSessionId'] in modelled:
+            continue
+        elif row['runId'] and not has_tokens(row) and (row['logicalSessionId'], row['runId']) in observed:
+            continue
+        yield first_day[key], row
+
+
+def has_tokens(row):
+    return any(key in row['cost']['tokens'] for key in pricing.TOKEN_FIELDS)
+
+
 def read_model(records):
     unique = {}
     skipped = 0
@@ -286,15 +330,6 @@ def read_model(records):
     events = sorted(unique.values(), key=lambda e: (e['ts'], e['id']))
     lineage = {}
     spend = {}
-    # Corrections remain append-only, but only the latest report per invocation
-    # contributes to totals. All original source events stay queryable.
-    latest_usage = {}
-    usage_day = {}
-    for row in events:
-        if row['kind'] in USAGE_KINDS:
-            usage_key = (row['actor']['identity'], row['cost']['usageId'])
-            latest_usage[usage_key] = row['id']
-            usage_day.setdefault(usage_key, row['ts'][:10])
     for row in events:
         if row['kind'] in ('memory.promoted', 'memory.superseded', 'memory.suppressed', 'memory.deleted'):
             claim = row['memory']
@@ -313,25 +348,46 @@ def read_model(records):
                         lineage[previous].update(state='superseded', projections=[])
             if row['kind'] in ('memory.suppressed', 'memory.deleted'):
                 lineage[claim['claimId']]['projections'] = []
-        if row['kind'] in USAGE_KINDS:
-            cost = row['cost']
-            if latest_usage[(row['actor']['identity'], cost['usageId'])] != row['id']:
-                continue
-            key = (usage_day[(row['actor']['identity'], cost['usageId'])], row['actor']['identity'], row['actor']['profileId'], cost.get('currency'))
-            group = spend.setdefault(key, {'day': key[0], 'identity': key[1], 'profileId': key[2],
-                                          'currency': key[3], 'exact': Decimal(0), 'estimated': Decimal(0),
-                                          'unavailable': 0, 'eventIds': []})
-            if cost['status'] == 'unavailable':
-                group['unavailable'] += 1
-            else:
-                group[cost['status']] += Decimal(str(cost['amount']))
-            group['eventIds'].append(row['id'])
+    for day, row in counted_usage(events):
+        cost = row['cost']
+        key = (day, row['actor']['identity'], row['actor']['profileId'], cost.get('currency'))
+        group = spend.setdefault(key, {'day': key[0], 'identity': key[1], 'profileId': key[2],
+                                      'currency': key[3], 'exact': Decimal(0), 'estimated': Decimal(0),
+                                      'unavailable': 0, 'eventIds': []})
+        if cost['status'] == 'unavailable':
+            group['unavailable'] += 1
+        else:
+            group[cost['status']] += Decimal(str(cost['amount']))
+        group['eventIds'].append(row['id'])
     totals = [dict(value, exact=float(value['exact']), estimated=float(value['estimated'])) for value in spend.values()]
     return events, {'lineage': list(lineage.values()), 'spend': totals, 'unindexedEvents': skipped}
 
 
+def usage_total(reports):
+    """Tokens and USD amount over counted reports; a report without an amount stays visible as unavailable.
+
+    Harnesses disagree on what a reported total includes, so the total shown is the
+    sum of the token classes whenever any class was observed.
+    """
+    tokens, amount, priced = {}, Decimal(0), 0
+    for row in reports:
+        for key, number in row['cost']['tokens'].items():
+            tokens[key] = tokens.get(key, 0) + number
+        if row['cost'].get('currency') == 'USD':
+            amount += Decimal(str(row['cost']['amount']))
+            priced += 1
+    if any(key in tokens for key in pricing.TOKEN_FIELDS):
+        tokens['total'] = sum(tokens.get(key, 0) for key in pricing.TOKEN_FIELDS)
+    return {'amount': float(round(amount, 6)) if priced else None, 'reports': len(reports),
+            'unavailable': len(reports) - priced, 'tokens': tokens}
+
+
 def run_tree(events, root_session_id):
-    """Worker runs under one root session, nested by observed parent session."""
+    """Worker runs under one root session, nested by observed parent session.
+
+    A run's tokens and cost are its child session's counted reports. Runs that
+    share a child session split its reports by start time.
+    """
     runs = {}
     for row in sorted(events, key=lambda e: (e['ts'], e['id'])):
         if not row['kind'].startswith('run.') or row['run']['rootSessionId'] != root_session_id:
@@ -346,31 +402,51 @@ def run_tree(events, root_session_id):
         if row['kind'] == 'run.spawned':
             node['startedAt'] = row['ts']
         else:
-            cost = row['cost']
-            node.update(status=run['status'], endedAt=row['ts'], durationMs=run['durationMs'], tokens=cost['tokens'],
-                        cost={key: cost[key] for key in ('status', 'amount', 'currency') if key in cost})
-    by_session = {}
-    for node in runs.values():
-        by_session.setdefault(node['sessionId'], node)
+            node.update(status=run['status'], endedAt=row['ts'], durationMs=run['durationMs'])
+    by_session, reports = {}, {run_id: [] for run_id in runs}
+    for node in sorted(runs.values(), key=lambda node: node['startedAt'] or ''):
+        by_session.setdefault(node['sessionId'], []).append(node)
+    for _, row in counted_usage(events):
+        if row['kind'] == 'run.completed':
+            owner = runs.get(row['run']['childRunId'])
+        else:
+            shared = by_session.get(row['logicalSessionId'], [])
+            owner = next((node for node in reversed(shared) if (node['startedAt'] or '') <= row['ts']), shared[0] if shared else None)
+        if owner:
+            reports[owner['runId']].append(row)
     roots = []
     for node in runs.values():
-        parent = runs.get(node['parentRunId']) or by_session.get(node['parentSessionId'])
+        total = usage_total(reports[node['runId']])
+        node.update(tokens=total.pop('tokens'), cost=total)
+        parent = runs.get(node['parentRunId']) or by_session.get(node['parentSessionId'], [None])[0]
         (parent['children'] if parent and parent is not node else roots).append(node)
     return roots
 
 
-def cost_rollup(events):
-    """Sum observed usage per currency across days; unknown is counted, never zero."""
-    totals = {}
-    for group in read_model(events)[1]['spend']:
-        total = totals.setdefault(group['currency'], {'currency': group['currency'], 'exact': Decimal(0),
-                                                     'estimated': Decimal(0), 'unavailable': 0, 'eventIds': []})
-        total['exact'] += Decimal(str(group['exact']))
-        total['estimated'] += Decimal(str(group['estimated']))
-        total['unavailable'] += group['unavailable']
-        total['eventIds'] += group['eventIds']
-    return [dict(total, exact=float(total['exact']), estimated=float(total['estimated']), eventIds=sorted(total['eventIds']))
-            for _, total in sorted(totals.items(), key=lambda item: item[0] or '')]
+def cost_summary(events, root_session_id, run_limit=25):
+    """One root session's API list-price equivalent: its own reports plus its workers'.
+
+    `events` are projected events for the root session, its run events and its
+    worker sessions. Unknown is counted, never zero. `amount` is the session total.
+    """
+    counted = list(counted_usage(events))
+    own = [row for _, row in counted if row['kind'] == 'usage.cost' and row['logicalSessionId'] == root_session_id]
+    own_ids = {row['id'] for row in own}
+    groups = {'byModel': {}, 'byDay': {}, 'byRun': {}}
+    for day, row in counted:
+        model = row['cost'].get('model') or (row.get('run') or {}).get('model')
+        groups['byModel'].setdefault(pricing.model_id(model) or None, []).append(row)
+        groups['byDay'].setdefault(day, []).append(row)
+        if row['id'] in own_ids:
+            groups['byRun'].setdefault(row['runId'], []).append(row)
+    label = {'byModel': 'model', 'byDay': 'day', 'byRun': 'runId'}
+    tables = {name: [dict({label[name]: key}, **usage_total(rows)) for key, rows in sorted(group.items(), key=lambda item: item[0] or '')]
+              for name, group in groups.items()}
+    latest = sorted(groups['byRun'], key=lambda run_id: max(row['ts'] for row in groups['byRun'][run_id]))[-run_limit:]
+    return dict(usage_total([row for _, row in counted]), basis=pricing.BASIS, currency='USD',
+                root=usage_total(own), workers=usage_total([row for _, row in counted if row['id'] not in own_ids]),
+                byModel=tables['byModel'], byDay=tables['byDay'],
+                byRun=[row for row in tables['byRun'] if row['runId'] in latest], runsOmitted=len(groups['byRun']) - len(latest))
 
 
 def rebuild(data_root, records=None):

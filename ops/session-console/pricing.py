@@ -1,0 +1,69 @@
+"""API list-price equivalent for observed token usage.
+
+Pure arithmetic over a dated public price table. The amount is what the observed
+tokens would cost at API list price, not a bill: several harnesses run on
+subscriptions. Tokens that were not observed are never estimated.
+"""
+from __future__ import annotations
+
+from decimal import Decimal
+import json
+from pathlib import Path
+import re
+
+BASIS = 'api-list-price-equivalent'
+TOKEN_CLASSES = ('input', 'output', 'cacheRead', 'cacheWrite')
+# `cacheWrite` is the 5-minute write; `cacheWrite1h` is the 1-hour write, priced when a report has it.
+CACHE_WRITE_1H = 'cacheWrite1h'
+TOKEN_FIELDS = TOKEN_CLASSES + (CACHE_WRITE_1H,)
+DAY = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+
+def load(path=None):
+    with open(path or Path(__file__).with_name('model-prices.json'), encoding='utf-8') as handle:
+        table = json.load(handle)
+    if table.get('basis') != BASIS or table.get('currency') != 'USD' or table.get('unit') != 'per-million-tokens':
+        raise ValueError('Price table must state its basis, currency and unit')
+    for model, rows in table['models'].items():
+        days = [row.get('effectiveFrom') for row in rows]
+        if not rows or days != sorted(set(days)) or not all(isinstance(day, str) and DAY.fullmatch(day) for day in days):
+            raise ValueError(f'Price rows for {model} need unique ascending effective dates')
+        for row in rows:
+            until = row.get('effectiveUntil')
+            if until is not None and not (isinstance(until, str) and DAY.fullmatch(until) and until >= row['effectiveFrom']):
+                raise ValueError(f'Price row for {model} has an invalid effectiveUntil')
+            if not row.get('source') or not all(type(row.get(key)) in (int, float) and row[key] >= 0 for key in TOKEN_CLASSES):
+                raise ValueError(f'Price row for {model} needs a source and a rate for every token class')
+            if CACHE_WRITE_1H in row and not (type(row[CACHE_WRITE_1H]) in (int, float) and row[CACHE_WRITE_1H] >= 0):
+                raise ValueError(f'Price row for {model} has an invalid {CACHE_WRITE_1H} rate')
+    return table
+
+
+TABLE = load()
+
+
+def model_id(model):
+    """`provider/model` and a bare `model` name the same public list price."""
+    return str(model or '').rsplit('/', 1)[-1]
+
+
+def rate(model, day, table=None):
+    """The row in effect for a model on a UTC day, or None when no row covers it.
+
+    A row's optional `effectiveUntil` is its last day (inclusive); later usage stays
+    unpriced until a published row is added.
+    """
+    rows = [row for row in (table or TABLE)['models'].get(model_id(model), []) if row['effectiveFrom'] <= day]
+    return rows[-1] if rows and day <= rows[-1].get('effectiveUntil', day) else None
+
+
+def price(cost, ts, table=None):
+    """Add an amount to a usage report that has none, when its model and every token class are known."""
+    tokens = cost.get('tokens') or {}
+    row = rate(cost.get('model'), str(ts)[:10], table)
+    classes = TOKEN_CLASSES + ((CACHE_WRITE_1H,) if CACHE_WRITE_1H in tokens else ())
+    if cost.get('status') != 'unavailable' or not row or any(type(tokens.get(key)) is not int for key in classes) or any(key not in row for key in classes):
+        return cost
+    amount = sum(Decimal(tokens[key]) * Decimal(str(row[key])) for key in classes) / 1_000_000
+    return dict(cost, status='estimated', amount=float(amount), currency=(table or TABLE)['currency'],
+                basisRef={'type': 'rate', 'id': f"list-price:{model_id(cost['model'])}:{row['effectiveFrom']}"})

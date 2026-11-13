@@ -32,20 +32,33 @@ export function traceHtml(row) {
     ...(memory ? [['Claim / introduced by', `${memory.claimId} / ${memory.introducedBy || 'unavailable'}`],
       ['Scope / projections', `${memory.visibility} / ${memory.projections.join(', ') || 'none'}`],
       ['Supersedes', memory.supersedes.join(', ') || 'none']] : []),
-    ...(row.cost ? [['Cost', row.cost.status === 'unavailable' ? 'Unavailable' : `${row.cost.amount} ${row.cost.currency} · ${row.cost.status}`],
-      ['Usage identity', row.cost.usageId], ['Tokens', JSON.stringify(row.cost.tokens)], ['Cost evidence', refText(row.cost.basisRef)]] : []),
+    ...(row.cost ? [['Cost', row.cost.status === 'unavailable' ? 'Unavailable' : `${row.cost.amount} ${row.cost.currency} · ${row.cost.basisRef?.type === 'rate' ? LIST_PRICE : row.cost.status}`],
+      ['Model', row.cost.model || 'Unavailable'], ['Usage identity', row.cost.usageId], ['Tokens', JSON.stringify(row.cost.tokens)], ['Cost evidence', refText(row.cost.basisRef)]] : []),
   ];
   return `<dl>${fields.map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>
     <p>Parents: ${(row.parentIds || []).map(id => `<a href="/activity/?event=${encodeURIComponent(id)}#event-${encodeURIComponent(id)}">${esc(id)}</a>`).join(', ') || 'Unavailable'}</p>
     <p class="muted">Raw references resolve only in an authorized local evidence reader.</p>`;
 }
-const costLabel = cost => !cost || cost.status === 'unavailable' ? 'cost unavailable' : `${cost.amount} ${cost.currency} ${cost.status}`;
-const rollupLabel = rollup => (rollup || []).map(g => g.currency ? `${g.exact} ${g.currency} exact + ${g.estimated} ${g.currency} estimated${g.unavailable ? `, ${g.unavailable} unavailable` : ''}` : `${g.unavailable} unavailable`).join('; ') || 'Unavailable';
-/* Root session -> worker runs, from observed run events only. */
-export function runTreeHtml(runs, rollup) {
+/* Amounts are what the observed tokens would cost at API list price, never a bill. */
+export const LIST_PRICE = 'API list-price equivalent';
+const usd = amount => `$${amount.toFixed(amount > 0 && amount < 0.01 ? 4 : 2)}`;
+const priced = total => total?.amount == null ? `cost unavailable${total?.reports ? ` (${total.reports} usage reports unpriced)` : ''}`
+  : `${usd(total.amount)}${total.unavailable ? ` (${total.unavailable} of ${total.reports} usage reports unpriced)` : ''}`;
+const tokenCount = tokens => tokens?.total == null ? 'tokens unavailable' : `${tokens.total} tokens`;
+/* One root session: total, root and worker split, then by model, day and root run. */
+export function costHtml(cost) {
   const esc = escapeHtml;
-  const item = run => `<li><a href="${esc(sessionLink(run.sessionId, run.runId))}">${esc(run.runId)}</a> · ${esc(run.model || 'model unavailable')} · ${esc(run.reasoning || 'reasoning unavailable')} · ${esc(run.status || 'not completed')} · ${run.durationMs == null ? 'duration unavailable' : `${Math.round(run.durationMs / 1000)}s`} · ${run.tokens?.total == null ? 'tokens unavailable' : `${run.tokens.total} tokens`} · ${esc(costLabel(run.cost))}${run.children?.length ? `<ul>${run.children.map(item).join('')}</ul>` : ''}</li>`;
-  return `<p>Cost roll-up: ${esc(rollupLabel(rollup))}</p>${runs?.length ? `<ul class="run-tree">${runs.map(item).join('')}</ul>` : '<p class="muted">No worker runs observed.</p>'}`;
+  if (!cost?.reports) return '<p>Cost unavailable: no usage observed.</p>';
+  const table = (title, key, rows) => rows?.length ? `<table><caption>${esc(title)}</caption><tbody>${rows.map(row => `<tr><td>${esc(row[key] ?? 'unavailable')}</td><td>${esc(priced(row))}</td><td>${esc(tokenCount(row.tokens))}</td></tr>`).join('')}</tbody></table>` : '';
+  const runs = cost.byRun || [];
+  return `<p>Cost, ${LIST_PRICE} (not a bill): <strong>${esc(priced(cost))}</strong> · root ${esc(priced(cost.root))} · workers ${esc(priced(cost.workers))}</p>
+    <details><summary>Cost by model, day and root run</summary>${table('By model', 'model', cost.byModel)}${table('By day (UTC)', 'day', cost.byDay)}${table(cost.runsOmitted ? `Root runs, latest ${runs.length} of ${runs.length + cost.runsOmitted}` : 'Root runs', 'runId', runs)}</details>`;
+}
+/* Root session -> worker runs, from observed run events only. */
+export function runTreeHtml(runs, cost) {
+  const esc = escapeHtml;
+  const item = run => `<li><a href="${esc(sessionLink(run.sessionId, run.runId))}">${esc(run.runId)}</a> · ${esc(run.model || 'model unavailable')} · ${esc(run.reasoning || 'reasoning unavailable')} · ${esc(run.status || 'not completed')} · ${run.durationMs == null ? 'duration unavailable' : `${Math.round(run.durationMs / 1000)}s`} · ${esc(tokenCount(run.tokens))} · ${esc(priced(run.cost))}${run.children?.length ? `<ul>${run.children.map(item).join('')}</ul>` : ''}</li>`;
+  return `${costHtml(cost)}${runs?.length ? `<ul class="run-tree">${runs.map(item).join('')}</ul>` : '<p class="muted">No worker runs observed.</p>'}`;
 }
 export function renderTrace(container, rows) {
   container.innerHTML = rows.map(row => `<details id="event-${encodeURIComponent(row.id)}" class="event ${['outward','irreversible'].includes(row.reversibility) ? 'consequential' : ''}">
