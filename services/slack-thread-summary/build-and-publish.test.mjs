@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
-import { buildProjection, lifecycleForSession, missingRequiredConfig, renderMessage } from "./build-and-publish.mjs";
+import { buildProjection, isMainModule, lifecycleForSession, missingRequiredConfig, renderMessage } from "./build-and-publish.mjs";
 
 const now = new Date("2026-08-24T12:30:00.000Z");
 
@@ -47,4 +51,17 @@ test("reports required configuration when unset", { skip: Boolean(process.env.HU
 test("producer defaults to a generic identifier", { skip: Boolean(process.env.SLACK_THREAD_SUMMARY_PRODUCER) }, () => {
   const projection = buildProjection({ generatedAt: "2026-08-24T12:00:00.000Z", sessions: [] }, now);
   assert.equal(projection.producer, "humanwareos/slack-thread-summary@1");
+});
+
+test("recognizes the entrypoint through a symlink and a path with a space", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "thread summary "));
+  const real = path.join(directory, "build-and-publish.mjs");
+  const link = path.join(directory, "current.mjs");
+  fs.writeFileSync(real, "");
+  fs.symlinkSync(real, link);
+  const moduleUrl = pathToFileURL(fs.realpathSync(real)).href;
+  assert.equal(isMainModule(moduleUrl, link), true);
+  assert.equal(isMainModule(moduleUrl, real), true);
+  assert.equal(isMainModule(moduleUrl, path.join(directory, "other.mjs")), false);
+  assert.equal(isMainModule(moduleUrl, undefined), false);
 });

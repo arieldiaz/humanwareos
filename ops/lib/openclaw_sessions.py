@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
@@ -66,17 +67,23 @@ _LEGACY_TABLES = {
 def _canonical_sessions_present(path, agent_id):
     if not _present(path):
         return False
-    with _database(path) as connection:
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        # 7.1 already owns this filename for auth/memory. Recognize only its exact
-        # schema, never a partially migrated, unrelated or damaged session store.
-        extensions = tables - _LEGACY_TABLES
-        known_legacy_tables = _LEGACY_TABLES <= tables and all(re.match(r"^memory_index_chunks_(fts|vec)(_|$)", table) for table in extensions)
-        if known_legacy_tables and connection.execute("PRAGMA user_version").fetchone()[0] == 1:
-            row = connection.execute("SELECT role, schema_version, agent_id FROM schema_meta WHERE meta_key = 'primary'").fetchone()
-            if row and tuple(row) == ("agent", 1, agent_id):
-                return False
-        return True
+    try:
+        with _database(path) as connection:
+            tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            # 7.1 already owns this filename for auth/memory. Recognize only its exact
+            # schema, never a partially migrated, unrelated or damaged session store.
+            extensions = tables - _LEGACY_TABLES
+            known_legacy_tables = _LEGACY_TABLES <= tables and all(re.match(r"^memory_index_chunks_(fts|vec)(_|$)", table) for table in extensions)
+            if known_legacy_tables and connection.execute("PRAGMA user_version").fetchone()[0] == 1:
+                row = connection.execute("SELECT role, schema_version, agent_id FROM schema_meta WHERE meta_key = 'primary'").fetchone()
+                if row and tuple(row) == ("agent", 1, agent_id):
+                    return False
+            return True
+    except sqlite3.OperationalError as error:
+        # One agent store the gateway holds shut must not take every other agent's
+        # sessions off the console; the next rebuild retries it.
+        print(f"openclaw_sessions: skipping {path}: {error}", file=sys.stderr)
+        return False
 
 
 def _zstd_decompress(blobs):
