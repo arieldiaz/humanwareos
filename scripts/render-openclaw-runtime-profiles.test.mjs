@@ -86,7 +86,7 @@ test("keeps the reference instance's orchestrating roots and default worker", ()
   assert.equal(template.defaultProfile, "codex-medium");
   assert.equal(template.profiles["native-low"].enabled, false);
   assert.equal(template.agents.liv.allowedProfiles, undefined);
-  assert.deepEqual(template.allowedProfiles, ["cursor-agent-low", "cursor-agent-high", "codex-low", "codex-medium", "codex-high", "codex-astra-high", "claude-sonnet-high", "claude-fable-high"]);
+  assert.deepEqual(template.allowedProfiles, ["codex-low", "codex-medium", "codex-high", "codex-astra-high", "claude-sonnet-high", "claude-fable-high"]);
   const [liv, max] = rendered.agents.list;
   assert.deepEqual(liv.runtime, {type: "embedded"});
   assert.equal(liv.model.primary, "anthropic/claude-fable-5-2");
