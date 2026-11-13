@@ -1,12 +1,12 @@
 {
   "id": "run-signature",
   "name": "Run Signature",
-  "description": "Per-message reaction signatures, human status-event capture, owner thread closure, and model switching for Slack conversations.",
+  "description": "Per-message reaction signatures, human status-event capture, owner thread closure, thread check-backs, and model switching for Slack conversations.",
   "activation": {
     "onStartup": true
   },
   "contracts": {
-    "tools": ["start_work_thread", "close_thread", "set_thread_status", "switch_model"]
+    "tools": ["start_work_thread", "close_thread", "check_back", "set_thread_status", "switch_model"]
   },
   "configSchema": {
     "type": "object",
