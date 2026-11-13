@@ -11,11 +11,13 @@ import {parseArgs} from 'node:util';
 //
 // Bump SHORTCUT_VERSION whenever the generated actions change, then update
 // shortcut.fixture.json; the fixture test fails until both move together. The
-// version is written into the file name, a leading Comment action, and the
-// shortcutVersion form field, so a device and the service can tell what it runs.
-export const SHORTCUT_VERSION = 4;
+// version is written into a leading Comment action and the shortcutVersion form
+// field, so a device and the service can tell what it runs. The file name stays
+// plain because Shortcuts names the import after it, and Watch and Action button
+// assignments follow the name.
+export const SHORTCUT_VERSION = 5;
 export const SHORTCUT_NAMES = {record: 'Voice Intake', dictate: 'Voice Intake (Dictation)'};
-export const shortcutFileName = (mode, suffix = '') => `${SHORTCUT_NAMES[mode]} v${SHORTCUT_VERSION}${suffix}.shortcut`;
+export const shortcutFileName = (mode, suffix = '') => `${SHORTCUT_NAMES[mode]}${suffix}.shortcut`;
 const ref = (uuid, name) => ({OutputUUID: uuid, OutputName: name, Type: 'ActionOutput'});
 const attachment = (value) => ({Value: value, WFSerializationType: 'WFTextTokenAttachment'});
 const text = (...parts) => {

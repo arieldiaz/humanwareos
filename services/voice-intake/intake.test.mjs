@@ -115,30 +115,30 @@ test('a located capture records coordinates in evidence and ledger, and only the
 
 test('the shortcut version is recorded, never rejects, and only an outdated one is mentioned', async () => {
   const opts = {maxBytes: 1024, now: NOW};
-  assert.equal(SHORTCUT_VERSION, 4);
-  for (const [sent, expected] of [['4', 4], [' 7 ', 7], ['3', 3], ['', null], ['abc', null], ['0', null], ['4.5', null], [null, null]]) assert.equal(shortcutVersion(captureForm({shortcutVersion: sent})), expected, String(sent));
+  assert.equal(SHORTCUT_VERSION, 5);
+  for (const [sent, expected] of [['5', 5], [' 7 ', 7], ['3', 3], ['', null], ['abc', null], ['0', null], ['4.5', null], [null, null]]) assert.equal(shortcutVersion(captureForm({shortcutVersion: sent})), expected, String(sent));
   const [current, old, plain] = await Promise.all([normalizeCapture(captureForm(), opts), normalizeCapture(captureForm({shortcutVersion: '3'}), opts), normalizeCapture(captureForm({shortcutVersion: null}), opts)]);
-  assert.deepEqual([current.shortcutVersion, old.shortcutVersion, plain.shortcutVersion], [4, 3, null]);
+  assert.deepEqual([current.shortcutVersion, old.shortcutVersion, plain.shortcutVersion], [5, 3, null]);
   assert.equal(current.id, old.id, 'the version never changes the capture id');
-  assert.equal(sentMessage({status: 'accepted', shortcutVersion: 4}), 'Sent ✓ · v4');
-  assert.equal(sentMessage({status: 'duplicate', shortcutVersion: 5}), 'Already sent ✓ · v5', 'a newer shortcut than the service knows is not outdated');
-  assert.equal(sentMessage({status: 'accepted', shortcutVersion: 3}), 'Sent ✓ · shortcut v3 is outdated, v4 is available');
-  assert.equal(sentMessage({status: 'duplicate', shortcutVersion: null}), 'Already sent ✓ · shortcut pre-v4 is outdated, v4 is available');
+  assert.equal(sentMessage({status: 'accepted', shortcutVersion: 5}), 'Sent ✓ · v5');
+  assert.equal(sentMessage({status: 'duplicate', shortcutVersion: 6}), 'Already sent ✓ · v6', 'a newer shortcut than the service knows is not outdated');
+  assert.equal(sentMessage({status: 'accepted', shortcutVersion: 3}), 'Sent ✓ · shortcut v3 is outdated, v5 is available');
+  assert.equal(sentMessage({status: 'duplicate', shortcutVersion: null}), 'Already sent ✓ · shortcut pre-v4 is outdated, v5 is available');
   const {intake, posts} = fixture();
   const accepted = await intake.accept(captureForm({shortcutVersion: '3'}));
   assert.deepEqual([accepted.status, accepted.shortcutVersion], ['accepted', 3]);
-  assert.equal((await intake.accept(captureForm())).shortcutVersion, 4, 'a duplicate reports the version of the upload that arrived');
+  assert.equal((await intake.accept(captureForm())).shortcutVersion, 5, 'a duplicate reports the version of the upload that arrived');
   const row = intake.store.get(accepted.captureId);
   assert.equal(row.shortcut_version, 3);
   assert.equal(JSON.parse(readFileSync(row.evidence_path.replace(/m4a$/, 'json'))).shortcutVersion, 3);
   await intake.drain();
-  assert.match(posts[1].text, /🎧 Original audio>\n_Shortcut v3, current is v4_$/, 'the transcript reply names the drift');
+  assert.match(posts[1].text, /🎧 Original audio>\n_Shortcut v3, current is v5_$/, 'the transcript reply names the drift');
   const fresh = fixture();
   await fresh.intake.accept(captureForm());
   await fresh.intake.drain();
   assert.ok(!fresh.posts[1].text.includes('Shortcut'), 'a current shortcut is not mentioned');
   const unversioned = {kind: 'dictation', transcript: 'hi', shortcut_version: null};
-  assert.equal(transcriptText(unversioned, 'https://x/a'), '🎙️\n\nhi\n\n_Dictated on device; no audio was recorded._\n_Shortcut pre-v4, current is v4_');
+  assert.equal(transcriptText(unversioned, 'https://x/a'), '🎙️\n\nhi\n\n_Dictated on device; no audio was recorded._\n_Shortcut pre-v4, current is v5_');
 });
 
 test('a ledger created before location gains the columns in place', () => {
