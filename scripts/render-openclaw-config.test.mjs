@@ -85,7 +85,7 @@ test("merges the instance overlay over the framework base as a JSON merge patch"
   assert.equal(rendered.agents.defaults.compaction.mode, "safeguard");
   assert.deepEqual(rendered.plugins.allow, ["slack"]);
   assert.deepEqual(rendered.plugins.entries.codex, {enabled: true, config: {appServer: {command: "/opt/homebrew/bin/codex"}}});
-  assert.equal(rendered.plugins.entries["cursor-cli"].config.command, `${runtimeRoot}/framework/ops/openclaw/runtime/cursor-agent-launch.sh`);
+  assert.equal(rendered.plugins.entries["cursor-cli"], undefined);
   assert.deepEqual(mergeConfig({a: {b: [1], c: 1}}, {a: {b: [2], d: 2}}), {a: {b: [2], c: 1, d: 2}});
 });
 
