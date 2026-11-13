@@ -1,4 +1,6 @@
 import importlib.util
+import contextlib
+import io
 import json
 import os
 import pathlib
@@ -381,6 +383,16 @@ class CanonicalSessionReaderTest(unittest.TestCase):
         self.assertEqual(list(MODULE.iter_agent_ids(self.root)), ['liv', 'max'])
         self.assertFalse((self.root/'agents'/'max'/'agent').exists())
 
+
+    def test_unopenable_canonical_database_is_skipped_not_fatal(self):
+        shut = self.root/'agents'/'max'/'agent'/'openclaw-agent.sqlite'
+        shut.parent.mkdir(parents=True)
+        shut.write_bytes(b'')
+        shut.chmod(0)
+        self.addCleanup(shut.chmod, 0o600)
+        with contextlib.redirect_stderr(io.StringIO()) as stderr:
+            self.assertEqual(list(MODULE.iter_sessions(self.root, 'max')), [])
+        self.assertIn('skipping', stderr.getvalue())
 
     def test_known_71_auth_schema_allows_legacy_but_partial_canonical_does_not(self):
         import sqlite3
