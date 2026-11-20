@@ -26,12 +26,15 @@ prune() {
   [ ! -L "$runtime_root/current" ] || current=$(basename "$(readlink "$runtime_root/current")")
   # Snapshot loaded jobs as well as installed plists: editing a plist does not
   # update launchd's loaded definition. Fail closed if either inventory fails.
-  local references="" plist launch_root jobs label
+  local references="" plist launch_root jobs label job
   jobs=$("$LAUNCHCTL" list) || return 1
   while IFS= read -r label; do
     [ -n "$label" ] || continue
+    # launchctl list includes per-user XPC jobs that live outside gui/UID.
+    job=$("$LAUNCHCTL" print "gui/$(id -u)/$label" 2>/dev/null) ||
+      job=$("$LAUNCHCTL" print "user/$(id -u)/$label") || return 1
     references="$references
-$("$LAUNCHCTL" print "gui/$(id -u)/$label")" || return 1
+$job"
   done < <(printf '%s\n' "$jobs" | awk 'NR > 1 {print $3}')
   for launch_root in "$HOME/Library/LaunchAgents" /Library/LaunchAgents /Library/LaunchDaemons; do
     [ -d "$launch_root" ] || continue

@@ -24,8 +24,13 @@ cat > "$TEST_ROOT/launchctl" <<'FAKE'
 #!/bin/sh
 [ ! -f "$LOADED.fail" ] || exit 1
 case "$1" in
-  list) printf 'PID Status Label\n42 0 test.loaded\n' ;;
-  print) [ "$2" = "gui/$(id -u)/test.loaded" ] || exit 2; cat "$LOADED" ;;
+  list) printf 'PID Status Label\n42 0 test.loaded\n43 0 test.user\n' ;;
+  print)
+    case "$2" in
+      gui/"$(id -u)"/test.loaded) cat "$LOADED" ;;
+      user/"$(id -u)"/test.user) echo 'program = /usr/bin/true' ;;
+      *) exit 113 ;;
+    esac ;;
   *) exit 2 ;;
 esac
 FAKE
