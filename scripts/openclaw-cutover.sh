@@ -26,13 +26,22 @@ prune() {
   [ ! -L "$runtime_root/current" ] || current=$(basename "$(readlink "$runtime_root/current")")
   # Snapshot loaded jobs as well as installed plists: editing a plist does not
   # update launchd's loaded definition. Fail closed if either inventory fails.
-  local references="" plist launch_root jobs label job
+  local references="" plist launch_root jobs label job remaining
   jobs=$("$LAUNCHCTL" list) || return 1
   while IFS= read -r label; do
     [ -n "$label" ] || continue
     # launchctl list includes per-user XPC jobs that live outside gui/UID.
     job=$("$LAUNCHCTL" print "gui/$(id -u)/$label" 2>/dev/null) ||
-      job=$("$LAUNCHCTL" print "user/$(id -u)/$label") || return 1
+      job=$("$LAUNCHCTL" print "user/$(id -u)/$label" 2>/dev/null) || {
+        # Short-lived XPC jobs can exit between list and print. Only skip a job
+        # after a fresh inventory proves it is gone; a still-listed job fails closed.
+        remaining=$("$LAUNCHCTL" list) || return 1
+        if printf '%s\n' "$remaining" | awk 'NR > 1 {print $3}' | grep -Fx -- "$label" >/dev/null; then
+          echo "cannot inspect loaded service: $label" >&2
+          return 1
+        fi
+        continue
+      }
     references="$references
 $job"
   done < <(printf '%s\n' "$jobs" | awk 'NR > 1 {print $3}')
