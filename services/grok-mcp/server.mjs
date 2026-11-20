@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -344,7 +344,7 @@ export async function loadRuntime() {
   return { config, dataRoot, token, ownerPassword };
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && await realpath(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const runtime = await loadRuntime();
   const [host, rawPort] = runtime.config.listen.split(":");
   const server = createBridgeHttpServer(runtime);
