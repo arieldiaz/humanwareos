@@ -35,6 +35,8 @@ service scheduled job; running scheduled
 echo changed > "$NEW/framework/services/scheduled/server.mjs"
 service stopped keepalive
 echo changed > "$NEW/framework/services/stopped/server.mjs"
+service stale-stopped keepalive
+printf "\tprogram = %s/deleted-build/run.sh\n" "$TEST_ROOT" > "$RUNNING/test.stale-stopped"
 service stale-definition keepalive; running stale-definition "$TEST_ROOT/deleted-build/run.sh"
 echo changed > "$NEW/framework/services/stale-definition/server.mjs"
 
@@ -55,7 +57,13 @@ test "$(tr '\n' ' ' < "$KICKED")" = "test.code-changed test.config-changed "
 test "$status" -eq 1
 case "$output" in *"not restarted: test.stale-definition"*) ;; *) echo "stale definition was not reported: $output" >&2; exit 1 ;; esac
 
-# Identical builds restart nothing and succeed.
+case "$output" in *"not restarted: test.stale-stopped"*) ;; *) echo "stopped stale definition was hidden" >&2; exit 1 ;; esac
+# Identical builds still expose stale jobs, without restarting anything.
+: > "$KICKED"
+if LAUNCHCTL="$TEST_ROOT/launchctl" "$CUTOVER" services "$NEW" "$NEW"; then exit 1; fi
+test ! -s "$KICKED"
+rm "$RUNNING/test.stale-stopped" "$RUNNING/test.stale-definition"
+# Identical healthy builds restart nothing and succeed.
 : > "$KICKED"
 LAUNCHCTL="$TEST_ROOT/launchctl" "$CUTOVER" services "$NEW" "$NEW"
 test ! -s "$KICKED"

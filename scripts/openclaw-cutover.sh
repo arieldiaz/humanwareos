@@ -24,9 +24,33 @@ prune() {
   [ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
   local runtime_root=$1 data=$2 keep=${3:-3} current="" name live_config="$HOME/.openclaw/openclaw.json"
   [ ! -L "$runtime_root/current" ] || current=$(basename "$(readlink "$runtime_root/current")")
+  # Snapshot loaded jobs as well as installed plists: editing a plist does not
+  # update launchd's loaded definition. Fail closed if either inventory fails.
+  local references="" plist launch_root jobs label job
+  jobs=$("$LAUNCHCTL" list) || return 1
+  while IFS= read -r label; do
+    [ -n "$label" ] || continue
+    # launchctl list includes per-user XPC jobs that live outside gui/UID.
+    job=$("$LAUNCHCTL" print "gui/$(id -u)/$label" 2>/dev/null) ||
+      job=$("$LAUNCHCTL" print "user/$(id -u)/$label") || return 1
+    references="$references
+$job"
+  done < <(printf '%s\n' "$jobs" | awk 'NR > 1 {print $3}')
+  for launch_root in "$HOME/Library/LaunchAgents" /Library/LaunchAgents /Library/LaunchDaemons; do
+    [ -d "$launch_root" ] || continue
+    for plist in "$launch_root"/*.plist; do
+      [ -e "$plist" ] || continue
+      references="$references
+$(/usr/bin/plutil -convert xml1 -o - "$plist")" || return 1
+    done
+  done
   if [ -d "$runtime_root/runtime" ]; then
     ls -1 "$runtime_root/runtime" | grep -vx -- "$current" | sort -r | tail -n +"$((keep + 1))" | while IFS= read -r name; do
       [ -f "$live_config" ] && grep -qF -- "$runtime_root/runtime/$name/" "$live_config" && continue
+      if printf '%s\n' "$references" | grep -F -- "$runtime_root/runtime/$name" >/dev/null; then
+        echo "retained runtime $name: referenced by launchd or an installed service" >&2
+        continue
+      fi
       rm -rf "$runtime_root/runtime/$name"
     done
   fi
@@ -85,19 +109,22 @@ services() {
     dir=${plist#"$runtime/config/services/"}
     dir=${dir%%/*}
     [ "$(/usr/bin/plutil -extract KeepAlive raw -o - "$plist" 2>/dev/null)" = true ] || continue
+    label=$(/usr/bin/plutil -extract Label raw -o - "$plist")
+    state=$("$LAUNCHCTL" print "$domain/$label" 2>/dev/null) || continue
+    program=$(printf '%s\n' "$state" | sed -n 's/^[[:space:]]*program = //p' | head -1)
+    # Validate even unchanged or crashed jobs; otherwise a broken definition
+    # disappears behind the restart-selection filters.
+    if [ ! -x "$program" ]; then
+      echo "not restarted: $label runs a program that no longer exists; reinstall its LaunchAgent" >&2
+      failed=1
+      continue
+    fi
     if /usr/bin/diff -rq "$previous/config/services/$dir" "$runtime/config/services/$dir" >/dev/null 2>&1 &&
       { [ ! -e "$runtime/framework/services/$dir" ] || /usr/bin/diff -rq "$previous/framework/services/$dir" "$runtime/framework/services/$dir" >/dev/null 2>&1; }; then
       continue
     fi
-    label=$(/usr/bin/plutil -extract Label raw -o - "$plist")
-    state=$("$LAUNCHCTL" print "$domain/$label" 2>/dev/null) || continue
     printf '%s\n' "$state" | grep -q '^[[:space:]]*pid = ' || continue
-    # Killing a service whose installed definition points at a deleted build leaves it down.
-    program=$(printf '%s\n' "$state" | sed -n 's/^[[:space:]]*program = //p' | head -1)
-    if [ ! -x "$program" ]; then
-      echo "not restarted: $label runs a program that no longer exists; reinstall its LaunchAgent" >&2
-      failed=1
-    elif "$LAUNCHCTL" kickstart -k "$domain/$label"; then
+    if "$LAUNCHCTL" kickstart -k "$domain/$label"; then
       echo "restarted $label"
     else
       echo "restart failed: $label" >&2
