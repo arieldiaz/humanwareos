@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdtemp, mkdir, readFile, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -46,7 +47,7 @@ async function fixture() {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   const url = new URL(`http://127.0.0.1:${address.port}${config.mountPath}`);
-  return { root, server, url };
+  return { root, server, url, config };
 }
 
 async function connected(url, token = TOKEN) {
@@ -186,4 +187,28 @@ test("proposals do not mutate current memory and staged artifacts escape supplie
   const html = await readFile(join(root, staged.structuredContent.location.slice(5), "index.html"), "utf8");
   assert.doesNotMatch(html, /<script>alert/);
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+});
+
+
+test("CLI starts through a stable runtime symlink", { timeout: 10000 }, async (t) => {
+  const { root, server, config } = await fixture();
+  t.after(() => server.close());
+  const configPath = join(root, "config.json");
+  await writeFile(configPath, JSON.stringify(config));
+  const entry = join(root, "current-server.mjs");
+  await symlink(new URL("./server.mjs", import.meta.url), entry);
+  const child = spawn(process.execPath, [entry], { env: { ...process.env,
+    GROK_MCP_CONFIG_PATH: configPath, HUMANWARE_DATA_ROOT: root,
+    GROK_MCP_TOKEN: TOKEN, GROK_MCP_OWNER_PASSWORD: OWNER_PASSWORD,
+  }, stdio: ["ignore", "ignore", "pipe"] });
+  t.after(() => child.kill());
+  await new Promise((resolve, reject) => {
+    let output = "";
+    child.on("error", reject);
+    child.on("exit", code => reject(new Error(`CLI exited before listening: ${code}: ${output}`)));
+    child.stderr.on("data", chunk => {
+      output += chunk;
+      if (output.includes("grok-mcp listening on")) resolve();
+    });
+  });
 });
