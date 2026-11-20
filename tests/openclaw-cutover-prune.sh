@@ -24,7 +24,11 @@ cat > "$TEST_ROOT/launchctl" <<'FAKE'
 #!/bin/sh
 [ ! -f "$LOADED.fail" ] || exit 1
 case "$1" in
-  list) printf 'PID Status Label\n42 0 test.loaded\n43 0 test.user\n' ;;
+  list)
+    printf 'PID Status Label\n42 0 test.loaded\n43 0 test.user\n'
+    if [ -f "$LOADED.vanish" ]; then echo '44 0 test.vanished'; rm "$LOADED.vanish"; fi
+    if [ -f "$LOADED.unreadable" ]; then echo '45 0 test.unreadable'; fi
+    ;;
   print)
     case "$2" in
       gui/"$(id -u)"/test.loaded) cat "$LOADED" ;;
@@ -38,6 +42,8 @@ chmod +x "$TEST_ROOT/launchctl"
 export LOADED="$TEST_ROOT/loaded"
 : > "$LOADED"
 export LAUNCHCTL="$TEST_ROOT/launchctl"
+# A short-lived job vanishes between enumeration and inspection.
+touch "$LOADED.vanish"
 HOME="$TEST_ROOT/home" "$CUTOVER" prune "$RUNTIME_ROOT" "$DATA" 3
 
 test "$(ls "$RUNTIME_ROOT/runtime" | sort | tr '\n' ' ')" = "20261001T000000Z-build 20261002T000000Z-build 20261004T000000Z-build 20261005T000000Z-build 20261006T000000Z-build "
@@ -69,6 +75,10 @@ touch "$LOADED.fail"
 if HOME="$TEST_ROOT/home" "$CUTOVER" prune "$RUNTIME_ROOT" "$DATA" 3; then exit 1; fi
 test -d "$RUNTIME_ROOT/runtime/19990101-protected"
 rm "$LOADED.fail"
+touch "$LOADED.unreadable"
+if HOME="$TEST_ROOT/home" "$CUTOVER" prune "$RUNTIME_ROOT" "$DATA" 3; then exit 1; fi
+test -d "$RUNTIME_ROOT/runtime/19990101-protected"
+rm "$LOADED.unreadable"
 printf 'not a plist' > "$TEST_ROOT/home/Library/LaunchAgents/broken.plist"
 if HOME="$TEST_ROOT/home" "$CUTOVER" prune "$RUNTIME_ROOT" "$DATA" 3; then exit 1; fi
 test -d "$RUNTIME_ROOT/runtime/19990101-protected"
