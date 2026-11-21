@@ -28,7 +28,7 @@ Post-deploy canaries probe channels and run bounded synthetic turns but never re
 
 ## Configuration drift
 
-The private instance manifest is canonical; live service configuration is generated. A drift checker compares the active runtime manifest and hashes to the expected build and fails on divergence. Editing a live copy without rebuilding is emergency containment and must name an expiring incident patch. One plugin identifier resolves to one path in one build; duplicate plugin copies, mixed worktree paths, and source-checkout paths in service definitions fail validation.
+The private instance manifest is canonical; live service configuration is generated. Shrinking collections require authoritative replacement, not omission under merge semantics; dry-run against live configuration and verify effective readback. A drift checker compares the active runtime manifest and hashes to the expected build and fails on divergence. Editing a live copy without rebuilding is emergency containment and must name an expiring incident patch. One plugin identifier resolves to one path in one build; duplicate plugin copies, mixed worktree paths, and source-checkout paths in service definitions fail validation.
 
 ## Boot readiness
 
