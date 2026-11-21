@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 // Required values with no generic default are validated in main() so the
 // pure projection helpers stay importable for tests.
@@ -127,7 +128,16 @@ async function main() {
   })}\n`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// launchd starts this file through the runtime/current symlink and a path with a
+// space, so compare the resolved file URL rather than the raw argument.
+export function isMainModule(moduleUrl, entrypoint) {
+  if (!entrypoint) return false;
+  let resolved = entrypoint;
+  try { resolved = fs.realpathSync(entrypoint); } catch {}
+  return moduleUrl === pathToFileURL(resolved).href;
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
   main().catch((error) => {
     process.stderr.write(`${JSON.stringify({
       event: "slack_thread_summary_failed",

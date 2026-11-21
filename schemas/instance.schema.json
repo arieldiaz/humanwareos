@@ -4,7 +4,7 @@
   "title": "Humanware OS instance",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "id", "name", "paths", "agents", "openclaw", "runtimeProfiles", "channels", "surfaces", "services", "secrets"],
+  "required": ["schemaVersion", "id", "name", "paths", "agents", "openclaw", "runtimeProfiles", "channels", "surfaces", "secrets"],
   "properties": {
     "schemaVersion": {"const": 1},
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
@@ -33,7 +33,6 @@
     "runtimeProfiles": {"type": "string"},
     "channels": {"type": "array", "items": {"type": "string"}},
     "surfaces": {"type": "array", "items": {"type": "string"}},
-    "services": {"type": "array", "items": {"type": "string"}},
     "secrets": {
       "type": "object",
       "additionalProperties": false,

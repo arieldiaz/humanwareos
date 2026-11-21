@@ -16,7 +16,6 @@
   "runtimeProfiles": "runtime/profiles.json",
   "channels": ["channels/slack.json"],
   "surfaces": ["surfaces/domain.json"],
-  "services": [],
   "secrets": {
     "provider": "doppler",
     "bootstrap": "external"
