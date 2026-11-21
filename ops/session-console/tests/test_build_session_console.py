@@ -119,14 +119,26 @@ class SessionConsoleTest(unittest.TestCase):
         self.assertEqual(MODULE.effective_workflow(act, ["done"]), act)
 
 
+ZERO = {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}
+MILLION = dict(ZERO, input=1_000_000)
+
+
 class SubagentRunCaptureTest(unittest.TestCase):
     ROOT_KEY = 'agent:liv:slack:channel:c1:thread:123.45'
+    # Synthetic list prices: one dollar per million input tokens, ten per million output.
+    PRICES = {'basis': 'api-list-price-equivalent', 'currency': 'USD', 'unit': 'per-million-tokens', 'models': {'model-a': [
+        {'effectiveFrom': '2026-01-01', 'input': 1, 'output': 10, 'cacheRead': 0, 'cacheWrite': 0, 'cacheWrite1h': 2, 'source': 'synthetic'}]}}
 
     def setUp(self):
         import sqlite3
+        from unittest import mock
+        patcher = mock.patch.object(MODULE.activity.pricing, 'TABLE', self.PRICES)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
+        self.claude = self.root / 'claude'
         agent_db = self.root / 'agents' / 'liv' / 'agent' / 'openclaw-agent.sqlite'
         agent_db.parent.mkdir(parents=True)
         (self.root / 'state').mkdir()
@@ -141,9 +153,14 @@ class SubagentRunCaptureTest(unittest.TestCase):
                 started_at INTEGER, ended_at INTEGER, status TEXT, chat_type TEXT, channel TEXT,
                 account_id TEXT, model_provider TEXT, model TEXT, agent_harness_id TEXT,
                 parent_session_key TEXT, spawned_by TEXT, display_name TEXT);
+            CREATE TABLE transcript_events (session_id TEXT, seq INTEGER, event_json TEXT, created_at INTEGER,
+                event_zstd BLOB, message_role TEXT, PRIMARY KEY(session_id, seq));
+            CREATE TABLE session_transcript_archives (session_id TEXT, generation TEXT, session_key TEXT, reason TEXT,
+                encoding TEXT, archive_blob BLOB, archive_name TEXT UNIQUE, created_at INTEGER);
         ''')
         self.state.execute('CREATE TABLE subagent_runs (run_id TEXT PRIMARY KEY, child_session_key TEXT, created_at INTEGER, payload_json TEXT)')
         self.node(self.ROOT_KEY, 'root', {'groupId': 'C1', 'lastThreadId': '123.45', 'status': 'done'})
+        # Session counters describe the last call only; they are never a run total.
         self.node('agent:liv:subagent:a', 'child-a', {'lastRunId': 'run-a', 'thinkingLevel': 'high', 'model': 'm', 'modelProvider': 'p',
                                                   'inputTokens': 10, 'outputTokens': 5, 'totalTokens': 15,
                                                   'estimatedCostUsd': 0.25, 'endedAt': 1787300060000, 'status': 'done'})
@@ -152,10 +169,45 @@ class SubagentRunCaptureTest(unittest.TestCase):
         self.add_run('run-b', 'agent:liv:subagent:b', 'agent:liv:subagent:a', ended=('timeout', 30000))  # child session deleted
         self.add_run('run-c', 'agent:liv:subagent:c', self.ROOT_KEY)
         self.add_run('run-d', 'agent:liv:subagent:d', self.ROOT_KEY, ended=('error', 1000))
+        # A run of two model calls: a tool-call step without tokens, then the record holding the run's sum.
+        self.say('root', 1, 'r0', ZERO, run_id='turn-1')
+        self.say('root', 2, 'r0-result', None, role='toolResult')
+        self.say('root', 3, 'r1', dict(MILLION, input=2_000_000, contextUsage={'state': 'known', 'promptTokens': 1_000_000, 'totalTokens': 1_000_000}), run_id='turn-1')
+        self.say('root', 4, 'r3', None, role='user')
+        self.say('child-a', 1, 'a1', MILLION)
+        self.say('child-a', 2, 'a2', dict(ZERO, output=100_000))
+        self.archive('child-b', 'agent:liv:subagent:b', [self.record('b1', dict(ZERO, input=500_000))])
 
     def node(self, key, session_id, entry):
         entry = dict(entry, sessionId=session_id, updatedAt=1787300000000)
         self.agent.execute('INSERT OR REPLACE INTO session_nodes VALUES (?, ?, ?, ?)', (key, session_id, json.dumps(entry), entry['updatedAt']))
+        self.agent.execute('INSERT OR IGNORE INTO session_windows (session_id, session_key, created_at, updated_at) VALUES (?, ?, ?, ?)',
+                           (session_id, key, entry['updatedAt'], entry['updatedAt']))
+        self.agent.commit()
+
+    def record(self, record_id, usage, role='assistant', run_id=None, provider='provider', api=None, when=None, model='model-a'):
+        message = {'role': role, 'content': 'SYNTHETIC PRIVATE REPLY', 'provider': provider, 'model': model}
+        if api:
+            message['api'] = api
+        if usage is not None:
+            message['usage'] = usage
+        if run_id:
+            message['__openclaw'] = {'runId': run_id}
+        return {'type': 'message', 'id': record_id, 'timestamp': when or '2026-08-21T12:00:30.000Z', 'message': message}
+
+    def say(self, session_id, seq, record_id, usage, role='assistant', run_id=None, **record):
+        self.agent.execute('INSERT INTO transcript_events VALUES (?, ?, ?, ?, NULL, ?)',
+                           (session_id, seq, json.dumps(self.record(record_id, usage, role, run_id, **record)), seq, role))
+        self.agent.commit()
+
+    def archive(self, session_id, key, records, compress=False):
+        blob = ''.join(json.dumps(record) + '\n' for record in records).encode()
+        if compress:
+            node = os.environ.get('NODE_BIN') or shutil.which('node')
+            blob = subprocess.run([node, '-e', 'process.stdout.write(require("zlib").zstdCompressSync(require("fs").readFileSync(0)))'],
+                                  input=blob, capture_output=True, check=True).stdout
+        self.agent.execute('INSERT INTO session_transcript_archives VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                           (session_id, 'g1', key, 'deleted', 'zstd' if compress else 'identity', blob, f'{session_id}.jsonl.deleted', 1))
         self.agent.commit()
 
     def add_run(self, run_id, child, parent, ended=None):
@@ -168,69 +220,399 @@ class SubagentRunCaptureTest(unittest.TestCase):
         self.state.commit()
 
     def build(self):
-        return MODULE.build(str(self.root / 'data'), str(self.root / 'agents'))
+        return MODULE.build(str(self.root / 'data'), str(self.root / 'agents'), claude_root=str(self.claude))
 
     def ledger(self):
         return [json.loads(line) for path in sorted((self.root / 'data/evidence/sessions/events').glob('*.jsonl'))
                 for line in path.read_text().splitlines()]
 
-    def test_runs_are_captured_once_with_observed_usage_and_tree(self):
+    def session(self, result):
+        return next(item for item in result['sessions'] if item['id'] == 'slack:C1:123.45')
+
+    def test_runs_and_transcript_usage_are_captured_once_and_priced_by_code(self):
         from jsonschema import Draft202012Validator, FormatChecker
         result, additions = self.build()
-        self.assertEqual(additions, 6)  # four spawns; run-c running, run-d counters not settled
+        self.assertEqual(additions, 12)  # four spawns, three ended runs, five usage reports (one is the first call's unavailable mark)
         validator = Draft202012Validator(json.loads((SCRIPT.parents[2] / 'schemas/session-event.schema.json').read_text()), format_checker=FormatChecker())
         for row in self.ledger():
             validator.validate(row)
-        self.assertNotIn('SYNTHETIC PRIVATE BRIEF', json.dumps(self.ledger()) + json.dumps(result))
+        self.assertNotIn('SYNTHETIC PRIVATE', json.dumps(self.ledger()) + json.dumps(result))
+        usage = {row['id']: row for row in self.ledger() if row['kind'] == 'usage.cost'}
+        self.assertEqual(sorted(usage), [f'openclaw:usage:liv:{name}' for name in ('child-a:a1', 'child-a:a2', 'child-b:b1', 'root:r1', 'root:run:turn-1')])
+        # Evidence holds observed tokens and the model; the amount is computed when read.
+        self.assertEqual({row['cost']['status'] for row in usage.values()}, {'unavailable'})
+        mark = usage['openclaw:usage:liv:root:run:turn-1']
+        self.assertEqual((mark['cost']['tokens'], mark['cost']['model'], mark['runId']), ({}, 'provider/model-a', 'turn-1'))
+        root_call = usage['openclaw:usage:liv:root:r1']
+        self.assertEqual((root_call['logicalSessionId'], root_call['runId'], root_call['cost']['model'], root_call['cost']['tokens']['input']),
+                         ('slack:C1:123.45', 'turn-1', 'provider/model-a', 2_000_000))
+        self.assertEqual(usage['openclaw:usage:liv:child-b:b1']['logicalSessionId'], 'agent:liv:subagent:b')
         completed = {row['runId']: row for row in self.ledger() if row['kind'] == 'run.completed'}
-        self.assertEqual(completed['run-a']['cost']['tokens'], {'input': 10, 'output': 5, 'total': 15})
-        self.assertEqual((completed['run-a']['cost']['status'], completed['run-a']['outcome']), ('estimated', 'succeeded'))
-        self.assertEqual((completed['run-b']['cost']['status'], completed['run-b']['cost']['tokens']), ('unavailable', {}))
+        self.assertEqual({(row['cost']['status'], json.dumps(row['cost']['tokens'])) for row in completed.values()}, {('unavailable', '{}')})
+        self.assertEqual((completed['run-a']['outcome'], completed['run-d']['outcome']), ('succeeded', 'failed'))
         self.assertEqual((completed['run-b']['run']['parentSessionId'], completed['run-b']['run']['rootSessionId']), ('openclaw:liv:child-a', 'slack:C1:123.45'))
 
-        session = next(item for item in result['sessions'] if item['id'] == 'slack:C1:123.45')
+        session = self.session(result)
         self.assertEqual(session['workerRuns'], 4)
         self.assertEqual([run['runId'] for run in session['runs']], ['run-a', 'run-c', 'run-d'])
         worker = session['runs'][0]
         self.assertEqual((worker['model'], worker['reasoning'], worker['durationMs']), ('p/m', 'high', 60000))
-        self.assertEqual([run['runId'] for run in worker['children']], ['run-b'])
-        usd = next(group for group in session['costRollup'] if group['currency'] == 'USD')
-        self.assertEqual((usd['estimated'], next(g for g in session['costRollup'] if g['currency'] is None)['unavailable']), (0.25, 1))
+        self.assertEqual((worker['tokens']['total'], worker['cost']), (1_100_000, {'amount': 2.0, 'reports': 2, 'unavailable': 0}))
+        self.assertEqual([(run['runId'], run['cost']['amount']) for run in worker['children']], [('run-b', 0.5)])  # from the archive
+        self.assertEqual([run['cost']['amount'] for run in session['runs'][1:]], [None, None])
+        cost = session['cost']
+        self.assertEqual((cost['basis'], cost['amount'], cost['root']['amount'], cost['workers']['amount']), ('api-list-price-equivalent', 4.5, 2.0, 2.5))
+        self.assertEqual((cost['reports'], cost['unavailable']), (5, 1))  # run-d ended with no observable usage
+        self.assertEqual([(row['runId'], row['amount']) for row in cost['byRun']], [('turn-1', 2.0)])
+        self.assertEqual(sum(group['estimated'] for group in session['spend']), 4.5)
+        self.assertNotIn('eventIds', session['spend'][0])
         summary = (self.root / 'data/generated/sessions' / session['summaryMarkdown']).read_text()
         self.assertIn('**Worker runs:** 4', summary)
-        self.assertIn('0.25 USD estimated', summary)
+        self.assertIn('**Cost:** $4.50 API list-price equivalent (root $2.00, workers $2.50); 1 of 5 usage reports unpriced', summary)
+        self.assertEqual(self.build()[1], 0)
+        # An unknown part of the total is named, never shown as zero.
+        workers_only = dict(cost, root=dict(cost['root'], amount=None))
+        self.assertIn('(root unavailable, workers $2.50)', MODULE.cost_text(workers_only))
+        self.assertEqual(MODULE.cost_text(dict(cost, amount=None)), 'Unavailable')
+        self.assertEqual(MODULE.cost_text(None), 'Unavailable')
 
+    def test_only_a_whole_run_count_is_reported_with_tokens(self):
+        context = lambda prompt: {'state': 'known', 'promptTokens': prompt, 'totalTokens': prompt}
+        seq = iter(range(100, 1000))
+        def run(run_id, *steps, **record):
+            """Each step is a usage dict for an assistant record; a tool result separates the steps."""
+            for index, usage in enumerate(steps):
+                if index:
+                    self.say('root', next(seq), f'{run_id}-t{index}', None, role='toolResult')
+                self.say('root', next(seq), f'{run_id}-{index}', usage, run_id=run_id, **record)
+        run('single', MILLION)  # one call, nothing before it: its count is the run
+        run('sum', ZERO, dict(MILLION, contextUsage=context(500_000)))  # prompt larger than the last call's context: a sum
+        run('last', ZERO, dict(MILLION, contextUsage=context(1_000_000)))  # equal: the last of several calls
+        run('blind', ZERO, MILLION)  # several calls and no context figure
+        run('empty', ZERO, ZERO)  # steps only: no count at all
+        run('cli', MILLION, provider='claude-cli', api='cli')
+        self.say('root', next(seq), 'mirror', MILLION, run_id='mirrored', provider='openclaw')
+        self.say('root', next(seq), 'old-a', MILLION)  # no run id: per-call and complete
+        self.say('root', next(seq), 'old-b', ZERO)  # no run id and no count
+        self.say('root', next(seq), 'old-c', ZERO)  # another: the session's one mark covers both
+        result, _ = self.build()
+        usage = {row['id'].split(':', 4)[4]: row for row in self.ledger() if row['id'].startswith('openclaw:usage:liv:root:')}
+        reported = lambda name: json.dumps(usage[name]['cost']['tokens'], sort_keys=True)
+        for name in ('single-0', 'sum-1', 'old-a'):
+            self.assertEqual(usage[name]['cost']['tokens']['input'], 1_000_000, name)
+        for name in ('run:last', 'run:blind', 'run:empty', 'run:sum', 'cli-0', 'uncounted'):
+            self.assertEqual((name, reported(name)), (name, '{}'))
+        self.assertFalse([name for name in usage if 'mirror' in name or name == 'run:single' or name in ('old-b', 'old-c')])
+        self.assertEqual((usage['uncounted']['runId'], usage['uncounted']['cost']['model']), (None, 'provider/model-a'))
+        self.assertEqual(usage['run:last']['runId'], 'last')
+        self.assertEqual(usage['cli-0']['cost']['model'], 'claude-cli/model-a')
+        self.assertNotIn('SYNTHETIC PRIVATE', json.dumps(self.ledger()))
+        # Runs without a whole count stay visible as unavailable beside the priced ones.
+        cost = self.session(result)['cost']
+        by_run = {row['runId']: row for row in cost['byRun']}
+        self.assertEqual({name: (by_run[name]['amount'], by_run[name]['unavailable']) for name in ('single', 'sum', 'last', 'blind', 'empty', 'cli')},
+                         {'single': (1.0, 0), 'sum': (1.0, 0), 'last': (None, 1), 'blind': (None, 1), 'empty': (None, 1), 'cli': (None, 1)})
+        self.assertEqual((cost['amount'], cost['root']['unavailable'], cost['unavailable']), (7.5, 5, 6))
         self.assertEqual(self.build()[1], 0)
-        self.node('agent:liv:subagent:d', 'child-d', {'lastRunId': 'run-d', 'inputTokens': 3, 'status': 'failed', 'endedAt': 1787300001000})
-        self.assertEqual(self.build()[1], 1)
+
+    def test_a_run_counted_in_a_later_build_is_priced_once(self):
+        self.say('root', 20, 'p0', ZERO, run_id='turn-p')
+        self.say('root', 21, 'p0-result', None, role='toolResult')
+        first = next(row for row in self.session(self.build()[0])['cost']['byRun'] if row['runId'] == 'turn-p')
+        self.assertEqual((first['amount'], first['reports'], first['unavailable']), (None, 1, 1))
+        # The record at the cursor is a tool result: context for the next record, not read again.
+        self.say('root', 22, 'p1', dict(MILLION, contextUsage={'state': 'known', 'promptTokens': 1_000_000, 'totalTokens': 1_000_000}), run_id='turn-p')
+        result, additions = self.build()
+        self.assertEqual(additions, 0)  # one call of several: the run's mark already stands
+        self.say('root', 23, 'p2', None, role='toolResult')
+        self.say('root', 24, 'p3', dict(MILLION, input=3_000_000, contextUsage={'state': 'known', 'promptTokens': 1_000_000, 'totalTokens': 1_000_000}), run_id='turn-p')
+        result, additions = self.build()
+        self.assertEqual(additions, 1)
+        later = next(row for row in self.session(result)['cost']['byRun'] if row['runId'] == 'turn-p')
+        self.assertEqual((later['amount'], later['reports'], later['unavailable']), (3.0, 1, 0))
         self.assertEqual(self.build()[1], 0)
-        late = next(row for row in self.ledger() if row['id'] == 'openclaw:run.completed:run-d')
-        self.assertEqual((late['cost']['status'], late['cost']['tokens'], late['outcome']), ('unavailable', {'input': 3}, 'failed'))
+
+    def test_the_cursor_row_is_context_and_is_not_read_again(self):
+        cursors, archives = {}, []
+        read = lambda: [(record['id'], after_tool) for sid, _, record, after_tool in MODULE.iter_assistant_records(self.root, 'liv', cursors, archives) if sid == 'root']
+        self.assertEqual(read(), [('r0', False), ('r1', True)])
+        self.assertEqual(read(), [])
+        self.say('root', 20, 'x0', None, role='toolResult')
+        self.say('root', 21, 'x1', MILLION, run_id='turn-x')
+        self.say('root', 22, 'x2', MILLION, run_id='turn-x')
+        self.assertEqual(read(), [('x1', True), ('x2', False)])
+
+    def test_archived_transcript_gives_the_same_events_as_the_live_one(self):
+        for seq, (record_id, usage, role) in enumerate((('s0', ZERO, 'assistant'), ('s1', None, 'toolResult'), ('s2', MILLION, 'assistant'),
+                                                          ('s3', None, 'user'), ('s4', MILLION, 'assistant')), 30):
+            self.say('scenario', seq, record_id, usage, role=role, run_id='turn-s' if record_id in ('s0', 's2') else None)
+        self.node('agent:liv:subagent:s', 'scenario', {'status': 'done'})
+        events = lambda: sorted((json.dumps(row, sort_keys=True) for row in MODULE.usage_events(
+            self.root, {'cursors': {}, 'archives': {}}, lambda agent, session_id, key: f'openclaw:{agent}:{session_id}') if 'scenario' in row['id']))
+        live = events()
+        self.assertEqual(len(live), 2)  # the run's mark (a tool result precedes its only count, with no context figure) and one old-style record
+        rows = [json.loads(row[0]) for row in self.agent.execute("SELECT event_json FROM transcript_events WHERE session_id = 'scenario' ORDER BY seq")]
+        self.agent.execute("DELETE FROM transcript_events WHERE session_id = 'scenario'")
+        self.archive('scenario', 'agent:liv:subagent:s', rows)
+        self.assertEqual(events(), live)
 
     def test_plugin_started_root_thread_is_not_a_worker_run(self):
         thread = 'agent:liv:slack:channel:c1:thread:678.90'
         self.node(thread, 'thread', {'lastRunId': 'run-t', 'endedAt': 1787300060000, 'status': 'done'})
         self.add_run('run-t', thread, 'agent:liv:main', ended=('ok', 60000))
         self.add_run('run-e', 'agent:liv:subagent:e', thread, ended=('ok', 1000))
-        rows = MODULE.run_events(*self.run_inputs())
+        entries, logical = {}, {}
+        MODULE.registry_index(str(self.root / 'agents'), {}, entries, logical)
+        rows = MODULE.run_events(list(MODULE.iter_subagent_runs(self.root)), entries, logical)
         self.assertNotIn('run-t', {row['runId'] for row in rows})
         spawned = next(row for row in rows if row['id'] == 'openclaw:run.spawned:run-e')
         self.assertEqual(spawned['run']['rootSessionId'], spawned['run']['parentSessionId'])
         self.assertTrue(MODULE.is_worker_session('agent:liv:dashboard:x', {'spawnDepth': 1, 'spawnedBy': thread}))
         self.assertFalse(MODULE.is_worker_session(thread, {}))
 
-    def run_inputs(self):
-        entries, logical = {}, {}
-        MODULE.registry_index(str(self.root / 'agents'), {}, entries, logical)
-        return list(MODULE.iter_subagent_runs(self.root)), entries, logical, set()
+    def test_usage_survives_child_cleanup_state_loss_and_resumes_after_new_calls(self):
+        before = self.session(self.build()[0])['cost']
+        # The host deletes the finished child and archives its transcript.
+        records = [json.loads(row[0]) for row in self.agent.execute("SELECT event_json FROM transcript_events WHERE session_id = 'child-a' ORDER BY seq")]
+        for table, column in (('transcript_events', 'session_id'), ('session_windows', 'session_id'), ('session_nodes', 'current_session_id')):
+            self.agent.execute(f'DELETE FROM {table} WHERE {column} = ?', ('child-a',))
+        self.archive('child-a', 'agent:liv:subagent:a', records, compress=True)
+        result, additions = self.build()
+        self.assertEqual((additions, self.session(result)['cost']), (0, before))
+        os.unlink(self.root / 'data/generated/sessions/state.json')
+        self.assertEqual(self.build()[1], 0)
+        self.say('root', 10, 'r4', MILLION, run_id='turn-2')
+        result, additions = self.build()
+        self.assertEqual((additions, self.session(result)['cost']['root']['amount']), (1, 3.0))
+        self.assertEqual(self.build()[1], 0)
 
-    def test_per_invocation_usage_suppresses_session_counters(self):
-        entries, logical = {}, {}
-        MODULE.registry_index(str(self.root / 'agents'), {}, entries, logical)
-        runs = list(MODULE.iter_subagent_runs(self.root))
-        rows = MODULE.run_events(runs, entries, logical, {'openclaw:liv:child-a'})
-        completed = next(row for row in rows if row['id'] == 'openclaw:run.completed:run-a')
-        self.assertEqual((completed['cost']['status'], completed['cost']['tokens']), ('unavailable', {}))
+    def test_a_run_first_seen_after_cleanup_still_gets_its_archived_usage(self):
+        self.add_run('run-e', 'agent:liv:subagent:e', self.ROOT_KEY, ended=('ok', 5))
+        self.archive('child-e', 'agent:liv:subagent:e', [self.record('e1', dict(ZERO, input=3_000_000))])
+        late = next(run for run in self.session(self.build()[0])['runs'] if run['runId'] == 'run-e')
+        self.assertEqual((late['sessionId'], late['cost']['amount']), ('agent:liv:subagent:e', 3.0))
+
+    # A CLI turn is priced from the CLI's own call log; its session is bound to one CLI session id.
+    CLI = 'agent:liv:slack:channel:c2:thread:9.9'
+
+    def cli_session(self, session_id='cli', binding='cli-1', key=None):
+        entry = {'groupId': 'C2', 'lastThreadId': '9.9', 'status': 'done'}
+        if binding:
+            entry['cliSessionBindings'] = {'claude-cli': {'sessionId': binding}}
+        self.node(key or self.CLI, session_id, entry)
+
+    def turn(self, seq, record_id, when, session_id='cli', **record):
+        """The host's CLI turn record: one call's tokens, which are never the source of a CLI turn's price."""
+        self.say(session_id, seq, record_id, MILLION, provider='claude-cli', api='cli', when=when, **record)
+
+    def call(self, message_id, when, model='model-a', cache=None, **counts):
+        usage = {'input_tokens': 0, 'output_tokens': 0, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0,
+                 'cache_creation': {'ephemeral_5m_input_tokens': 0, 'ephemeral_1h_input_tokens': 0}}
+        for key, value in counts.items():
+            usage[key] = value
+        if cache:
+            usage['cache_creation'] = {'ephemeral_5m_input_tokens': cache[0], 'ephemeral_1h_input_tokens': cache[1]}
+            usage['cache_creation_input_tokens'] = sum(cache)
+        return {'type': 'assistant', 'timestamp': when, 'message': {'id': message_id, 'model': model, 'usage': usage,
+                                                                    'content': [{'type': 'text', 'text': 'SYNTHETIC PRIVATE CALL TEXT'}]}}
+
+    def write_log(self, cli_id, lines, subagent=None):
+        main = self.claude / 'projects' / 'project-dir' / f'{cli_id}.jsonl'
+        main.parent.mkdir(parents=True, exist_ok=True)
+        main.write_text(''.join(json.dumps(line) + '\n' for line in lines) + 'not json\n')
+        if subagent:
+            (main.parent / cli_id / 'subagents').mkdir(parents=True, exist_ok=True)
+            (main.parent / cli_id / 'subagents' / 'agent-1.jsonl').write_text(''.join(json.dumps(line) + '\n' for line in subagent))
+
+    def cli_usage(self, session_id='cli'):
+        return {row['id'].split(f':{session_id}:', 1)[1]: row for row in self.ledger() if row['kind'] == 'usage.cost' and f':{session_id}:' in row['id']}
+
+    def amounts(self, result, logical='slack:C2:9.9'):
+        return {row['runId']: row['amount'] for row in next(item for item in result['sessions'] if item['id'] == logical)['cost']['byRun']}
+
+    def test_a_cli_turn_is_priced_from_the_summed_calls_of_its_window(self):
+        self.cli_session()
+        self.turn(1, 't1', '2026-08-21T12:00:10.300Z')
+        self.turn(2, 't2', '2026-08-21T12:01:30.300Z')
+        self.write_log('cli-1', [
+            self.call('m1', '2026-08-21T12:00:06Z', input_tokens=1, output_tokens=1),  # streaming: only the last line of a call counts
+            self.call('m1', '2026-08-21T12:00:08Z', input_tokens=1_000_000, output_tokens=100_000, cache_read_input_tokens=5, cache=(100_000, 200_000)),
+            self.call('syn', '2026-08-21T12:00:09Z', model='<synthetic>', input_tokens=999_999_999),
+            self.call('m3', '2026-08-21T12:01:20Z', input_tokens=2_000_000),
+            self.call('m4', '2026-08-21T12:02:00Z', input_tokens=7_000_000),  # after the second turn: a later turn's call
+        ], subagent=[self.call('m2', '2026-08-21T12:00:09Z', input_tokens=1_000_000)])
+        result, additions = self.build()
+        usage = self.cli_usage()
+        self.assertEqual(sorted(usage), ['t1', 't2'])  # the mark's event ids
+        self.assertEqual(usage['t1']['cost']['tokens'], {'input': 2_000_000, 'output': 100_000, 'cacheRead': 5, 'cacheWrite': 100_000, 'cacheWrite1h': 200_000})
+        self.assertEqual(usage['t2']['cost']['tokens']['input'], 2_000_000)
+        self.assertEqual((usage['t1']['cost']['model'], usage['t1']['cost']['usageId']), ('claude-cli/model-a', 'openclaw:usage:liv:cli:t1'))
+        self.assertNotIn('SYNTHETIC PRIVATE', json.dumps(self.ledger()) + json.dumps(result))
+        # $1 and $10 per million input and output; 1h cache writes at $2: 2 + 1 + 0.4, and 2.
+        self.assertEqual(self.amounts(result), {None: 5.4})
+        cost = next(item for item in result['sessions'] if item['id'] == 'slack:C2:9.9')['cost']
+        self.assertEqual((cost['amount'], cost['unavailable'], cost['reports']), (5.4, 0, 2))
+        self.assertEqual(cost['byModel'][0]['tokens']['cacheWrite1h'], 200_000)
+        self.assertEqual(cost['byModel'][0]['tokens']['total'], 4_400_005)
+        self.assertEqual(self.build()[1], 0)
+
+    def test_a_later_turn_takes_its_window_from_the_cached_bound_or_from_a_full_reread(self):
+        self.cli_session()
+        self.turn(1, 't1', '2026-08-21T12:00:10.300Z')
+        calls = [self.call('m1', '2026-08-21T12:00:08Z', input_tokens=1_000_000), self.call('m2', '2026-08-21T12:01:20Z', input_tokens=2_000_000)]
+        self.write_log('cli-1', calls)
+        self.build()
+        self.turn(2, 't2', '2026-08-21T12:01:30.300Z')
+        self.assertEqual(self.build()[1], 1)
+        self.assertEqual(self.cli_usage()['t2']['cost']['tokens']['input'], 2_000_000)  # not the first turn's call too
+        self.assertEqual(self.build()[1], 0)
+        # Without the cache the whole transcript is read again, in order, and adds nothing.
+        os.unlink(self.root / 'data/generated/sessions/state.json')
+        self.assertEqual(self.build()[1], 0)
+        self.turn(3, 't3', '2026-08-21T12:02:10.300Z')
+        self.write_log('cli-1', calls + [self.call('m3', '2026-08-21T12:02:00Z', input_tokens=3_000_000)])
+        os.unlink(self.root / 'data/generated/sessions/state.json')
+        self.assertEqual(self.build()[1], 1)
+        self.assertEqual({name: row['cost']['tokens']['input'] for name, row in self.cli_usage().items()}, {'t1': 1_000_000, 't2': 2_000_000, 't3': 3_000_000})
+
+    def test_a_cache_from_before_call_logs_never_gives_a_turn_an_open_window(self):
+        self.cli_session()
+        self.turn(1, 't1', '2026-08-21T12:00:10.300Z')
+        self.write_log('cli-1', [self.call('m1', '2026-08-21T12:00:08Z', input_tokens=1_000_000)])
+        self.build()
+        state = self.root / 'data/generated/sessions/state.json'
+        saved = json.loads(state.read_text())
+        del saved['usage']['lastCli']
+        state.write_text(json.dumps(saved))
+        self.write_log('cli-1', [self.call('m1', '2026-08-21T12:00:08Z', input_tokens=1_000_000), self.call('m2', '2026-08-21T12:01:20Z', input_tokens=2_000_000),
+                                 self.call('m3', '2026-08-21T12:02:20Z', input_tokens=3_000_000)])
+        self.turn(2, 't2', '2026-08-21T12:01:30.300Z')
+        self.turn(3, 't3', '2026-08-21T12:02:30.300Z')
+        self.build()
+        usage = self.cli_usage()
+        self.assertEqual(usage['t2']['cost']['tokens'], {})  # where the earlier turn ended is unknown, so nothing is guessed
+        self.assertEqual(usage['t3']['cost']['tokens']['input'], 3_000_000)
+
+    def test_a_cli_turn_the_log_does_not_cover_is_the_unavailable_mark(self):
+        window = [self.call('m1', '2026-08-21T12:00:08Z', input_tokens=1_000_000)]
+        cases = {
+            'no binding': (None, window),
+            'no log': ('gone', None),
+            'no call in the window': ('cli-1', [self.call('late', '2026-08-21T12:30:00Z', input_tokens=1_000_000)]),
+            'unusable call': ('cli-1', window + [self.call('bad', '2026-08-21T12:00:09Z', input_tokens=5, cache_creation_input_tokens=9)]),
+            'negative count': ('cli-1', window + [self.call('neg', '2026-08-21T12:00:09Z', output_tokens=-1)]),
+        }
+        for index, (name, (binding, lines)) in enumerate(cases.items()):
+            self.cli_session(session_id=f'cli{index}', binding=binding, key=f'agent:liv:slack:channel:c3:thread:{index}.1')
+            self.turn(1, 't1', '2026-08-21T12:00:10.300Z', session_id=f'cli{index}')
+            if lines is not None:
+                self.write_log(binding, lines)
+            self.build()
+            mark = self.cli_usage(f'cli{index}')['t1']
+            self.assertEqual((name, mark['cost']['tokens'], mark['cost']['model'], mark['cost']['usageId']),
+                             (name, {}, 'claude-cli/model-a', f'openclaw:usage:liv:cli{index}:t1'))
+            self.assertEqual(self.cli_usage(f'cli{index}').keys(), {'t1'})
+        # Another CLI provider is never read from this log.
+        self.cli_session(session_id='other', binding='cli-1', key='agent:liv:slack:channel:c4:thread:1.1')
+        self.say('other', 1, 'o1', MILLION, provider='codex-cli', api='cli', when='2026-08-21T12:00:10.300Z')
+        self.build()
+        self.assertEqual(self.cli_usage('other')['o1']['cost']['tokens'], {})
+
+    def test_a_second_model_in_the_window_gets_its_own_report(self):
+        self.cli_session()
+        self.turn(1, 't1', '2026-08-21T12:00:10.300Z')
+        self.turn(2, 't2', '2026-08-21T12:01:10.300Z', model='model-b')
+        self.write_log('cli-1', [
+            self.call('m1', '2026-08-21T12:00:06Z', input_tokens=1_000_000),
+            self.call('m2', '2026-08-21T12:00:08Z', model='model-b', input_tokens=2_000_000),
+            self.call('m3', '2026-08-21T12:01:08Z', model='model-a', input_tokens=3_000_000)])
+        self.build()
+        usage = self.cli_usage()
+        self.assertEqual(sorted(usage), ['t1', 't1:model-b', 't2', 't2:model-a'])
+        self.assertEqual((usage['t1']['cost']['model'], usage['t1']['cost']['tokens']['input']), ('claude-cli/model-a', 1_000_000))
+        self.assertEqual((usage['t1:model-b']['cost']['model'], usage['t1:model-b']['cost']['tokens']['input'], usage['t1:model-b']['cost']['usageId']),
+                         ('claude-cli/model-b', 2_000_000, 'openclaw:usage:liv:cli:t1:model-b'))
+        # The turn's own model made no call in the window: its report stays the mark.
+        self.assertEqual((usage['t2']['cost']['model'], usage['t2']['cost']['tokens']), ('claude-cli/model-b', {}))
+        self.assertEqual((usage['t2:model-a']['cost']['model'], usage['t2:model-a']['cost']['tokens']['input']), ('claude-cli/model-a', 3_000_000))
+        self.assertEqual(self.build()[1], 0)
+
+    def test_an_archived_copy_or_a_lost_log_of_a_priced_turn_adds_nothing(self):
+        self.cli_session()
+        self.turn(1, 't1', '2026-08-21T12:00:10.300Z')
+        self.write_log('cli-1', [self.call('m1', '2026-08-21T12:00:08Z', input_tokens=1_000_000)])
+        before = self.build()[0]
+        self.assertEqual(self.amounts(before), {None: 1.0})
+        # The log passes its retention and state is lost: the live record is read again without calls.
+        shutil.rmtree(self.claude)
+        os.unlink(self.root / 'data/generated/sessions/state.json')
+        result, additions = self.build()
+        self.assertEqual((additions, self.amounts(result)), (0, {None: 1.0}))
+        # The host deletes the session; its archived transcript has no binding.
+        records = [json.loads(row[0]) for row in self.agent.execute("SELECT event_json FROM transcript_events WHERE session_id = 'cli' ORDER BY seq")]
+        for table, column in (('transcript_events', 'session_id'), ('session_windows', 'session_id'), ('session_nodes', 'current_session_id')):
+            self.agent.execute(f'DELETE FROM {table} WHERE {column} = ?', ('cli',))
+        self.archive('cli', self.CLI, records)
+        os.unlink(self.root / 'data/generated/sessions/state.json')
+        self.assertEqual(self.build()[1], 0)
+        self.assertEqual(sorted(self.cli_usage()), ['t1'])
+
+    def test_run_less_records_without_counts_share_one_mark_per_session(self):
+        self.node('agent:liv:subagent:old', 'old', {'status': 'done'})
+        for seq, when in enumerate(('2026-08-21T12:00:01Z', '2026-08-21T12:00:02Z', '2026-08-21T12:00:03Z'), 1):
+            self.say('old', seq, f'o{seq}', ZERO, when=when)
+        self.say('old', 4, 'o4', MILLION, when='2026-08-21T12:00:04Z')  # a counted record keeps its own report
+        self.build()
+        usage = self.cli_usage('old')
+        self.assertEqual(sorted(usage), ['o4', 'uncounted'])
+        self.assertEqual((usage['uncounted']['ts'], usage['uncounted']['runId'], usage['uncounted']['cost']['tokens']), ('2026-08-21T12:00:01Z', None, {}))
+        self.assertEqual(self.build()[1], 0)
+
+
+class ClaudeCallReaderTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = pathlib.Path(self.temp.name)
+
+    def lines(self, *rows, subagents=()):
+        main = self.root / 'projects' / 'some-dir' / 'cli-1.jsonl'
+        main.parent.mkdir(parents=True, exist_ok=True)
+        main.write_text('\n'.join(row if isinstance(row, str) else json.dumps(row) for row in rows) + '\n')
+        for index, rows_ in enumerate(subagents):
+            (main.parent / 'cli-1' / 'subagents').mkdir(parents=True, exist_ok=True)
+            (main.parent / 'cli-1' / 'subagents' / f'a{index}.jsonl').write_text('\n'.join(json.dumps(row) for row in rows_) + '\n')
+
+    def call(self, ident='m1', usage=None, **message):
+        usage = {'input_tokens': 1, 'output_tokens': 2, 'cache_read_input_tokens': 3, 'cache_creation_input_tokens': 7,
+                 'cache_creation': {'ephemeral_5m_input_tokens': 4, 'ephemeral_1h_input_tokens': 3}} if usage is None else usage
+        return {'type': 'assistant', 'timestamp': '2026-08-21T12:00:00Z', 'message': dict({'id': ident, 'model': 'model-a', 'usage': usage}, **message)}
+
+    def test_calls_are_the_last_line_per_id_across_files_and_never_carry_content(self):
+        self.lines('', self.call('m1', usage={'input_tokens': 9}), self.call('m1'), {'type': 'user', 'message': {'content': 'SYNTHETIC PRIVATE'}},
+                   self.call('s', model='<synthetic>'), self.call('m2', content='SYNTHETIC PRIVATE'), subagents=[[self.call('m3')]])
+        calls = MODULE.read_calls(self.root, 'cli-1')
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(calls[0][1:], ('model-a', {'input': 1, 'output': 2, 'cacheRead': 3, 'cacheWrite': 4, 'cacheWrite1h': 3}))
+        self.assertNotIn('SYNTHETIC PRIVATE', repr(calls))
+        self.assertEqual(calls[0][0].isoformat(), '2026-08-21T12:00:00+00:00')
+
+    def test_a_call_with_unusable_counts_is_reported_unusable(self):
+        good = self.call()['message']['usage']
+        broken = [dict(good, input_tokens=-1), dict(good, output_tokens=True), dict(good, cache_read_input_tokens=1.5), dict(good, cache_creation_input_tokens=8),
+                  {key: value for key, value in good.items() if key != 'cache_creation'}, dict(good, cache_creation={'ephemeral_5m_input_tokens': 7}),
+                  {key: value for key, value in good.items() if key != 'input_tokens'}, 'text']
+        self.lines(*[self.call(f'b{index}', usage=usage) for index, usage in enumerate(broken)], self.call('ok'))
+        calls = MODULE.read_calls(self.root, 'cli-1')
+        self.assertEqual([tokens is None for _, _, tokens in calls], [True] * len(broken) + [False])
+
+    def test_no_log_no_calls(self):
+        self.assertEqual(MODULE.read_calls(self.root, 'cli-1'), [])
+        self.assertEqual(MODULE.read_calls(self.root / 'absent', 'cli-1'), [])
+        self.assertEqual(MODULE.read_calls(None, 'cli-1'), [])
+        self.lines(self.call())
+        for ident in ('../cli-1', '', None, 'a/b'):
+            self.assertEqual(MODULE.read_calls(self.root, ident), [])
 
 
 class CanonicalSessionReaderTest(unittest.TestCase):

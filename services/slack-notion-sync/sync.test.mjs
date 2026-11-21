@@ -265,6 +265,8 @@ test("formats timestamps and session stats from primary sources", () => {
     { details: messages },
   );
   assert.equal(stats, "2 sessions · 42 msgs · 1h 20m · $0.84");
+  const estimated = sessionStats({ runtimeMs: 0, spend: [{ estimated: 1.5, currency: "USD" }, { unavailable: 2 }], events: [] }, 0);
+  assert.equal(estimated, "1 session · 1 msg · <1m · $1.50 list-price equivalent");
 });
 
 test("preserves status changed while status is stable and updates it on transition", () => {
