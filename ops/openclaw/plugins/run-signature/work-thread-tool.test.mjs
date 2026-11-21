@@ -6,12 +6,17 @@ import {registerWorkThreadTool} from "./work-thread-tool.mjs";
 // OpenClaw counts `subagent:` segments in a session key to classify a worker.
 const isSubagentShaped = (key) => /(^|:)subagent:/i.test(String(key).replace(/^agent:[^:]+:/i, ""));
 
-function harness({run} = {}) {
+function harness({run, register} = {}) {
   let factory;
   const sends = [];
   const runs = [];
   const routes = [];
   const patches = [];
+  const events = [];
+  const checkBacks = {
+    async register(key) { events.push(`register:${key}`); await register?.(key); },
+    async remove(key) { events.push(`remove:${key}`); },
+  };
   const workThreadPosts = new Set();
   const api = {
     config: {channels: {slack: {accounts: {max: {}}}}},
@@ -31,7 +36,7 @@ function harness({run} = {}) {
         }},
       },
       subagent: {
-        run: run ?? (async (params) => { runs.push(params); return {runId: "work-run", sessionKey: params.sessionKey}; }),
+        run: run ?? (async (params) => { events.push("run"); runs.push(params); return {runId: "work-run", sessionKey: params.sessionKey}; }),
         waitForRun() { throw new Error("work threads must not wait on a setup run"); },
       },
       agent: {session: {async patchSessionEntry(params) {
@@ -45,6 +50,7 @@ function harness({run} = {}) {
     resolveSlackRuntimeModule: () => new URL("./host-close.test-accounts.mjs", import.meta.url).pathname,
     retrySlackRateLimit: (task) => task(),
     workThreadPosts,
+    checkBacks,
   });
   const tool = factory.create({
     messageChannel: "slack",
@@ -53,7 +59,7 @@ function harness({run} = {}) {
     agentAccountId: "max",
     sessionKey: "agent:max:slack:channel:c123456:thread:1792415000.000001",
   });
-  return {tool, sends, runs, routes, patches, workThreadPosts};
+  return {tool, sends, runs, routes, patches, workThreadPosts, events};
 }
 
 test("starts Slack work in the thread's own root session without privileged gateway RPC", async () => {
@@ -115,4 +121,28 @@ test("reports a run that does not start", async () => {
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /admission rejected/);
   assert.deepEqual(patches, []);
+});
+
+test("registers the thread's check-back before its first turn starts", async () => {
+  const {tool, events, runs} = harness();
+  await tool.execute("tool-call-4", {title: "Fix: check-backs", summary: "Registering it.", detail: "Register first."});
+
+  assert.deepEqual(events, [`register:${runs[0].sessionKey}`, "run"]);
+});
+
+test("a thread whose check-back cannot be registered starts no session", async () => {
+  const {tool, events, patches} = harness({register: async () => { throw new Error("registry unwritable"); }});
+  const result = await tool.execute("tool-call-5", {title: "Fix: check-backs", summary: "Registering it.", detail: "Fail closed."});
+
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /registry unwritable/);
+  assert.equal(events.includes("run"), false);
+  assert.deepEqual(patches, []);
+});
+
+test("a first turn that fails to start does not leave a registered thread behind", async () => {
+  const {tool, events} = harness({run: async () => { throw new Error("admission rejected"); }});
+  await tool.execute("tool-call-6", {title: "Fix: check-backs", summary: "Registering it.", detail: "Clean up."});
+
+  assert.match(events.at(-1), /^remove:/);
 });

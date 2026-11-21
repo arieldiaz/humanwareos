@@ -2,7 +2,7 @@
 
 How a root agent turns a conversation into coordinated work. Layer 2 spec — see [agent-context-hierarchy.md](docs/agent-context-hierarchy.md).
 
-Status: build steps 2 and 3 are implemented; the other steps are proposed.
+Status: build steps 2 and 3 are implemented, and step 6 for Slack work threads; the other steps are proposed.
 
 Budget: 1,100 words. Over it, consolidate.
 
@@ -26,7 +26,7 @@ A root agent is the identity leading a conversation. It plans, splits work into 
 
 A root agent never delegates: a decision made with the human, a commitment made on the human's behalf, anything sent outside the system, a memory or rule promotion, a merge, or a production change. Workers prepare these; the root, under the human's authority, performs them.
 
-Delegated work that outlives the run receives the durable scheduled check the framework rules already require. That check is rung-one code.
+Delegated work that outlives the run receives the durable scheduled check the framework rules already require. That check is rung-one code: in a Slack work thread the `run-signature` plugin watches linked pull requests and CI and wakes the thread only on a change or a `check_back` deadline.
 
 ## Workers
 
@@ -60,24 +60,24 @@ Every spawned run is recorded in the session ledger by the adapter that observed
 - `run.completed`: outcome, result reference, verification outcome, duration, token usage, and cost.
 - `delegation.requested` and `delegation.decided`: the requesting worker, the proposed brief, the deciding root run, and the decision.
 
-A child's tool, write, model, and cost events carry its run identifier and so attach to the tree. Cost rolls up from leaf to root session by summation over observed events; a missing cost stays unavailable, never estimated. Provider-visible reasoning summaries are recorded where the provider exposes them, under the existing trace-level rule.
+A child's tool, write, model, and cost events carry its run identifier and attach to the tree. Cost sums from leaf to root over observed events; a missing cost stays unavailable, never estimated. Provider-visible reasoning summaries are recorded under the existing trace-level rule.
 
-A harness transcript is a resumption cache, not a record. Once a session's events are imported into the ledger and the import is verified, its harness transcript is retained for the instance's configured window, seven days by reference, then pruned by code.
+A harness transcript is a resumption cache, not a record. Once a session's events are verified as imported into the ledger, its transcript is retained for the instance's configured window, seven days by reference, then pruned by code.
 
 ## Summaries
 
-Both human-facing summaries are projections generated from the ledger by code, not written from a model's recollection.
+Both human-facing summaries are generated from the ledger by code, not from a model's recollection.
 
 - **Conversation summary.** Posted with a final that asks for a decision, reports a blocker, or completes the objective: objective, state, decisions made, worker runs as a count with total cost, what is open, and the next move. It links to the session page rather than repeating it.
 - **Session page.** The permanent view on the private domain: the full run tree, and for each run its brief, profile, actions, reasoning summaries, files, pull requests, verification, and cost.
 
 ## Promotion to code
 
-When workers have performed the same procedure three times, the root proposes a rung-one function for it through normal review. The ledger's run history is the evidence for the proposal.
+When workers have performed the same procedure three times, the root proposes a rung-one function for it through normal review, citing the ledger's run history.
 
 ## Outside assistants
 
-Quick-answer assistants outside the system stay outside. A later slice may export a privacy-filtered briefing to them and capture their conversations into the evidence inbox. They never receive live memory access.
+Quick-answer assistants outside the system stay outside and never receive live memory access. A later slice may export a privacy-filtered briefing and capture their conversations into the evidence inbox.
 
 ## Build order
 

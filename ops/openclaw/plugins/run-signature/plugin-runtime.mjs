@@ -11,6 +11,7 @@ import {
 } from "./strip-core.mjs";
 import {registerWorkThreadTool} from "./work-thread-tool.mjs";
 import {registerHostClose} from "./host-close.mjs";
+import {CheckBacks, registerCheckBack} from "./check-back.mjs";
 import {registerThreadLead} from "./thread-lead.mjs";
 import {registerSwitchModelTool} from "./switch-model-tool.mjs";
 import {installHumanStatusEventBridge} from "./human-status-events.mjs";
@@ -275,8 +276,15 @@ const plugin = {
       }
       return ids;
     };
-    registerWorkThreadTool(api, {resolveSlackRuntimeModule, retrySlackRateLimit, workThreadPosts});
-    registerHostClose(api, {isExcludedChannel, recordRunLifecycle, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi});
+    // Mutable runtime state, so it follows the data-plane rule for shared control state: operations/. Without a
+    // resolvable data root it sits beside the fault journal, in the plugin's own state directory.
+    const checkBacks = new CheckBacks({
+      path: dataRoot ? join(dataRoot, "operations", "run-signature", "check-backs.json") : join(STATE_ROOT, "run-signature", "check-backs.json"),
+      warn: (message) => api.logger?.warn?.(message),
+    });
+    registerWorkThreadTool(api, {resolveSlackRuntimeModule, retrySlackRateLimit, workThreadPosts, checkBacks});
+    const lifecycle = registerHostClose(api, {isExcludedChannel, recordRunLifecycle, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi, checkBacks});
+    registerCheckBack(api, {checkBacks, lifecycle, appendFaultJournal});
     api.registerTool?.({contextVersion: 2, create: context => setThreadStatusTool(context, {dataRoot})}, {name: "set_thread_status"});
     registerSwitchModelTool(api);
     registerThreadLead(api, {isExcludedChannel, botUserIds: slackBotUserIds});

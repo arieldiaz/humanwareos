@@ -22,7 +22,7 @@ const FALLBACK_PRICES = {
   "claude-opus-5-5": {input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5},
   "claude-opus-5": {input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25},
 };
-const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/g;
+export const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/g;
 
 export function measureSlackThread(messages = []) {
   const ordered = messages.filter((message) => message?.ts).toSorted((a, b) => Number(a.ts) - Number(b.ts));
@@ -133,16 +133,14 @@ export function estimateApiCost(usages = [], prices = FALLBACK_PRICES) {
   return {usd, partial: unpriced};
 }
 
+// The one `gh pr view` reader. The close report and the thread check-back both read through it.
+export async function readPullRequest(url, run = promisify(execFile)) {
+  const {stdout} = await run("gh", ["pr", "view", url, "--json", "number,state,additions,deletions,changedFiles,statusCheckRollup,reviewDecision"], {timeout: 10000});
+  return {url, ...JSON.parse(stdout)};
+}
+
 export async function loadPullRequests(urls = [], run = promisify(execFile)) {
-  return Promise.all(urls.map(async (url) => {
-    const number = Number(url.split("/").at(-1));
-    try {
-      const {stdout} = await run("gh", ["pr", "view", url, "--json", "number,state,additions,deletions,changedFiles"], {timeout: 10000});
-      return {url, ...JSON.parse(stdout)};
-    } catch {
-      return {url, number};
-    }
-  }));
+  return Promise.all(urls.map((url) => readPullRequest(url, run).catch(() => ({url, number: Number(url.split("/").at(-1))}))));
 }
 
 function compact(n) {

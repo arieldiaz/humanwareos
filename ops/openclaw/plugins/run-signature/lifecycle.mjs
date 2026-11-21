@@ -3,14 +3,19 @@ import {slackRoute, slackRouteKey} from './slack-route.mjs';
 // Run lifecycle is internal evidence. Slack root status is separate,
 // human-authored workflow data and is never written from this class.
 export class ThreadLifecycle {
-  constructor({record, report, excluded = () => false}) {
-    Object.assign(this, {record, report, excluded});
+  constructor({record, report, closed = async () => {}, excluded = () => false}) {
+    Object.assign(this, {record, report, closed, excluded});
     this.runs = new Map(); // run key → running turn
     this.latest = new Map(); // conversation → latest admitted run or close
   }
   route(sessionKey) {
     const route = slackRoute({sessionKey});
     return route && !this.excluded(route.channel) ? route : undefined;
+  }
+  isRunning(sessionKey) {
+    const route = this.route(sessionKey);
+    const conversation = route && slackRouteKey(route);
+    return Boolean(conversation) && [...this.runs.values()].some(turn => turn.conversation === conversation);
   }
   async start({sessionKey, runId}) {
     const route = this.route(sessionKey);
@@ -36,6 +41,7 @@ export class ThreadLifecycle {
     const turn = {key: `${conversation}:close`, route, conversation, sessionKey, accountId};
     this.latest.set(conversation, turn.key);
     await this.record({...turn, status: 'closed'});
+    await this.closed(turn);
     await this.report(turn);
   }
   async settle(turn, status) {

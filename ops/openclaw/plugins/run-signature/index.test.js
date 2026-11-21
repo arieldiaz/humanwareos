@@ -51,7 +51,7 @@ test("registers the Slack workflow tools with the thread's root session", () => 
       tools.push({ factory, options });
     },
   });
-  assert.deepEqual(tools.map(tool => tool.options.name), ["start_work_thread", "close_thread", "set_thread_status", "switch_model"]);
+  assert.deepEqual(tools.map(tool => tool.options.name), ["start_work_thread", "close_thread", "check_back", "set_thread_status", "switch_model"]);
   const manifest = JSON.parse(readFileSync(new URL("./openclaw.plugin.json", import.meta.url), "utf8"));
   assert.deepEqual(manifest.contracts.tools, tools.map(tool => tool.options.name));
   assert.equal(tools[0].factory.contextVersion, 2);
