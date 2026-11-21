@@ -117,7 +117,7 @@ test('dictation fallback posts text instead of audio', () => {
   assert.deepEqual(items(byId(workflow, 'downloadurl')[0].WFWorkflowActionParameters.WFFormValues).map(key), ['text', 'deviceName', 'deviceModel', 'capturedAt', 'shortcutVersion']);
 });
 
-test('the version is visible in the editor, the file name, and every upload', () => {
+test('the version is visible in the editor and every upload, never the name', () => {
   for (const mode of ['record', 'dictate']) {
     const workflow = buildShortcut({url: URL, mode, built: BUILT});
     const [first] = workflow.WFWorkflowActions;
@@ -127,7 +127,7 @@ test('the version is visible in the editor, the file name, and every upload', ()
     assert.equal(version.WFValue.Value.string, String(SHORTCUT_VERSION));
   }
   assert.match(buildShortcut({url: URL}).WFWorkflowActions[0].WFWorkflowActionParameters.WFCommentActionText, / · built \d{4}-\d{2}-\d{2} · /, 'defaults to the build date');
-  assert.deepEqual([shortcutFileName('record', '.unsigned'), shortcutFileName('dictate')], [`Voice Intake v${SHORTCUT_VERSION}.unsigned.shortcut`, `Voice Intake (Dictation) v${SHORTCUT_VERSION}.shortcut`]);
+  assert.deepEqual([shortcutFileName('record', '.unsigned'), shortcutFileName('dictate')], ['Voice Intake.unsigned.shortcut', 'Voice Intake (Dictation).shortcut']);
 });
 
 // The recorded digest covers both generated variants with the volatile build
