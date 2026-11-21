@@ -38,6 +38,7 @@
         }
       },
       "heartbeat": {
+        "every": "0m",
         "target": "none",
         "directPolicy": "block"
       },
