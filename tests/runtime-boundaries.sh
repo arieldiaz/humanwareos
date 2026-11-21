@@ -33,7 +33,6 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -x "$RUNTIME/current/framework/scripts/runtime-restart-guard.sh" ]
 [ -x "$RUNTIME/current/framework/scripts/apply-openclaw-patches.sh" ]
 [ -x "$RUNTIME/current/framework/ops/openclaw/runtime/secret-exec.sh" ]
-[ -x "$RUNTIME/current/framework/ops/openclaw/runtime/cursor-agent-launch.sh" ]
 [ -f "$RUNTIME/current/framework/ops/openclaw/slack-spin-out.mjs" ]
 [ -f "$RUNTIME/current/framework/scripts/openclaw-agent-entries.mjs" ]
 [ -f "$RUNTIME/current/config/openclaw/openclaw.json" ]

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "defaultProfile": "codex-medium",
-  "allowedProfiles": ["cursor-agent-low", "cursor-agent-high", "codex-low", "codex-medium", "codex-high", "codex-astra-high", "claude-sonnet-high", "claude-fable-high"],
+  "allowedProfiles": ["codex-low", "codex-medium", "codex-high", "codex-astra-high", "claude-sonnet-high", "claude-fable-high"],
   "agents": {
     "liv": {
       "defaultProfile": "claude-fable-high",
