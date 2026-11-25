@@ -72,6 +72,10 @@ DEPENDENCY_BUILD=$(printf '%s\n' "$DEPENDENCY_OUTPUT" | sed -n 's/^build-runtime
 [ ! -e "$DEPENDENCY_BUILD/config/services/openclaw" ]
 [ ! -e "$DEPENDENCY_BUILD/config/services/openclaw.json" ]
 [ ! -e "$DEPENDENCY_BUILD/config/ops" ]
+# Every module an ops program imports from ops/lib must ship with it, so a build never
+# starts a job that fails on import (the 2026-11-25 session page outage).
+for lib in "$FRAMEWORK"/ops/lib/*.py; do [ -f "$DEPENDENCY_BUILD/framework/ops/lib/$(basename "$lib")" ]; done
+[ -f "$DEPENDENCY_BUILD/framework/ops/session-records/session_records.py" ]
 
 # Activation reloads Caddy with the activated Caddyfile and reports reload failure.
 mkdir -p "$INSTANCE/services/caddy"
