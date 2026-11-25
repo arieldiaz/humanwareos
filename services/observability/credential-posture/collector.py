@@ -9,6 +9,7 @@ import sys
 import urllib.error
 import urllib.request
 from collections import Counter, defaultdict
+from auth_health import check_claude, notify
 from datetime import datetime, timezone
 
 
@@ -53,6 +54,9 @@ def validate_config(config):
         raise RuntimeError("config schemaVersion must be 1")
     if not isinstance(config.get("doppler", {}).get("scopes"), list):
         raise RuntimeError("config doppler.scopes must be a list")
+    for check in config.get("claudeChecks", []):
+        if not check.get("id") or not os.path.isabs(check.get("command", "")):
+            raise RuntimeError("Claude checks require an id and absolute command")
     for check in config.get("checks", []):
         missing = [key for key in ("id", "provider", "credentialEnv") if not check.get(key)]
         if missing:
@@ -312,6 +316,14 @@ def build_snapshot(config, register, discoveries, doppler_sources, checks, now=N
                 f"{source['project']}/{source['config']} is unavailable ({source.get('error', 'unknown error')}).",
                 action="Restore read access and rerun the collector."))
 
+    for check in checks:
+        if check.get("provider") == "claude-cli" and check["state"] != "locally_authenticated":
+            findings.append(finding(
+                "high" if check["state"] == "auth_failed" else "medium",
+                "claude-auth-" + check["state"], "Claude CLI authentication needs attention",
+                f"{check['id']} local status: {check['state']}.",
+                action="Inspect the service authentication context; preserve existing credentials."))
+
     severity = Counter(item["severity"] for item in findings)
     status = "critical" if severity["high"] else "attention" if severity["medium"] else "healthy"
     summary = {
@@ -371,6 +383,7 @@ def main():
         validate_register(register)
         discoveries, sources = discover_doppler(config)
         checks = [check_provider(check) for check in config.get("checks", [])]
+        checks.extend(check_claude(check) for check in config.get("claudeChecks", []))
         snapshot = build_snapshot(config, register, discoveries, sources, checks)
     except RuntimeError as error:
         print(f"credential-posture: {error}", file=sys.stderr)
@@ -381,6 +394,13 @@ def main():
     else:
         atomic_write(output, snapshot)
         print(f"credential-posture: wrote {output} ({snapshot['summary']['status']})")
+    if config.get("authNotifications") and not args.stdout:
+        try:
+            notify(config["authNotifications"], checks, os.path.join(
+                data_root, "operations", "credential-posture", "notifications.json"))
+        except (RuntimeError, OSError, ValueError):
+            print("credential-posture: authentication notification failed", file=sys.stderr)
+            return 2
     # Findings are observed posture, not collector failure. The scheduled job
     # succeeds when it produced a complete atomic snapshot; the dashboard owns
     # the critical/attention state.
