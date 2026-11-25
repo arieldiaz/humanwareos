@@ -49,8 +49,8 @@ Memory evidence is append-only under `$HUMANWARE_DATA_ROOT/evidence/memory/event
 An observation never silently becomes a rule.
 
 1. Apply one-off feedback to the active task.
-2. Record relevant evidence or a personal fact in the data plane.
-3. If the behavior should recur, propose a diff at the owning source layer.
+2. Record relevant evidence or a personal fact in the data plane; separate factual context from proposed procedure before updating current memory.
+3. If the behavior should recur, locate its authoritative owner and implement the authorized correction there, replacing conflicting text rather than adding a parallel rule. Evidence capture alone does not complete a requested behavior change; completion follows the authorized outcome, with source-ready and runtime-active states distinguished.
 4. Reusable behavior changes Humanware OS through review.
 5. Private approved behavior changes the instance through review.
 6. Rebuild the runtime after merge; do not patch a generated prompt.

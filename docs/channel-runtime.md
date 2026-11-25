@@ -1,6 +1,6 @@
 # Channels, agents, and execution profiles
 
-Humanware OS separates durable agent identity from conversation channel, execution harness, model, permission profile, and writable workspace.
+Humanware OS separates identity, channel, harness, model, permissions, and workspace.
 
 Budget: 1,100 words. Over it, consolidate.
 
@@ -14,7 +14,7 @@ An adapter converts inbound events into canonical account, conversation, thread,
 
 Liv and Max are durable identity templates with separate role, voice, authority, memory scope, and channel account. An instance may overlay names and private preferences. Identity does not select one permanent harness or model.
 
-Both identities receive the same approved execution-profile catalog unless an explicit security boundary narrows one. A profile difference must be visible policy, not an incidental command-line flag hidden in one agent definition.
+Both identities share an approved execution-profile catalog unless security boundaries narrow it. Profile differences are visible policy, not hidden per-agent command-line flags.
 
 A Slack thread has one in-memory lead so multiple identities cannot answer the same human turn or wake each other into a loop. A deliberate human mention switches the lead; otherwise the current lead continues, or the instance default answers when no lead is known. If a message mentions multiple agents, the current lead or default answers once. Agent-authored Slack messages are context, never triggers. A lead may ask another identity for one internal response when the human requests collaboration; that consultation does not publish independently. Restarting the control plane forgets the in-memory lead and returns the thread to the configured default until the human mentions another identity.
 
@@ -68,4 +68,6 @@ The adapter owns surface publication and appends provenance after confirmed deli
 
 ## Health
 
-Health is measured per boundary: adapter connection, control-plane stability, identity routing, profile availability, headless model authentication, workspace access, tool policy, and delivery. One optional harness or channel may be degraded without marking the agent core unavailable. A canary names the selected identity and profile, effective reasoning and fast mode, first-response latency, and delivered provenance so a healthy native check cannot mask a broken ACP route.
+Health is measured per boundary: adapter connection, control-plane stability, identity routing, profile availability, headless model authentication, workspace access, tool policy, and delivery. Optional channel degradation does not imply core failure. A canary names the selected identity and profile, effective reasoning and fast mode, first-response latency, and delivered provenance so a healthy native check cannot mask a broken ACP route.
+
+Operational notifications deduplicate incident fingerprints and report opened, materially changed, or resolved states; routine successes and retries remain in private traces.
