@@ -79,7 +79,7 @@ def _canonical_sessions_present(path, agent_id):
         return True
 
 
-def _zstd_decompress(blobs):
+def zstd_decompress(blobs):
     """Decode OpenClaw's zstd transcript payloads; system Python lacks zstd, Node has it."""
     if not blobs:
         return []
@@ -93,6 +93,8 @@ def _zstd_decompress(blobs):
     except (OSError, subprocess.SubprocessError) as error:
         raise SessionStoreError("Cannot decode compressed transcript payload") from error
     return json.loads(result.stdout)
+
+
 
 
 def _object(raw, label):
@@ -128,7 +130,7 @@ _SLACK_SESSION_KEY = re.compile(
 )
 
 
-def _session_key_fields(session_key):
+def session_key_fields(session_key):
     """Recover stable Slack identity from the canonical logical key."""
     match = _SLACK_SESSION_KEY.match(str(session_key or ""))
     if not match:
@@ -139,6 +141,21 @@ def _session_key_fields(session_key):
         "groupId": match.group(1).upper(),
         "lastThreadId": match.group(2),
     }
+
+
+def logical_session_id(agent_id, session_key, entry):
+    """The ledger's logical session: one Slack thread across windows and agents, else one window.
+
+    `entry` is an iter_sessions entry, or `session_key_fields(key)` plus sessionId for a row without one.
+    """
+    origin = entry.get("origin") or {}
+    channel_id = str(entry.get("groupId") or origin.get("nativeChannelId") or "").upper()
+    thread_id = str(entry.get("lastThreadId") or ((entry.get("route") or {}).get("thread") or {}).get("id") or "")
+    slack = (":slack:" in str(session_key or "") or "slack" in (entry.get("channel"), entry.get("lastChannel"))
+             or "slack" in (origin.get("provider"), origin.get("surface")))
+    return f"slack:{channel_id}:{thread_id}" if slack and channel_id and thread_id else f"openclaw:{agent_id}:{entry.get('sessionId')}"
+
+
 
 
 def _window_fields(window):
@@ -175,7 +192,7 @@ def iter_sessions(state_root, agent_id, *, include_history=False):
                 current_window = connection.execute("SELECT * FROM session_windows WHERE session_id = ?", (row["current_session_id"],)).fetchone()
                 if current_window:
                     entry.update(_window_fields(current_window))
-                for key, value in _session_key_fields(row["session_key"]).items():
+                for key, value in session_key_fields(row["session_key"]).items():
                     entry.setdefault(key, value)
                 entry["sessionFile"] = _marker(path, agent_id, entry["sessionId"])
                 yield row["session_key"], entry
@@ -186,7 +203,7 @@ def iter_sessions(state_root, agent_id, *, include_history=False):
                     continue
                 historical = {key: entry[key] for key in _HISTORY_FIELDS if key in entry}
                 historical.update(_window_fields(window))
-                for key, value in _session_key_fields(row["session_key"]).items():
+                for key, value in session_key_fields(row["session_key"]).items():
                     historical.setdefault(key, value)
                 historical["sessionId"] = window["session_id"]
                 historical["sessionFile"] = _marker(path, agent_id, window["session_id"])
@@ -200,13 +217,8 @@ def iter_transcript_records(state_root, agent_id, entry):
     """
     path = database_path(state_root, agent_id)
     if _canonical_sessions_present(path, agent_id):
-        with _database(path) as connection:
-            compressed = any(row["name"] == "event_zstd" for row in connection.execute("PRAGMA table_info(transcript_events)"))
-            columns = "event_json, event_zstd" if compressed else "event_json, NULL AS event_zstd"
-            rows = connection.execute(f"SELECT {columns} FROM transcript_events WHERE session_id = ? ORDER BY seq", (entry["sessionId"],)).fetchall()
-        decoded = iter(_zstd_decompress([row["event_zstd"] for row in rows if row["event_json"] is None]))
-        for row in rows:
-            yield _object(row["event_json"] if row["event_json"] is not None else next(decoded), "transcript event")
+        for _, text in iter_transcript_texts(state_root, agent_id, entry["sessionId"]):
+            yield _object(text, "transcript event")
         return
     session_file = entry.get("sessionFile")
     if session_file and str(session_file).startswith("sqlite:"):
@@ -225,6 +237,40 @@ def iter_transcript_records(state_root, agent_id, entry):
                 continue
             if isinstance(record, dict):
                 yield record
+
+
+def iter_transcript_texts(state_root, agent_id, session_id, *, max_seq=None):
+    """Yield (seq, event JSON text exactly as stored, decompressed) for one canonical session window."""
+    path = database_path(state_root, agent_id)
+    if not _canonical_sessions_present(path, agent_id):
+        return
+    with _database(path) as connection:
+        compressed = any(row["name"] == "event_zstd" for row in connection.execute("PRAGMA table_info(transcript_events)"))
+        columns = "seq, event_json, event_zstd" if compressed else "seq, event_json, NULL AS event_zstd"
+        bound = "" if max_seq is None else " AND seq <= ?"
+        rows = connection.execute(f"SELECT {columns} FROM transcript_events WHERE session_id = ?{bound} ORDER BY seq",
+                                  (session_id,) if max_seq is None else (session_id, max_seq)).fetchall()
+    decoded = iter(zstd_decompress([row["event_zstd"] for row in rows if row["event_json"] is None]))
+    for row in rows:
+        yield row["seq"], row["event_json"] if row["event_json"] is not None else next(decoded)
+
+
+def iter_transcript_archives(state_root, agent_id, *, archive_name=None, blobs=True):
+    """Yield archived (deleted or reset) transcript rows, with their stored blob unless `blobs` is false, oldest first."""
+    path = database_path(state_root, agent_id)
+    if not _canonical_sessions_present(path, agent_id):
+        return
+    with _database(path) as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "session_transcript_archives" not in tables:
+            return
+        where = "" if archive_name is None else " WHERE archive_name = ?"
+        blob = "archive_blob" if blobs else "NULL AS archive_blob"
+        rows = connection.execute("SELECT session_id, session_key, reason, encoding, archive_name, archive_sha256, created_at, length(archive_blob) AS archive_bytes, "
+                                  f"{blob} FROM session_transcript_archives{where} ORDER BY created_at, archive_name",
+                                  () if archive_name is None else (archive_name,)).fetchall()
+    for row in rows:
+        yield dict(row, archive_blob=None if row["archive_blob"] is None else bytes(row["archive_blob"]))
 
 
 def iter_assistant_records(state_root, agent_id, cursors, archives):
@@ -274,7 +320,7 @@ def iter_assistant_records(state_root, agent_id, cursors, archives):
                     archives.append(row["archive_name"])
                     text = None if row["encoding"] == "zstd" else bytes(row["archive_blob"]).decode("utf-8", errors="replace")
                     found.append((row["session_id"], row["session_key"], text, row["archive_blob"], True, False))
-    decoded = iter(_zstd_decompress([blob for _, _, text, blob, _, _ in found if text is None]))
+    decoded = iter(zstd_decompress([blob for _, _, text, blob, _, _ in found if text is None]))
     for session_id, session_key, text, _, is_jsonl, after_tool in found:
         text = text if text is not None else next(decoded)
         for raw in (text.split("\n") if is_jsonl else [text]):

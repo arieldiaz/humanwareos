@@ -16,7 +16,7 @@ data-root/
 └── operations/      shared control state, cache, backups, migrations, and restore evidence
 ```
 
-These six parents express storage semantics, independent of privacy tiers and of the four context layers: framework and identity context live in source/runtime, while approved current projections enter Layer 4.
+These six parents express storage semantics, independent of privacy tiers and context layers; approved current projections enter Layer 4.
 
 The instance declares `dataRoot`; framework code never hardcodes a username or machine path.
 
@@ -24,13 +24,13 @@ The instance declares `dataRoot`; framework code never hardcodes a username or m
 
 Raw stream events are immutable. A correction is a new event that references and supersedes the earlier event.
 
-Memory evidence follows the same rule. An agent appends a learned fact or decision with its source and confidence under `evidence/memory/events`. `current/memory` is a curated projection over those events. It may merge, replace, or omit stale facts because its history remains recoverable from events. This keeps daily context small without rewriting evidence.
+Memory evidence follows the same rule. An agent appends a learned fact or decision with its source and confidence under `evidence/memory/events`. `current/memory` is a curated projection over those events. It may merge, replace, or omit stale facts because events keep the history, so daily context stays small without rewriting evidence.
 
 Strategy uses the same shape: agents load `current/strategy/current.md`, while changes append a dated decision event under `evidence/memory/events` that preserves why the projection changed.
 
 ## Working documents
 
-Working documents are mutable and owned by a project or conversation. They use automatic filesystem snapshots or content revisions, not Git PRs. A workspace manifest records its owner, originating session, creation time, current status, source references, and promoted outputs. Two live sessions do not write the same workspace without an explicit handoff. A workspace is scratch: once its outputs are promoted it may be deleted.
+Working documents are mutable and owned by a project or conversation. They use automatic filesystem snapshots or content revisions, not Git PRs. A workspace manifest records owner, originating session, status, sources, and promoted outputs. Two live sessions do not write the same workspace without an explicit handoff. A workspace is scratch: once its outputs are promoted it may be deleted.
 
 ## Artifacts and derived data
 
@@ -40,21 +40,23 @@ Promotion fails closed in this order: validate the staged candidate, install the
 
 Derived files are reproducible and may be overwritten or discarded. Every durable derived item records the source event identifiers, model or tool, schema version, and creation time so it can be rebuilt honestly.
 
-Imports preserve an external corpus exactly as received, including its original relative paths and a checksum manifest. A pre-consolidation repository tree belongs here when it is useful for later inspection or search but is no longer source configuration.
+Imports preserve an external corpus exactly as received, with its original relative paths and a checksum manifest. So does a retired repository tree kept for inspection.
 
 ## Locating things
 
-Agents find data-plane items by their identifiers, never by searching the home folder. `artifact_manager.py locate artifact <project>/<n>[/versions/<k>]` prints the canonical revision directory for an artifact address from the registry; artifacts have no per-project working path. `artifact_manager.py locate media <filename>` prints a generated media file from `generated/media/`. Both exit nonzero when nothing matches.
+Agents find data-plane items by identifier, never by searching the home folder. `artifact_manager.py locate artifact <project>/<n>[/versions/<k>]` prints the canonical revision directory for an artifact address from the registry; artifacts have no per-project working path. `artifact_manager.py locate media <filename>` prints a generated media file from `generated/media/`. Both exit nonzero when nothing matches.
 
 ## Sessions
 
-Channels are inputs to the session ledger, not durable memory. A canonical conversation event records channel adapter, external thread identifier, agent identity, selected execution profile, timestamps, attachments, delivery result, and internal run lifecycle. Observed human root status is a separate fact with its source event or reconciliation provenance. A channel export may preserve the surface transcript, but memory promotion is a separate deliberate operation.
+Channels are inputs to the session ledger, not durable memory. A canonical conversation event records the channel adapter, external thread, agent, execution profile, timestamps, attachments, delivery result, and run lifecycle. Observed human root status is a separate fact with its source event or reconciliation provenance. Memory promotion from any transcript is a separate deliberate operation.
 
-The canonical metadata ledger is append-only JSONL under `evidence/sessions/events/` and conforms to `schemas/session-event.schema.json`. Stable event identifiers make adapters idempotent. Worker runs come from the host's run registry and observed token counts from transcripts and CLI logs, never worker self-reports. Harness-specific sanitized traces remain Tier 0 evidence under `evidence/sessions/raw`; normalized events retain a bounded source reference. Generated session records and views are rebuildable, never authorities. Activity remains a metadata-only cross-session index.
+The canonical metadata ledger is append-only JSONL under `evidence/sessions/events/` and conforms to `schemas/session-event.schema.json`. Stable event identifiers make adapters idempotent. Worker runs come from the host's run registry and token counts from transcripts and CLI logs, never self-reports. Harness-specific sanitized traces remain Tier 0 evidence under `evidence/sessions/raw`; normalized events retain a bounded source reference. Generated session views are rebuildable, never authorities. Activity remains a metadata-only cross-session index.
 
-The private domain is the operational home for sessions. Its derived view may show objective, owner, channel, model, harness, status, elapsed time, the worker run tree with rolled-up cost, actions, bounded outputs, errors, retries, files, reviews, and deployments. Chat surfaces receive completion summaries, not the execution stream.
+Each session's full record is one folder, `evidence/sessions/<yyyy>/<mm>/<session-id>/`, keyed by logical session and UTC start month: `session.json` (ids, agents, models, and every copied source's size, hash, and verification), the normalized `transcript.jsonl`, byte-exact tool transcripts in `tools/`, `usage.json` from the ledger, and `notes/` snapshots. Copies are never deleted. Once a copy is verified, tool storage is temporary and holds no authority.
 
-Trace levels are `normal` (deliberate checkpoints and outcomes), `verbose` (sanitized tool activity and provider-visible reasoning summaries), and `forensic` (normalized event types and raw-evidence references). Hidden token-by-token model chain-of-thought is neither a portable interface nor durable memory. If a provider deliberately exposes a reasoning summary, record it as provider-visible evidence; never label synthesized rationale as raw reasoning.
+The private domain is the operational home for sessions; its derived view shows objective, owner, channel, model, harness, status, elapsed time, the run tree with cost, actions, outputs, errors, and deployments. Chat surfaces receive completion summaries, not the execution stream.
+
+Trace levels are `normal` (checkpoints and outcomes), `verbose` (sanitized tool activity and provider-visible reasoning summaries), and `forensic` (normalized event types and raw-evidence references). Hidden chain-of-thought is neither portable nor durable memory; record a provider-exposed reasoning summary as provider-visible evidence, never synthesized rationale as raw reasoning.
 
 ## Privacy and access
 

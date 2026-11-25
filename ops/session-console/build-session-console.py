@@ -21,7 +21,7 @@ import activity
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
 from claude_calls import moment, read_calls
-from openclaw_sessions import iter_agent_ids, iter_assistant_records, iter_sessions, iter_subagent_runs, iter_trajectory_events, iter_transcript_records
+from openclaw_sessions import logical_session_id, iter_agent_ids, iter_assistant_records, iter_sessions, iter_subagent_runs, iter_trajectory_events, iter_transcript_records
 
 
 SCHEMA_VERSION = 2
@@ -341,17 +341,10 @@ def registry_index(openclaw_root: str, state: dict, entries: dict | None = None,
             if not isinstance(meta, dict) or not meta.get("sessionId"):
                 continue
             runtime_id = str(meta["sessionId"])
-            channel_id = str(meta.get("groupId") or (meta.get("origin") or {}).get("nativeChannelId") or "").upper()
-            thread_id = str(meta.get("lastThreadId") or ((meta.get("route") or {}).get("thread") or {}).get("id") or "")
             origin = meta.get("origin") or {}
-            slack_backed = (
-                ":slack:" in key
-                or meta.get("channel") == "slack"
-                or meta.get("lastChannel") == "slack"
-                or origin.get("provider") == "slack"
-                or origin.get("surface") == "slack"
-            )
-            logical_id = f"slack:{channel_id}:{thread_id}" if slack_backed and channel_id and thread_id else f"openclaw:{agent}:{runtime_id}"
+            channel_id = str(meta.get("groupId") or origin.get("nativeChannelId") or "").upper()
+            thread_id = str(meta.get("lastThreadId") or ((meta.get("route") or {}).get("thread") or {}).get("id") or "")
+            logical_id = logical_session_id(agent, key, meta)
             runtime_to_logical[runtime_id] = logical_id
             entries.setdefault(key, meta)
             logical_by_key.setdefault(key, logical_id)
