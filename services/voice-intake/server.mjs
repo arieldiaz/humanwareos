@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {createReadStream, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {promisify} from 'node:util';
-import {SlackPoster, Store, VoiceIntake, audioGuard, ollamaSummarizer, sentMessage} from './intake.mjs';
+import {SlackPoster, Store, VoiceIntake, audioGuard, ollamaFormatter, ollamaSummarizer, sentMessage} from './intake.mjs';
 import {isMainModule} from './shortcut.mjs';
 import {whisperCppTranscriber} from './transcriber.mjs';
 
@@ -149,7 +149,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   const slack = new SlackPoster({channel, token, userToken, call: slackApi});
   const intake = new VoiceIntake({store, config, slack, gateway: gatewayCall, requestsDir: join(stateDir, 'requests'),
     evidenceRoot: config.evidenceRoot ?? join(data, 'evidence/voice/captures'),
-    transcribe: whisperCppTranscriber(config.transcriber), summarize: ollamaSummarizer(config.summary), guard: audioGuard(config.audioGuard)});
+    transcribe: whisperCppTranscriber(config.transcriber), summarize: ollamaSummarizer(config.summary), format: ollamaFormatter(config.summary), guard: audioGuard(config.audioGuard)});
   const tick = async () => { try { await slack.verify(); intake.ready = true; await intake.drain(); } catch { intake.ready = false; } };
   const capture = http.createServer({requestTimeout: 120000}, captureHandler(intake, {maxBytes: config.maxBytes}));
   const audio = http.createServer({requestTimeout: 30000}, audioHandler(intake));

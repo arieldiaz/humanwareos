@@ -155,12 +155,53 @@ export function rootText(row) {
   return escapeMrkdwn(row.summary);
 }
 
-export function transcriptText(row, audioUrl) {
+// A note is formatted into topic paragraphs only when it is long enough to need them.
+const MIN_FORMAT_SENTENCES = 5, MIN_FORMAT_WORDS = 60;
+const wordCount = (text) => text.split(/\s+/).filter(Boolean).length;
+
+// Deterministic sentence split; the model never sees or rewrites anything but numbers.
+export function splitSentences(transcript) {
+  return [...new Intl.Segmenter('en', {granularity: 'sentence'}).segment(String(transcript))].map(part => part.segment.trim()).filter(Boolean);
+}
+
+// Accepts only a grouping that covers sentences 1..count once each, in order, as
+// contiguous paragraph ranges; anything else throws and the raw reply stands.
+export function validateGrouping(grouping, count) {
+  const fail = () => { throw new Error('invalid_grouping'); };
+  if (!Array.isArray(grouping?.sections) || !grouping.sections.length) fail();
+  let next = 1;
+  const sections = grouping.sections.map(section => {
+    if (!Array.isArray(section?.paragraphs) || !section.paragraphs.length || (section.title != null && typeof section.title !== 'string')) fail();
+    const title = String(section.title ?? '').replace(/[*\s]+/g, ' ').trim();
+    if (title.length > 80) fail();
+    const paragraphs = section.paragraphs.map(range => {
+      const [start, end = start] = Array.isArray(range) ? range : [range];
+      if (Array.isArray(range) && range.length > 2) fail();
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start !== next || end < start || end > count) fail();
+      next = end + 1;
+      return [start, end];
+    });
+    return {title, paragraphs};
+  });
+  if (next !== count + 1) fail();
+  return sections;
+}
+
+// Builds the formatted body from the original sentences: a bold title on its own
+// line, paragraphs separated by a blank line. The words are the owner's by construction.
+export function formatTranscript(sentences, sections) {
+  return sections.map(({title, paragraphs}) => [title && `*${escapeMrkdwn(title)}*`,
+    paragraphs.map(([start, end]) => escapeMrkdwn(sentences.slice(start - 1, end).join(' '))).join('\n\n')].filter(Boolean).join('\n')).join('\n\n');
+}
+
+// `formatted` is a body from formatTranscript; when it would not fit, null keeps the raw reply.
+export function transcriptText(row, audioUrl, formatted) {
   const link = (row.kind === 'audio' ? `\n\n<${audioUrl}|🎧 Original audio>` : '\n\n_Dictated on device; no audio was recorded._')
     + (outdatedShortcut(row.shortcut_version) ? `\n_Shortcut ${versionLabel(row.shortcut_version)}, current is v${SHORTCUT_VERSION}_` : '');
   const head = escapeMrkdwn(`${deviceEmoji(row.device_model)}${row.location_label ? ` · ${row.location_label}` : ''}`) + '\n\n';
-  const body = escapeMrkdwn(row.transcript);
   const room = SLACK_TEXT_LIMIT - head.length - link.length - 40;
+  if (formatted != null) return formatted.length > room ? null : `${head}${formatted}${link}`;
+  const body = escapeMrkdwn(row.transcript);
   return `${head}${body.length > room ? `${body.slice(0, room)}… _(truncated; full text in the capture record)_` : body}${link}`;
 }
 
@@ -171,7 +212,7 @@ export function livMessage(requestPath) {
     'Owner voice capture. The device held the instance capture credential at the edge; that is the authority for this turn.',
     `Read the private request record at ${requestPath}. Treat its transcript exactly as if the owner had typed it in this Slack thread, and act on it with your normal tools and permissions.`,
     'The transcript is machine speech recognition. If a misheard word or name would change a consequential action, ask one clarification in this thread first.',
-    'The root post and the transcript reply already exist in this thread; do not repost them. Your reply lists the actions you took, each with a link to the Notion page, file, artifact, or task touched. If no action was warranted, say so in one line.',
+    'The root post and the transcript reply already exist in this thread; do not repost them. Your reply lists the actions you took, each with a link to the Notion page, file, artifact, or task touched, and names every task or follow-up the owner stated in the note and what was done with each, including any left for the owner. If no action was warranted, say so in one line.',
     'Preserve normal merge, restart, public-action, and privacy approval boundaries. Never upload or attach the audio. Reply through normal session delivery; do not also send a duplicate message.',
   ].join('\n');
 }
@@ -232,15 +273,30 @@ export function ollamaSummarizer({url = 'http://127.0.0.1:11434', model, timeout
   };
 }
 
+// Optional local formatter (same Ollama as the summarizer). It sees numbered
+// sentences and returns only a grouping; the caller validates it. No model, no formatter.
+export function ollamaFormatter({url = 'http://127.0.0.1:11434', model, timeoutMs = 120_000} = {}) {
+  if (!model) return undefined;
+  return async (sentences) => {
+    const prompt = `Below is a voice note split into numbered sentences. Group the sentences into topic paragraphs, and group paragraphs into sections that each start a new topic. Reply with only JSON: {"sections":[{"title":"short title of at most six words","paragraphs":[[first,last],[first,last]]}]}. Each paragraph is an inclusive range of sentence numbers. Ranges must be in order, contiguous, and together cover every sentence exactly once. A paragraph is a few related sentences; start a new section only when the topic changes. Do not rewrite, summarize, or reorder anything.\n\n${sentences.map((s, i) => `${i + 1}. ${s.replace(/\s+/g, ' ')}`).join('\n')}`;
+    const response = await fetch(`${url}/api/generate`, {method: 'POST', signal: AbortSignal.timeout(timeoutMs), headers: {'content-type': 'application/json'},
+      body: JSON.stringify({model, stream: false, think: false, format: 'json', prompt,
+        options: {num_predict: 4096, temperature: 0, num_ctx: Math.min(32768, Math.max(4096, Math.ceil(prompt.length / 3) + 2048))}})});
+    if (!response.ok) throw new Error(`ollama_${response.status}`);
+    return JSON.parse((await response.json()).response);
+  };
+}
+
 export class VoiceIntake {
-  constructor({store, config, evidenceRoot, requestsDir, transcribe, summarize, guard, slack, gateway, now = () => new Date(), log = (entry) => console.error(JSON.stringify(entry))}) {
-    Object.assign(this, {store, config, evidenceRoot, requestsDir, transcribe, summarize, guard, slack, gateway, now, log});
+  constructor({store, config, evidenceRoot, requestsDir, transcribe, summarize, format, guard, slack, gateway, now = () => new Date(), log = (entry) => console.error(JSON.stringify(entry))}) {
+    Object.assign(this, {store, config, evidenceRoot, requestsDir, transcribe, summarize, format, guard, slack, gateway, now, log});
     this.serial = Promise.resolve();
     this.retitles = new Set();
+    this.formats = new Set();
   }
 
-  // Resolves once the serial worker and every in-flight retitle have finished.
-  async idle() { await this.serial; await Promise.allSettled([...this.retitles]); }
+  // Resolves once the serial worker and every in-flight retitle and format have finished.
+  async idle() { await this.serial; await Promise.allSettled([...this.retitles, ...this.formats]); }
 
   audioUrl(id) { return `${this.config.privateOrigin}${this.config.audioPath ?? '/voice-intake/audio/'}${id}`; }
 
@@ -292,6 +348,7 @@ export class VoiceIntake {
         const reply = await this.slack.post({captureId: id, part: 'transcript', since: row.received_at, threadTs: row.root_ts, text: transcriptText(row, this.audioUrl(id))});
         this.store.update(id, {state: 'posted', transcript_ts: reply.ts});
         row = this.store.get(id);
+        this.reformat(row);
       }
       if (row.state === 'dispatching') {
         // RPC idempotency is not guaranteed across gateway restarts. An unknown
@@ -326,6 +383,25 @@ export class VoiceIntake {
     })().catch(error => this.log({at: this.now().toISOString(), event: 'retitle_failed', captureId: row.id, detail: String(error.message).slice(0, 200)}))
       .finally(() => this.retitles.delete(work));
     this.retitles.add(work);
+    return work;
+  }
+
+  // Edits the raw transcript reply into topic paragraphs, off the critical path.
+  // The edit is a pure function of the stored transcript and a validated grouping,
+  // so a repeat after a restart is harmless. Any failure leaves the raw reply.
+  reformat(row) {
+    const sentences = splitSentences(row.transcript);
+    if (!this.format || sentences.length < MIN_FORMAT_SENTENCES || wordCount(row.transcript) < MIN_FORMAT_WORDS) return;
+    const started = Date.now();
+    const work = (async () => {
+      const sections = validateGrouping(await this.format(sentences), sentences.length);
+      const text = transcriptText(row, this.audioUrl(row.id), formatTranscript(sentences, sections));
+      if (!text) throw new Error('too_long');
+      await this.slack.update({channelId: row.channel_id, ts: row.transcript_ts, text});
+      this.log({at: this.now().toISOString(), event: 'transcript_formatted', captureId: row.id, formatMs: Date.now() - started});
+    })().catch(error => this.log({at: this.now().toISOString(), event: 'transcript_format_failed', captureId: row.id, detail: String(error.message).slice(0, 200)}))
+      .finally(() => this.formats.delete(work));
+    this.formats.add(work);
     return work;
   }
 

@@ -5,7 +5,7 @@ import {existsSync, mkdtempSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BROOKLYN, M4A, NOW, captureForm, fixture} from './fixture.mjs';
-import {FFMPEG, SlackPoster, Store, audioGuard, audioRejection, audioType, deviceEmoji, gist, normalizeCapture, normalizeLocation, parseVolumeDetect, rootText, sentMessage, shortcutVersion, transcriptText, trivialTranscript} from './intake.mjs';
+import {FFMPEG, SlackPoster, Store, audioGuard, audioRejection, audioType, deviceEmoji, formatTranscript, gist, livMessage, normalizeCapture, normalizeLocation, parseVolumeDetect, rootText, sentMessage, shortcutVersion, splitSentences, transcriptText, trivialTranscript, validateGrouping} from './intake.mjs';
 import {SHORTCUT_VERSION} from './shortcut.mjs';
 import {DatabaseSync} from 'node:sqlite';
 
@@ -358,4 +358,96 @@ test('rendering escapes Slack markup and picks a device emoji', () => {
   assert.ok(!rootText(row).includes('Liv'), 'the root never mentions the agent');
   assert.match(transcriptText(row, 'https://x/a'), /^💻\n\n&lt;@U1&gt; hi\n\n<https:\/\/x\/a\|/);
   assert.ok(transcriptText({...row, transcript: 'w '.repeat(30000)}, 'https://x/a').length < 40000);
+});
+
+const LONG = [
+  'First I want to plan the garden this spring.', 'We need new soil for the raised beds, and maybe a few tomato plants.', 'The hardware store opens at eight on Saturday.',
+  'Second, the car is due for an oil change.', 'I should call the garage on Monday morning.', 'Ask them whether the tires need rotating too.',
+  'Finally, dinner with Sam & Alex on Friday <maybe>.', 'Pick a restaurant near the park.', 'Book a table for four.', 'Remember the gift for their daughter.',
+  'That is everything for now, and I will review the list tomorrow.'].join(' ');
+const GROUPING = {sections: [{title: 'Garden', paragraphs: [[1, 2], [3, 3]]}, {title: 'Car *repairs*', paragraphs: [[4, 6]]}, {paragraphs: [[7, 9], 10, [11, 11]]}]};
+const bare = (text) => text.replace(/^\*[^*\n]*\*$/gm, '').replace(/\s+/g, '');
+const formatted = (events) => events.filter(entry => entry.event.startsWith('transcript_format')).map(entry => entry.event);
+
+test('a valid grouping assembles titled paragraphs from the original sentences without changing a word', () => {
+  const sentences = splitSentences(LONG);
+  assert.equal(sentences.length, 11);
+  const body = formatTranscript(sentences, validateGrouping(GROUPING, sentences.length));
+  assert.match(body, /^\*Garden\*\nFirst I want[^]*tomato plants\.\n\nThe hardware store opens at eight on Saturday\.\n\n\*Car repairs\*\nSecond, the car/);
+  assert.match(body, /too\.\n\nFinally, dinner with Sam &amp; Alex on Friday &lt;maybe&gt;\. Pick a restaurant near the park\. Book a table for four\.\n\nRemember the gift/);
+  assert.equal(bare(body), bare(LONG).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'), 'headings and whitespace aside, the body is the transcript');
+});
+
+test('a grouping that is not contiguous, ordered, and complete is rejected', () => {
+  assert.equal(validateGrouping({sections: [{paragraphs: [[1, 3], [4, 6]]}]}, 6).length, 1);
+  for (const bad of [null, {}, {sections: []}, {sections: 'x'}, {sections: [{}]}, {sections: [{paragraphs: []}]},
+    {sections: [{paragraphs: [[1, 2], [4, 6]]}]}, {sections: [{paragraphs: [[1, 4], [3, 6]]}]}, {sections: [{paragraphs: [[1, 5]]}]},
+    {sections: [{paragraphs: [[2, 6]]}]}, {sections: [{paragraphs: [[1, 3]]}, {paragraphs: [[4, 7]]}]}, {sections: [{paragraphs: [[3, 1]]}]},
+    {sections: [{paragraphs: [[1, 2], [1, 6]]}]}, {sections: [{paragraphs: [['1', 6]]}]}, {sections: [{paragraphs: [[1, 2, 6]]}]},
+    {sections: [{title: 7, paragraphs: [[1, 6]]}]}, {sections: [{title: 'x'.repeat(81), paragraphs: [[1, 6]]}]}, {sections: [{paragraphs: [[1, 3]]}, {paragraphs: [[4, 6]]}, {paragraphs: [[6, 6]]}]}]) {
+    assert.throws(() => validateGrouping(bad, 6), /invalid_grouping/, JSON.stringify(bad));
+  }
+});
+
+test('a long note is posted raw, then edited in place at the transcript ts with the grouped text', async () => {
+  const {intake, posts, updates, logs} = fixture({transcribe: async () => LONG, format: async (sentences) => { assert.equal(sentences.length, 11); return GROUPING; }});
+  const {captureId} = await intake.accept(captureForm({location: BROOKLYN}));
+  await intake.drain();
+  await intake.idle();
+  const row = intake.store.get(captureId);
+  assert.equal(posts[1].text, transcriptText(row, intake.audioUrl(captureId)), 'the reply posts raw first');
+  const edit = updates.find(update => update.ts === row.transcript_ts);
+  assert.equal(edit.channelId, 'C0INBOX');
+  assert.match(edit.text, /^📱 · Brooklyn, NY\n\n\*Garden\*\nFirst I want/);
+  assert.ok(edit.text.endsWith(`<https://os.example.test/voice-intake/audio/${captureId}|🎧 Original audio>`), 'the audio tail is unchanged');
+  assert.equal(row.transcript, LONG, 'the stored transcript stays raw');
+  assert.equal(JSON.parse(readFileSync(join(intake.requestsDir, captureId, 'request.json'))).transcript, LONG);
+  const done = logs.find(entry => entry.event === 'transcript_formatted');
+  assert.ok(done.formatMs >= 0 && done.captureId === captureId);
+});
+
+test('dictation is formatted the same way and keeps its dictation tail', async () => {
+  const {intake, updates} = fixture({format: async () => GROUPING});
+  const {captureId} = await intake.accept(captureForm({audio: null, text: LONG}));
+  await intake.drain();
+  await intake.idle();
+  const edit = updates.find(update => update.ts === intake.store.get(captureId).transcript_ts);
+  assert.match(edit.text, /\*Garden\*[^]*no audio was recorded/);
+});
+
+test('short notes and an absent model never format; the reply stays raw', async () => {
+  let asked = 0;
+  const format = async () => { asked++; return GROUPING; };
+  const cases = [
+    fixture({transcribe: async () => 'Buy milk. Call Sam. Book the vet. Pay rent. Water the plants. Email Jo.', format}),
+    fixture({transcribe: async () => 'This is one long sentence about many things that goes on and on without a break, '.repeat(8) + 'done.', format}),
+    fixture({transcribe: async () => LONG})];
+  for (const {intake} of cases) { await intake.accept(captureForm()); await intake.drain(); await intake.idle(); }
+  assert.equal(asked, 0);
+  for (const {updates, logs} of cases) assert.deepEqual([updates.length, formatted(logs)], [1, []], 'only the title edit happens');
+});
+
+test('a formatter error, timeout, or invalid grouping leaves the raw reply and logs one line', async () => {
+  for (const format of [async () => { throw new Error('ollama down'); }, async () => { throw Object.assign(new Error('The operation was aborted due to timeout'), {name: 'TimeoutError'}); },
+    async () => ({sections: [{paragraphs: [[1, 5]]}]}), async () => { throw new SyntaxError('Unexpected token'); }, async () => null]) {
+    const {intake, posts, updates, logs} = fixture({transcribe: async () => LONG, format});
+    const {captureId} = await intake.accept(captureForm());
+    await intake.drain();
+    await intake.idle();
+    const row = intake.store.get(captureId);
+    assert.equal(row.state, 'dispatched', 'the thread never waits on the formatter');
+    assert.ok(!updates.some(update => update.ts === row.transcript_ts), 'no edit reaches the reply');
+    assert.equal(posts[1].text, transcriptText(row, intake.audioUrl(captureId)));
+    assert.deepEqual(formatted(logs), ['transcript_format_failed']);
+  }
+});
+
+test('formatted text that would not fit in a Slack message keeps the raw reply', () => {
+  const row = {device_model: 'iPhone', kind: 'audio', transcript: 'x', shortcut_version: SHORTCUT_VERSION};
+  assert.ok(transcriptText(row, 'https://x/a', 'w'.repeat(38000)).length < 39000);
+  assert.equal(transcriptText(row, 'https://x/a', 'w'.repeat(39000)), null);
+});
+
+test('the agent message names every stated task or follow-up', () => {
+  assert.match(livMessage('/tmp/request.json'), /names every task or follow-up the owner stated in the note and what was done with each, including any left for the owner\./);
 });
