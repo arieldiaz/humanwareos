@@ -37,6 +37,8 @@ Each run performs three bounded reads:
 2. The register is loaded from the data plane.
 3. Configured provider checks use credentials injected into the process environment by the instance secret executor. Checks use non-billable metadata endpoints and never print request headers, URLs containing credentials, or response bodies on error.
 
+Optional `claudeChecks` run an absolute CLI command with `auth status --json` and a 20-second timeout. Only login state and normalized expiry enter the feed; account details and raw command output are discarded. Missing or malformed status is unavailable, not healthy. A seven-day warning precedes login expiry. Local status is not proof of remote model acceptance, and a login with unknown expiry remains attention. No credential store is read, changed, or repaired by the collector.
+
 The first adapters cover OpenAI, Anthropic, OpenRouter, Gemini, and xAI. OpenRouter exposes key-level usage and limits through its ordinary key endpoint. Other providers require management credentials or a console review for complete budget confirmation; a successful API health check must not be presented as budget verification.
 
 The output is written atomically and contains source freshness, a normalized credential list, provider observations, summary counts, and deterministic findings.
@@ -71,3 +73,5 @@ The credential feed becomes stale after 26 hours by default. Stale data remains 
 The instance should run the collector at least daily and after a key is created, rotated, or revoked. A failed provider must not suppress successful provider or Doppler observations. A total collection failure preserves the previous atomic output and exits nonzero.
 
 No finding automatically changes provider state. The dashboard supports review; explicit human authority remains required for revocation, billing changes, or production cutover.
+
+Optional `authNotifications` sends authentication failures, unavailable checks, impending expiry, and recovery directly to Slack using an injected bot token, without a model call. The instance owns the destination and schedule. Successful delivery records a metadata-only signature under `operations/credential-posture`; unchanged failures repeat at most daily, and failed delivery exits nonzero without advancing dedupe. The atomic posture snapshot is preserved if notification fails. A collector crash before snapshot creation is a supervisor failure, not a successful auth check. `--stdout` is observation-only and never sends alerts.
