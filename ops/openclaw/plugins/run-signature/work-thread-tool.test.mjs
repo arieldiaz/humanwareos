@@ -91,6 +91,10 @@ test("starts Slack work in the thread's own root session without privileged gate
   assert.equal(result.details.childSessionKey, runs[0].sessionKey);
   assert.equal(runs[0].disableTools, undefined);
   assert.match(runs[0].message, /Report in Slack channel C123456, thread root 1792416000\.000001/);
+  // deliver:false means the host drops this run's reply text, so the brief must route reports through the message tool.
+  assert.equal(runs[0].deliver, false);
+  assert.match(runs[0].message, /message tool \(action send, channel slack, target channel:C123456, threadId 1792416000\.000001\)/);
+  assert.match(runs[0].message, /not delivered to Slack/);
   assert.deepEqual(patches, [{
     sessionKey: runs[0].sessionKey,
     update: {label: "Fix: work threads", displayName: "Fix: work threads", category: "Humanware OS"},

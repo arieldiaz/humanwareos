@@ -82,6 +82,8 @@ export async function startSlackWorkThread({
   const task = [
     "Begin this work now.",
     `Report in Slack channel ${channel}, thread root ${rootMessageId}: one report per milestone, decision, or blocker, then the final result. No interim progress posts.`,
+    // This first run is started with deliver:false (a new thread session has no stored route), so its reply text is never posted.
+    `Post each report with the message tool (action send, channel slack, target channel:${channel}, threadId ${rootMessageId}); the reply text of this first run is not delivered to Slack. End this run with NO_REPLY once the final result is posted. Later runs, started by the human's replies in the thread, deliver their reply text normally.`,
     `The title "${heading}" is the thread root and a short summary for the human is its first reply; do not repeat either. The brief below is not posted in Slack.`,
     "",
     brief,
