@@ -53,7 +53,7 @@ def tree(root, skip=None):
 
 class Fixture:
     def __init__(self, root):
-        self.root = Path(root)
+        self.root = Path(root).resolve()
         self.data = self.root / "data"
         self.state = self.root / "openclaw"
         self.claude = self.root / "claude"
