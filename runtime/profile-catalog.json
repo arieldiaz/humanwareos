@@ -20,44 +20,6 @@
       "responseTargetSeconds": 20,
       "enabled": false
     },
-    "cursor-agent-low": {
-      "executionMode": "workspace",
-      "runtime": "cli",
-      "harness": "cursor",
-      "backend": "cursor-agent",
-      "family": "cursor-grok",
-      "model": "cursor-agent/grok-4.7-low-fast",
-      "aliases": [
-        "cursor/grok",
-        "cursor",
-        "grok"
-      ],
-      "permissions": "standard",
-      "workspace": "required",
-      "dataScope": "tier-2",
-      "reasoning": "low",
-      "fastMode": true,
-      "responseTargetSeconds": 30
-    },
-    "cursor-agent-high": {
-      "executionMode": "workspace",
-      "runtime": "cli",
-      "harness": "cursor",
-      "backend": "cursor-agent",
-      "family": "cursor-grok",
-      "model": "cursor-agent/grok-4.7-high-fast",
-      "aliases": [
-        "cursor/grok",
-        "cursor",
-        "grok"
-      ],
-      "permissions": "standard",
-      "workspace": "required",
-      "dataScope": "tier-2",
-      "reasoning": "high",
-      "fastMode": true,
-      "responseTargetSeconds": 90
-    },
     "codex-low": {
       "executionMode": "workspace",
       "runtime": "app-server",
@@ -291,7 +253,7 @@
       "harness": "claude",
       "backend": "claude-cli",
       "family": "claude-haiku",
-      "model": "anthropic/claude-haiku-4-5-20251001",
+      "model": "anthropic/claude-haiku-5-5",
       "aliases": [
         "claude/haiku",
         "haiku"
@@ -309,7 +271,7 @@
       "harness": "claude",
       "backend": "claude-cli",
       "family": "claude-haiku",
-      "model": "anthropic/claude-haiku-4-5-20251001",
+      "model": "anthropic/claude-haiku-5-5",
       "aliases": [
         "claude/haiku",
         "haiku"
