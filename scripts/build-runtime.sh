@@ -93,6 +93,8 @@ for component in menubar session-console session-records calendar email-intake a
 rsync -a --exclude node_modules "$FRAMEWORK_DIR/services/" "$BUILD_DIR/framework/services/"
 mkdir -p "$BUILD_DIR/framework/ops/lib"
 cp -R "$FRAMEWORK_DIR/ops/lib/." "$BUILD_DIR/framework/ops/lib/"
+mkdir -p "$BUILD_DIR/framework/surfaces/macos"
+cp -R "$FRAMEWORK_DIR/surfaces/macos/service-app" "$BUILD_DIR/framework/surfaces/macos/service-app"
 cp "$INSTANCE_DIR/AGENTS-instance.md" "$BUILD_DIR/instructions/AGENTS-instance.md"
 cp -R "$INSTANCE_DIR/agents" "$BUILD_DIR/instructions/agent-overlays"
 if [ -d "$INSTANCE_DIR/docs" ]; then
