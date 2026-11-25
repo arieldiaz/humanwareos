@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "basis": "api-list-price-equivalent",
+  "currency": "USD",
+  "unit": "per-million-tokens",
+  "notes": [
+    "Public API list prices, applied to observed tokens. A subscription-backed harness is not billed this amount.",
+    "A model's rows are ordered by effectiveFrom (UTC date); the latest row on or before the usage date applies, and usage before the first row or after a row's effectiveUntil (inclusive) stays unavailable until a published row is added.",
+    "A first row dated 2026-01-01 is the price published on its verified date, applied back to that baseline.",
+    "cacheWrite is the 5-minute cache write price; cacheWrite1h is the 1-hour cache write price where published, and a report with 1-hour writes is unpriced for a model without it. Long-context, fast-mode and regional premiums are not applied.",
+    "A model with no row is unpriced: its tokens are reported and its cost stays unavailable."
+  ],
+  "sources": {
+    "anthropic": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "openai": "https://developers.openai.com/api/docs/pricing"
+  },
+  "models": {
+    "claude-fable-5-2": [
+      {"effectiveFrom": "2026-01-01", "input": 8, "output": 40, "cacheRead": 0.2, "cacheWrite": 10, "cacheWrite1h": 16, "source": "anthropic", "verified": "2026-11-11"}
+    ],
+    "claude-fable-5-1": [
+      {"effectiveFrom": "2026-01-01", "input": 10, "output": 50, "cacheRead": 0.25, "cacheWrite": 12.5, "cacheWrite1h": 20, "source": "anthropic", "verified": "2026-11-11"}
+    ],
+    "claude-fable-5": [
+      {"effectiveFrom": "2026-01-01", "input": 10, "output": 50, "cacheRead": 1, "cacheWrite": 12.5, "cacheWrite1h": 20, "source": "anthropic", "verified": "2026-11-11"}
+    ],
+    "claude-opus-5-5": [
+      {"effectiveFrom": "2026-01-01", "input": 4, "output": 20, "cacheRead": 0.2, "cacheWrite": 5, "cacheWrite1h": 8, "source": "anthropic", "verified": "2026-11-11"}
+    ],
+    "claude-opus-5": [
+      {"effectiveFrom": "2026-01-01", "input": 5, "output": 25, "cacheRead": 0.5, "cacheWrite": 6.25, "cacheWrite1h": 10, "source": "anthropic", "verified": "2026-11-11"}
+    ],
+    "claude-opus-4-8": [
+      {"effectiveFrom": "2026-01-01", "input": 5, "output": 25, "cacheRead": 0.5, "cacheWrite": 6.25, "cacheWrite1h": 10, "source": "anthropic", "verified": "2026-11-11"}
+    ],
+    "claude-sonnet-5-5": [
+      {"effectiveFrom": "2026-01-01", "input": 2, "output": 10, "cacheRead": 0.1, "cacheWrite": 2.5, "cacheWrite1h": 4, "source": "anthropic", "verified": "2026-11-11"}
+    ],
+    "claude-sonnet-4-6": [
+      {"effectiveFrom": "2026-01-01", "input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75, "cacheWrite1h": 6, "source": "anthropic", "verified": "2026-11-11"}
+    ],
+    "claude-haiku-4-5": [
+      {"effectiveFrom": "2026-01-01", "input": 1, "output": 5, "cacheRead": 0.1, "cacheWrite": 1.25, "cacheWrite1h": 2, "source": "anthropic", "verified": "2026-11-11"}
+    ],
+    "claude-haiku-4-5-20251001": [
+      {"effectiveFrom": "2026-01-01", "input": 1, "output": 5, "cacheRead": 0.1, "cacheWrite": 1.25, "cacheWrite1h": 2, "source": "anthropic", "verified": "2026-11-11"}
+    ],
+    "gpt-6-astra": [
+      {"effectiveFrom": "2026-01-01", "input": 10, "output": 50, "cacheRead": 1, "cacheWrite": 12.5, "source": "openai", "verified": "2026-11-11"}
+    ],
+    "gpt-5.6-sol": [
+      {"effectiveFrom": "2026-01-01", "input": 4, "output": 20, "cacheRead": 0.4, "cacheWrite": 5, "effectiveUntil": "2026-11-30", "source": "openai", "verified": "2026-11-11", "note": "Promotional price, published as ending 2026-11-30."}
+    ],
+    "gpt-5.6-luna": [
+      {"effectiveFrom": "2026-01-01", "input": 0.2, "output": 1.2, "cacheRead": 0.02, "cacheWrite": 0.25, "source": "openai", "verified": "2026-11-11"}
+    ]
+  }
+}

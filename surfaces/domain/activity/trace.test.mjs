@@ -35,10 +35,19 @@ test('shared trace renders authority, policy, local reference and escapes hostil
   assert(!container.innerHTML.includes('href="raw'));
 });
 test('run tree shows nested workers, unavailable values and escaped identifiers', () => {
+  const total = (amount, reports, unavailable, tokens = {}) => ({amount, reports, unavailable, tokens});
+  const cost = {...total(1.5, 4, 1), root: total(1, 1, 0), workers: total(0.5, 3, 1), runsOmitted: 3,
+    byModel: [{model:'model-a', ...total(1.5, 3, 0, {total:120})}, {model:'<i>model-b', ...total(null, 1, 1, {})}],
+    byDay: [{day:'2026-09-30', ...total(1.5, 4, 1)}], byRun: [{runId:null, ...total(0.004, 1, 0)}]};
   const html=runTreeHtml([{runId:'run-1',sessionId:'child-1',model:'provider/model',reasoning:'high',status:'ok',durationMs:61000,tokens:{total:90},
-    cost:{status:'estimated',amount:0.5,currency:'USD'},children:[{runId:'<b>run-2',sessionId:'child-2',model:null,status:null,durationMs:null,tokens:{},cost:{status:'unavailable'},children:[]}]}],
-    [{currency:'USD',exact:0,estimated:0.5,unavailable:1}]);
-  for (const text of ['provider/model','high','61s','90 tokens','0.5 USD estimated','<ul>','not completed','tokens unavailable','cost unavailable','0.5 USD estimated, 1 unavailable']) assert(html.includes(text), text);
+    cost:total(0.5, 2, 0),children:[{runId:'<b>run-2',sessionId:'child-2',model:null,status:null,durationMs:null,tokens:{},cost:total(null, 0, 0),children:[]}]}], cost);
+  for (const text of ['provider/model','high','61s','90 tokens','$0.50','<ul>','not completed','tokens unavailable','cost unavailable',
+    'API list-price equivalent (not a bill)','<strong>$1.50 (1 of 4 usage reports unpriced)</strong>','root $1.00','workers $0.50 (1 of 3 usage reports unpriced)',
+    'By model','120 tokens','cost unavailable (1 usage reports unpriced)','By day (UTC)','Root runs, latest 1 of 4','$0.0040']) assert(html.includes(text), text);
   assert(!html.includes('<b>run-2'));
-  assert(runTreeHtml([],[]).includes('No worker runs observed'));
+  assert(!html.includes('<i>model-b'));
+  assert(runTreeHtml([],{reports:0}).includes('No worker runs observed'));
+  assert(runTreeHtml([],null).includes('Cost unavailable: no usage observed.'));
+  const priced=traceHtml({...row,cost:{status:'estimated',amount:0.25,currency:'USD',usageId:'call-1',model:'provider/model-a',tokens:{input:5},basisRef:{type:'rate',id:'list-price:model-a:2026-01-01'}}});
+  for (const text of ['0.25 USD · API list-price equivalent','provider/model-a','rate: list-price:model-a:2026-01-01']) assert(priced.includes(text), text);
 });

@@ -2,7 +2,7 @@
 
 How a root agent turns a conversation into coordinated work. Layer 2 spec — see [agent-context-hierarchy.md](docs/agent-context-hierarchy.md).
 
-Status: build steps 2 and 3 are implemented; the other steps are proposed.
+Status: build steps 1 to 3 and step 4's cost roll-up are implemented; the other steps are proposed.
 
 Budget: 1,100 words. Over it, consolidate.
 
@@ -57,10 +57,10 @@ If a result fails verification, the root may retry once on the next class up, th
 Every spawned run is recorded in the session ledger by the adapter that observed it, never self-reported by the worker. The event schema gains:
 
 - `run.spawned`: child run and session identifiers, parent run, root session, brief reference, profile, model, reasoning level, data scope, and write scope.
-- `run.completed`: outcome, result reference, verification outcome, duration, token usage, and cost.
+- `run.completed`: outcome, result reference, verification outcome, and duration.
 - `delegation.requested` and `delegation.decided`: the requesting worker, the proposed brief, the deciding root run, and the decision.
 
-A child's tool, write, model, and cost events carry its run identifier and so attach to the tree. Cost rolls up from leaf to root session by summation over observed events; a missing cost stays unavailable, never estimated. Provider-visible reasoning summaries are recorded where the provider exposes them, under the existing trace-level rule.
+A child's tool, write, model, and usage events attach to the tree through its session. Code prices observed tokens at API list price, an equivalent and not a bill, and sums leaf to root; a missing count or price stays unavailable, never estimated. Provider-visible reasoning summaries are recorded where the provider exposes them, under the existing trace-level rule.
 
 A harness transcript is a resumption cache, not a record. Once a session's events are imported into the ledger and the import is verified, its harness transcript is retained for the instance's configured window, seven days by reference, then pruned by code.
 
