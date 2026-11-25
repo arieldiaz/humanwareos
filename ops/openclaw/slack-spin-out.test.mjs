@@ -51,6 +51,10 @@ test("posts the title at the root, the summary as its first reply, and gives the
   assert.equal("thinkingLevel" in calls[3][1], false);
   assert.match(calls[3][1].task, /Slack channel C123, thread root 1787000000\.100000/);
   assert.match(calls[3][1].task, /Begin this work now/);
+  // The first run is not delivered by the host, so the brief must name the message-tool route and say the reply text is dropped.
+  assert.match(calls[3][1].task, /message tool \(action send, channel slack, target channel:C123, threadId 1787000000\.100000\)/);
+  assert.match(calls[3][1].task, /reply text of this first run is not delivered to Slack/);
+  assert.match(calls[3][1].task, /End this run with NO_REPLY/);
   assert.deepEqual(result, {
     rootMessageId: "1787000000.100000",
     childSessionKey: "agent:max:slack:channel:c123:thread:1787000000.100000",
