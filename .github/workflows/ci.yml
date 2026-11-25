@@ -36,6 +36,7 @@ jobs:
           python3 -m unittest discover -s ops/session-console/tests
           python3 -m unittest discover -s ops/session-records/tests
           python3 -m unittest discover -s ops/artifacts
+          python3 -m unittest discover -s surfaces/macos/service-app -p "test_*.py"
           python3 -m unittest discover -s services/share-auth -p "test_*.py"
           python3 -m unittest discover -s services/ingest/server -p "test_*.py"
           python3 services/observability/credential-posture/test_collector.py

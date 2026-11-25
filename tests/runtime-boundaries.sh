@@ -76,9 +76,10 @@ DEPENDENCY_BUILD=$(printf '%s\n' "$DEPENDENCY_OUTPUT" | sed -n 's/^build-runtime
 # starts a job that fails on import (the 2026-11-25 session page outage).
 for lib in "$FRAMEWORK"/ops/lib/*.py; do [ -f "$DEPENDENCY_BUILD/framework/ops/lib/$(basename "$lib")" ]; done
 [ -f "$DEPENDENCY_BUILD/framework/ops/session-records/session_records.py" ]
-# The instance installer builds its signed service app from the runtime copy.
+# The instance installer builds its signed service app and renders its jobs from the runtime copy.
 [ -x "$DEPENDENCY_BUILD/framework/surfaces/macos/service-app/build.sh" ]
 [ -f "$DEPENDENCY_BUILD/framework/surfaces/macos/service-app/launcher.c" ]
+[ -x "$DEPENDENCY_BUILD/framework/surfaces/macos/service-app/render-jobs.py" ]
 
 # Activation reloads Caddy with the activated Caddyfile and reports reload failure.
 mkdir -p "$INSTANCE/services/caddy"
