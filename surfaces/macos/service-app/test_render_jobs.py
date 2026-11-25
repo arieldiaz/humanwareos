@@ -47,7 +47,7 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(web["ProgramArguments"],
                          [LAUNCHER, "run", "web", "--", "/bin/sh", "/rt/current/config/services/caddy/run.sh"])
         self.assertEqual(web["AssociatedBundleIdentifiers"], ["org.example.services"])
-        self.assertEqual(web["ProcessType"], "Background")
+        self.assertNotIn("ProcessType", web)
         self.assertEqual((web["KeepAlive"], web["RunAtLoad"], web["ThrottleInterval"]), (True, True, 60))
         self.assertEqual((web["StandardOutPath"], web["StandardErrorPath"]), ("/var/log/web.log", "/var/log/web.err.log"))
         self.assertNotIn("replaces", web)

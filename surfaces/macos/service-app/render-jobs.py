@@ -123,9 +123,11 @@ def render(manifest, app, runtime, data_root):
             "Label": label,
             "ProgramArguments": [launcher, "run", name, "--"] + command,
             "AssociatedBundleIdentifiers": [bundle_id],
-            "ProcessType": service.get("processType", "Background"),
         }
-        require(job["ProcessType"] in PROCESS_TYPES, f"{where}.processType must be one of {sorted(PROCESS_TYPES)}")
+        # Unset means the macOS default, so a job keeps the priority it had before the manifest.
+        if "processType" in service:
+            require(service["processType"] in PROCESS_TYPES, f"{where}.processType must be one of {sorted(PROCESS_TYPES)}")
+            job["ProcessType"] = service["processType"]
         job.update(trigger_keys(service.get("trigger"), f"{where}.trigger"))
         environment = service.get("environment")
         if environment is not None:
