@@ -335,6 +335,27 @@ class SessionRecordsTest(unittest.TestCase):
         again = self.seal({"closeId": "c2", "closedAt": closed, "steps": {"capture": {}}})["close"]
         self.assertEqual((again["closeId"], [close["closeId"] for close in again["previous"]], again["complete"]), ("c2", ["c1"], False))
 
+    def test_seal_returns_the_ledger_usage_priced_like_the_session_console(self):
+        """Root reports plus a worker's, Fable 1-hour cache writes priced, one report on an unpriced model counted."""
+        def report(event_id, session, model, tokens, run="r1"):
+            return {"schemaVersion": 3, "id": event_id, "ts": "2026-11-20T12:30:00Z", "kind": "usage.cost", "logicalSessionId": session, "runId": run,
+                    "sourceRef": {"type": "raw", "id": event_id}, "cost": {"usageId": event_id, "model": model, "tokens": tokens}}
+        fable, worker = "claude-cli/claude-fable-5-2", "openclaw:liv:worker-1"
+        (self.f.data / "evidence" / "sessions" / "events" / "2026-11-20.jsonl").unlink()  # the fixture's bare reports are not whole events
+        events = self.f.data / "evidence" / "sessions" / "events" / "2026-11-21.jsonl"
+        events.write_text("\n".join(json.dumps(event) for event in [
+            report("a", LOGICAL, fable, {"input": 1000000, "output": 100000, "cacheRead": 10000000, "cacheWrite": 0, "cacheWrite1h": 2000000}),
+            report("b", LOGICAL, "mystery-model", {"input": 1000, "output": 100, "cacheRead": 0, "cacheWrite": 0}, "r2"),
+            report("c", worker, fable, {"input": 500000, "output": 50000, "cacheRead": 5000000, "cacheWrite": 0}, "w1"),
+            report("d", "slack:C9:1.1", fable, {"input": 7, "output": 7, "cacheRead": 7, "cacheWrite": 0}),
+            {"schemaVersion": 3, "id": "spawn", "ts": "2026-11-20T12:20:00Z", "kind": "run.spawned", "logicalSessionId": LOGICAL, "runId": "w1",
+             "sourceRef": {"type": "raw", "id": "spawn"}, "run": {"childRunId": "w1", "childSessionId": worker, "parentSessionId": LOGICAL, "rootSessionId": LOGICAL}},
+        ]) + "\n")
+        usage = self.seal({"closeId": "c1", "closedAt": R.iso(START), "steps": {"capture": {}}})["usage"]
+        self.assertEqual(usage, {"amount": 53.0, "reports": 3, "unavailable": 1, "tokens": {
+            "input": 1501000, "output": 150100, "cacheRead": 15000000, "cacheWrite": 0, "cacheWrite1h": 2000000, "total": 18651100}})
+        self.assertNotIn("usage", self.seal({"closeId": "c1", "steps": {"ledger": {}}}), "only the capture step reads the ledger")
+
     def test_seal_records_a_failed_capture_and_still_writes_the_close(self):
         result = self.seal({"closeId": "c1", "closedAt": R.iso(START), "steps": {"capture": {}, "summary": {"text": "report"}}}, "slack:C7:5.5")
         self.assertEqual(result["folder"], str(self.f.folder("slack-C7-5.5")))

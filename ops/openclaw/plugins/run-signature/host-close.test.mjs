@@ -3,9 +3,9 @@ import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 import {ThreadLifecycle} from './lifecycle.mjs';
 import {closeThreadTool, registerHostClose} from './host-close.mjs';
-import {loadSlackThreadSnapshot} from './close-report.mjs';
+import {formatCloseReport, loadSlackThreadSnapshot} from './close-report.mjs';
 import {exportSlackThread, runSessionRecords, sessionRecordsScript} from './session-record.mjs';
-import {mkdtemp, readdir, rm} from 'node:fs/promises';
+import {mkdir, mkdtemp, readdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -106,6 +106,7 @@ test('an older run ending after a newer one started cannot overwrite newer lifec
 });
 
 // A stand-in for session_records.py: the same step bookkeeping, in memory.
+const LEDGER_USAGE = {amount: 1.5, reports: 2, unavailable: 0, tokens: {input: 10, cacheRead: 90, cacheWrite1h: 0, output: 4, total: 104}};
 function fakeRecords({writes = []} = {}) {
   const calls = [], state = {};
   const records = async (dataRoot, args, {input} = {}) => {
@@ -117,7 +118,7 @@ function fakeRecords({writes = []} = {}) {
     for (const [name, step] of Object.entries(payload.steps)) {
       if (state.close.steps[name]?.status !== 'ok') state.close.steps[name] = step.error ? {status: 'failed', error: step.error} : {status: 'ok'};
     }
-    return JSON.stringify({folder: '/data/x', close: structuredClone(state.close)});
+    return JSON.stringify({folder: '/data/x', close: structuredClone(state.close), ...('capture' in payload.steps ? {usage: LEDGER_USAGE} : {})});
   };
   return {records, calls, state};
 }
@@ -191,6 +192,7 @@ test('close runs every step in order and records each one', async (t) => {
   assert.deepEqual(slack.order, ['conversations.replies', 'chat.postMessage']);
   assert.equal(fake.calls[1].payload.steps.slackThread.data.messageCount, 2);
   assert.match(fake.calls[1].payload.steps.summary.text, /^\*\*Session closed\*\*/);
+  assert.match(fake.calls[1].payload.steps.summary.text, /- Tokens: 100 in \(90% cached\) · 4 out · \$1\.50 API list-price equivalent\n/, 'tokens and cost come from the ledger usage the capture step returned');
   assert.equal(fake.calls[2].payload.closeId, fake.calls[0].payload.closeId);
   assert.ok(Object.values(fake.state.close.steps).every(step => step.status === 'ok'));
   assert.doesNotMatch(slack.posts[0], /Not saved/);
@@ -270,6 +272,24 @@ test('the record writer runs session_records.py beside the plugin and surfaces i
   t.after(() => rm(dataRoot, {recursive: true, force: true}));
   assert.equal(await runSessionRecords(dataRoot, ['index']), '');
   await assert.rejects(runSessionRecords(dataRoot, ['seal', '--session', 'slack:C1:1.1'], {input: '{"retry": true}'}), /session_records seal exited 1: ValueError: no close to retry/);
+});
+
+test('the close report line comes from the ledger: Fable 1-hour cache writes priced, a worker rolled in, an unpriced report counted', async (t) => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'ledger-usage-'));
+  t.after(() => rm(dataRoot, {recursive: true, force: true}));
+  const session = 'slack:C1:1.1', worker = 'openclaw:liv:worker-1', fable = 'claude-cli/claude-fable-5-2';
+  const report = (id, logicalSessionId, model, tokens) => ({schemaVersion: 3, id, ts: '2026-11-20T12:30:00Z', kind: 'usage.cost', logicalSessionId, runId: id,
+    sourceRef: {type: 'raw', id}, cost: {usageId: id, model, tokens}});
+  await mkdir(join(dataRoot, 'evidence/sessions/events'), {recursive: true});
+  await writeFile(join(dataRoot, 'evidence/sessions/events/2026-11-20.jsonl'), [
+    report('a', session, fable, {input: 1000000, output: 100000, cacheRead: 10000000, cacheWrite: 0, cacheWrite1h: 2000000}),
+    report('b', session, 'mystery-model', {input: 1000, output: 100, cacheRead: 0, cacheWrite: 0}),
+    report('c', worker, fable, {input: 500000, output: 50000, cacheRead: 5000000, cacheWrite: 0}),
+    {schemaVersion: 3, id: 'spawn', ts: '2026-11-20T12:20:00Z', kind: 'run.spawned', logicalSessionId: session, runId: 'c', sourceRef: {type: 'raw', id: 'spawn'},
+     run: {childRunId: 'c', childSessionId: worker, parentSessionId: session, rootSessionId: session}},
+  ].map(event => JSON.stringify(event)).join('\n') + '\n');
+  const {usage} = JSON.parse(await runSessionRecords(dataRoot, ['seal', '--session', session], {input: JSON.stringify({closeId: 'c1', closedAt: '2026-11-20T13:00:00Z', steps: {capture: {}}})}));
+  assert.match(formatCloseReport({usage}), /\n- Tokens: 18\.5M in \(81% cached\) · 150k out · \$53\.00 API list-price equivalent; 1 of 3 usage reports unpriced\n/);
 });
 
 test('large thread snapshots page with a cursor and fail closed without one', async () => {
