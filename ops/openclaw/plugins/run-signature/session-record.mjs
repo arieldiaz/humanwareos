@@ -35,12 +35,12 @@ export const sessionRecordId = sessionKey => slackRouteKey({sessionKey}) ?? sess
 // One write in flight per session; any run that ends meanwhile owes exactly one more write afterwards.
 export function createSessionCapture(write, onError) {
   const owed = new Map();
-  const run = session => {
+  const run = (session, dataRoot) => {
     owed.set(session, false);
-    Promise.resolve().then(() => write(session)).catch(error => onError(session, error))
-      .finally(() => owed.get(session) ? run(session) : owed.delete(session));
+    Promise.resolve().then(() => write(session, dataRoot)).catch(error => onError(session, error))
+      .finally(() => owed.get(session) ? run(session, dataRoot) : owed.delete(session));
   };
-  return session => { if (owed.has(session)) owed.set(session, true); else run(session); };
+  return (session, dataRoot) => { if (owed.has(session)) owed.set(session, true); else run(session, dataRoot); };
 }
 
 const FILE_FIELDS = ["id", "name", "title", "mimetype", "filetype", "size", "created", "user", "mode", "is_external", "permalink", "url_private"];

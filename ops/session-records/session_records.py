@@ -1155,6 +1155,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if not args.data_root:
         parser.error("no data root: set HUMANWARE_DATA_ROOT or pass --data-root")
+    if not os.path.isabs(args.data_root):
+        parser.error(f"data root must be an absolute path, got {args.data_root!r}")
     stores = Stores(args.data_root, args.openclaw_state, args.claude_root, args.codex_home, args.cursor_root)
     if args.command == "write":
         print(json.dumps(command_write(stores, args.session), indent=2))
