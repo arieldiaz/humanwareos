@@ -1,4 +1,5 @@
 import {spawn} from "node:child_process";
+import {basename, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import {loadSlackThreadSnapshot} from "./close-report.mjs";
 import {slackRouteKey} from "./slack-route.mjs";
@@ -7,10 +8,17 @@ import {slackRouteKey} from "./slack-route.mjs";
 // the gateway hands it data, and the Slack token never leaves this process.
 const SCRIPT = fileURLToPath(new URL("../../../session-records/session_records.py", import.meta.url));
 
+// OpenClaw runs a plugin from a private copy, so this file's own location is not in the framework
+// tree. The gateway config still names the directory the plugin was loaded from; resolve from that.
+export function sessionRecordsScript(config) {
+  const loaded = (config?.plugins?.load?.paths ?? []).find(path => basename(String(path)) === "run-signature");
+  return loaded ? resolve(String(loaded), "../../../session-records/session_records.py") : SCRIPT;
+}
+
 // Its own process group, so a gateway restart never kills a write half-way. Resolves with stdout.
-export function runSessionRecords(dataRoot, args, {input = "", python = "python3", start = spawn} = {}) {
+export function runSessionRecords(dataRoot, args, {input = "", python = "python3", start = spawn, script = SCRIPT} = {}) {
   return new Promise((resolve, reject) => {
-    const child = start(python, [SCRIPT, "--data-root", dataRoot, ...args], {detached: true, stdio: ["pipe", "pipe", "pipe"]});
+    const child = start(python, [script, "--data-root", dataRoot, ...args], {detached: true, stdio: ["pipe", "pipe", "pipe"]});
     let out = "", err = "";
     child.stdout.on("data", chunk => { out += chunk; });
     child.stderr.on("data", chunk => { err = (err + chunk).slice(-4000); });

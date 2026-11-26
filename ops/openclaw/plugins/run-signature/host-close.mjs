@@ -5,7 +5,7 @@ import {appendFile, mkdir} from "node:fs/promises";
 import {join} from "node:path";
 import {ThreadLifecycle} from "./lifecycle.mjs";
 import {slackRoute, slackRouteKey} from "./slack-route.mjs";
-import {createSessionCapture, exportSlackThread, runSessionRecords, sessionRecordId} from "./session-record.mjs";
+import {createSessionCapture, exportSlackThread, runSessionRecords, sessionRecordId, sessionRecordsScript} from "./session-record.mjs";
 
 const reply = (text, isError) => ({content: [{type: "text", text}], ...(isError ? {isError} : {})});
 const message = error => String(error?.message ?? error);
@@ -48,7 +48,8 @@ export function closeThreadTool(context, {lifecycle}) {
 }
 
 export function registerHostClose(api, {
-  isExcludedChannel, recordRunLifecycle, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi, records = runSessionRecords,
+  isExcludedChannel, recordRunLifecycle, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi,
+  records = (dataRoot, args, options = {}) => runSessionRecords(dataRoot, args, {...options, script: sessionRecordsScript(api.config)}),
 }) {
   const tokenFor = async accountId => (await import(resolveSlackRuntimeModule("accounts"))).resolveSlackAccount({cfg: api.config, accountId})?.botToken;
   const dataRootFor = accountId => resolveDataRoot(api.config, api.pluginConfig, accountId);

@@ -4,7 +4,7 @@ import test from 'node:test';
 import {ThreadLifecycle} from './lifecycle.mjs';
 import {closeThreadTool, registerHostClose} from './host-close.mjs';
 import {loadSlackThreadSnapshot} from './close-report.mjs';
-import {exportSlackThread, runSessionRecords} from './session-record.mjs';
+import {exportSlackThread, runSessionRecords, sessionRecordsScript} from './session-record.mjs';
 import {mkdtemp, readdir, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -283,4 +283,11 @@ test('large thread snapshots page with a cursor and fail closed without one', as
   assert.equal(calls[1].cursor, 'next');
   await assert.rejects(loadSlackThreadSnapshot({channel: 'C123', threadId: '1.000001', latest: '4.000001', token: 'token',
     call: async () => ({messages: [], has_more: true, response_metadata: {}})}), /continuation cursor/);
+});
+
+test('the writer is found from the configured plugin path, not from the private copy the gateway runs', () => {
+  const loaded = '/runtime/build-1/framework/ops/openclaw/plugins/run-signature';
+  assert.equal(sessionRecordsScript({plugins: {load: {paths: ['/elsewhere/voice-slack', loaded]}}}),
+    '/runtime/build-1/framework/ops/session-records/session_records.py');
+  assert.match(sessionRecordsScript({}), /ops\/session-records\/session_records\.py$/);
 });
