@@ -291,6 +291,69 @@ class SessionRecordsTest(unittest.TestCase):
         self.assertEqual(sorted(str(path) for path in self.f.root.rglob("*") if self.f.data not in path.parents and path != self.f.data), listing)
         self.assertEqual(self.verify(self.f.folder()), 0)
 
+    def seal(self, payload, query=LOGICAL):
+        return R.command_seal(self.f.stores, query, payload)
+
+    def index(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            R.main(["--data-root", str(self.f.data), "--openclaw-state", str(self.f.state), "--claude-root", str(self.f.claude),
+                    "--codex-home", str(self.f.codex), "--cursor-root", str(self.f.cursor), "index"])
+        return [line.split("\t") for line in out.getvalue().splitlines()]
+
+    def test_seal_records_each_step_and_a_retry_fills_only_what_is_missing(self):
+        folder = self.f.folder()
+        closed = R.iso(START + 60000)
+        first = self.seal({"closeId": "c1", "closedAt": closed, "steps": {"capture": {}}})
+        self.assertEqual(first["folder"], str(folder))
+        self.assertEqual(first["close"]["steps"]["capture"]["status"], "ok")
+        self.assertTrue((folder / "transcript.jsonl").exists())
+        self.seal({"closeId": "c1", "steps": {"slackThread": {"data": {"messages": [{"ts": "100.1"}], "files": []}},
+                                              "summary": {"text": "**Session closed**"}}})
+        self.assertEqual((folder / "summary.md").read_text(), "**Session closed**\n")
+        exported = (folder / "slack-thread.json").read_bytes()
+        half = self.seal({"closeId": "c1", "steps": {"ledger": {}, "post": {"error": "slack down"}}})["close"]
+        self.assertEqual([(name, step["status"]) for name, step in half["steps"].items()],
+                         [("capture", "ok"), ("slackThread", "ok"), ("summary", "ok"), ("ledger", "ok"), ("post", "failed")])
+        self.assertEqual((half["complete"], half["steps"]["post"]["error"]), (False, "slack down"))
+        self.assertEqual(self.verify(folder), 1)
+        self.assertEqual(self.index()[0][-1], "unsealed")
+        retry = self.seal({"retry": True, "steps": {name: {"data": {"other": 1}, "text": "other"} for name in R.CLOSE_STEPS}})["close"]
+        self.assertTrue(retry["complete"])
+        self.assertEqual({name: retry["steps"][name]["at"] for name in R.CLOSE_STEPS[:4]}, {name: half["steps"][name]["at"] for name in R.CLOSE_STEPS[:4]})
+        self.assertEqual((folder / "slack-thread.json").read_bytes(), exported)
+        self.assertEqual((folder / "summary.md").read_text(), "**Session closed**\n")
+        self.assertEqual(self.verify(folder), 0)
+        self.assertEqual(self.index()[0][-1], "sealed")
+        self.write()
+        self.assertEqual((folder / "summary.md").read_text(), "**Session closed**\n", "a later capture keeps the close report")
+        self.assertEqual(set(json.loads((folder / "session.json").read_text())["files"]) & set(R.SEALED), set(R.SEALED))
+        self.assertEqual(self.verify(folder), 0)
+        (folder / "slack-thread.json").write_text("{}")
+        self.assertEqual(self.verify(folder), 1)
+        (folder / "slack-thread.json").write_bytes(exported)
+        again = self.seal({"closeId": "c2", "closedAt": closed, "steps": {"capture": {}}})["close"]
+        self.assertEqual((again["closeId"], [close["closeId"] for close in again["previous"]], again["complete"]), ("c2", ["c1"], False))
+
+    def test_seal_records_a_failed_capture_and_still_writes_the_close(self):
+        result = self.seal({"closeId": "c1", "closedAt": R.iso(START), "steps": {"capture": {}, "summary": {"text": "report"}}}, "slack:C7:5.5")
+        self.assertEqual(result["folder"], str(self.f.folder("slack-C7-5.5")))
+        self.assertEqual(result["close"]["steps"]["capture"]["status"], "failed")
+        self.assertIn("KeyError", result["close"]["steps"]["capture"]["error"])
+        self.assertEqual(result["close"]["steps"]["summary"]["status"], "ok")
+        self.assertEqual([line[-1] for line in self.index()], ["unsealed"])
+        with self.assertRaises(ValueError):
+            self.seal({"retry": True, "steps": {}}, "slack:C8:6.6")
+
+    def test_one_writer_per_folder_across_processes(self):
+        folder = self.f.folder()
+        probe = ("import fcntl, os, sys\nfd = os.open(sys.argv[1], os.O_RDONLY)\n"
+                 "try:\n    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\nexcept BlockingIOError:\n    sys.exit(3)\n")
+        import subprocess
+        with R.folder_lock(folder):
+            self.assertEqual(subprocess.run([sys.executable, "-c", probe, str(folder)]).returncode, 3)
+        self.assertEqual(subprocess.run([sys.executable, "-c", probe, str(folder)]).returncode, 0)
+
     def test_folder_guard_refuses_paths_outside_the_sessions_root(self):
         with self.assertRaises(ValueError):
             R._guard(self.f.stores, self.f.root / "elsewhere" / "x")

@@ -30,13 +30,13 @@ export class ThreadLifecycle {
     this.runs.delete(turn.key);
     await this.settle(turn, 'act');
   }
-  async close({route, sessionKey, accountId}) {
+  async close({route, sessionKey, accountId, retry = false}) {
     if (!route || this.excluded(route.channel)) throw new Error('close_thread needs a Slack thread outside excluded channels');
     const conversation = slackRouteKey(route);
-    const turn = {key: `${conversation}:close`, route, conversation, sessionKey, accountId};
+    const turn = {key: `${conversation}:close`, route, conversation, sessionKey, accountId, retry};
     this.latest.set(conversation, turn.key);
     await this.record({...turn, status: 'closed'});
-    await this.report(turn);
+    return this.report(turn);
   }
   async settle(turn, status) {
     if (this.latest.get(turn.conversation) !== turn.key) return;

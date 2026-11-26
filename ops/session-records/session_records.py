@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+import contextlib
 from datetime import datetime, timedelta, timezone
+import fcntl
 import hashlib
 import json
 import os
@@ -38,6 +40,8 @@ ISO = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d
 UNSAFE = re.compile(r"[^A-Za-z0-9._-]")
 CURSOR_TOOLS = ("cursor-agent", "cursor-ask")
 PROJECTIONS = ("transcript.jsonl", "usage.json", "summary.md")
+SEALED = ("slack-thread.json", "close.json")
+CLOSE_STEPS = ("capture", "slackThread", "summary", "ledger", "post")
 
 
 class Stores:
@@ -809,9 +813,38 @@ def read_bytes(path):
         return None
 
 
+@contextlib.contextmanager
+def folder_lock(folder):
+    """One writer per folder at a time across processes: run-end captures, a close, a backfill."""
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    handle = os.open(folder, os.O_RDONLY)
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(handle)
+
+
+def record_files(folder):
+    """Size and hash of every derived file in the folder, so verify can re-check it."""
+    files = {}
+    for name in PROJECTIONS + SEALED + ("notes/manifest.json",):
+        data = read_bytes(folder / name)
+        if data is not None:
+            files[name] = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+    return files
+
+
 def write_plan(stores, plan, ledger, dry=False):
     folder = folder_for(stores, plan)
     _guard(stores, folder)
+    if dry:
+        return _write_plan(stores, plan, ledger, folder, dry)
+    with folder_lock(folder):
+        return _write_plan(stores, plan, ledger, folder, dry)
+
+
+def _write_plan(stores, plan, ledger, folder, dry):
     record = read_json(folder / "session.json") or {}
     old = {entry["name"]: entry for entry in record.get("sources", [])}
     sources, copied = [], 0
@@ -837,15 +870,12 @@ def write_plan(stores, plan, ledger, dry=False):
     if manifest:
         changed["notes/manifest.json"] = _projection(folder / "notes" / "manifest.json", pretty({
             "sources": sorted({str(memory) for memory in plan["notes"]}), "files": manifest}), dry)
-    summary = read_bytes(summary_path(stores, plan["logicalId"]))
+    # Once a close has written its report there, summary.md is the close report.
+    summary = None if (folder / "close.json").exists() else read_bytes(summary_path(stores, plan["logicalId"]))
     if summary is not None:
         changed["summary.md"] = _projection(folder / "summary.md", summary, dry)
     slack = plan["logicalId"].split(":") if plan["logicalId"].startswith("slack:") else None
-    files = {}
-    for name in PROJECTIONS + ("notes/manifest.json",):
-        data = read_bytes(folder / name)
-        if data is not None:
-            files[name] = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+    files = record_files(folder)
     document = {
         "schemaVersion": SCHEMA_VERSION, "id": plan["id"], "logicalId": plan["logicalId"], "origin": plan["origin"],
         "agents": sorted(plan["agents"]), "channel": "slack" if slack else None,
@@ -913,6 +943,64 @@ def plan_for(stores, catalog, query):
 def command_write(stores, query):
     catalog = Catalog(stores)
     return write_plan(stores, plan_for(stores, catalog, query), Ledger(stores))
+
+
+def command_seal(stores, query, payload):
+    """Run or record the close steps the payload names, skipping any already ok for this close.
+
+    The gateway owns Slack: it hands over the exported thread, the close report and the outcome of
+    each step it performs itself. This writes every file and close.json. `retry` reopens the last close.
+    """
+    fid, steps, retry = folder_id(query), payload.get("steps") or {}, bool(payload.get("retry"))
+    folder = existing_folder(stores, fid)
+    current = (read_json(folder / "close.json") if folder else None) or {}
+    close_id = current.get("closeId") if retry else payload.get("closeId")
+    if not close_id:
+        raise ValueError("no close to retry" if retry else "seal needs a closeId")
+    done = current.get("steps", {}) if current.get("closeId") == close_id else {}
+    errors = {name: steps[name].get("error") for name in steps}
+    if "capture" in steps and done.get("capture", {}).get("status") != "ok":
+        try:
+            command_write(stores, query)
+        except Exception as error:  # the rest of the close still runs
+            errors["capture"] = f"{type(error).__name__}: {error}"
+        folder = existing_folder(stores, fid)
+    if folder is None:
+        closed = datetime.fromtimestamp((millis(payload.get("closedAt")) or millis(now())) / 1000, timezone.utc)
+        folder = stores.sessions / f"{closed:%Y}" / f"{closed:%m}" / fid
+    _guard(stores, folder)
+    with folder_lock(folder):
+        record = read_json(folder / "close.json")
+        if not record or record.get("closeId") != close_id:
+            prior = dict(record or {})
+            previous = prior.pop("previous", []) + ([prior] if prior else [])
+            record = dict({"schemaVersion": SCHEMA_VERSION, "session": query, "closeId": close_id,
+                           "closedAt": payload.get("closedAt") or now(), "steps": {}}, **({"previous": previous} if previous else {}))
+        for name in CLOSE_STEPS:
+            if name not in steps or record["steps"].get(name, {}).get("status") == "ok":
+                continue
+            error = errors.get(name)
+            try:
+                if not error and name == "slackThread":
+                    write_atomic(folder / "slack-thread.json", pretty(steps[name]["data"]))
+                elif not error and name == "summary":
+                    write_atomic(folder / "summary.md", steps[name]["text"].rstrip("\n").encode() + b"\n")
+            except (KeyError, TypeError, AttributeError, OSError) as failure:
+                error = f"{type(failure).__name__}: {failure}"
+            record["steps"][name] = dict({"status": "failed" if error else "ok", "at": now()}, **({"error": str(error)[:2000]} if error else {}))
+        record["steps"] = {name: record["steps"][name] for name in CLOSE_STEPS if name in record["steps"]}
+        record["complete"] = all(record["steps"].get(name, {}).get("status") == "ok" for name in CLOSE_STEPS)
+        write_atomic(folder / "close.json", pretty(record))
+        session = read_json(folder / "session.json")
+        if isinstance(session, dict):
+            write_atomic(folder / "session.json", pretty(dict(session, files=record_files(folder), updatedAt=now())))
+    return {"folder": str(folder), "close": record}
+
+
+def close_state(folder):
+    """sealed, unsealed (a close with a step not ok), or open (never closed)."""
+    close = read_json(folder / "close.json")
+    return "open" if not isinstance(close, dict) else "sealed" if close.get("complete") else "unsealed"
 
 
 def command_backfill(stores, dry=False, since=None, limit=None, log=None):
@@ -986,15 +1074,24 @@ def verify_folder(stores, folder):
             notes.append(f"{entry['name']}: source no longer present; the copy is the record")
         elif sha != entry["sha256"]:
             problems.append(f"{entry['name']}: source differs from the copy; run write")
-    for name, meta in (record.get("files") or {}).items():
+    files = record.get("files") or {}
+    for name, meta in files.items():
         data = read_bytes(folder / name)
         if data is None or hashlib.sha256(data).hexdigest() != meta.get("sha256"):
             problems.append(f"{name}: does not match its recorded hash")
+    for name in SEALED:
+        if name not in files and (folder / name).exists():
+            problems.append(f"{name}: not recorded in session.json")
+    if close_state(folder) == "unsealed":
+        steps = (read_json(folder / "close.json").get("steps") or {})
+        failed = [name for name in CLOSE_STEPS if (steps.get(name) or {}).get("status") != "ok"]
+        problems.append(f"close.json: close incomplete, not ok: {', '.join(failed)}")
     return problems, notes
 
 
 def folders(stores):
-    return sorted(path.parent for path in stores.sessions.glob("[0-9][0-9][0-9][0-9]/[0-9][0-9]/*/session.json"))
+    return sorted({path.parent for name in ("session.json", "close.json")
+                   for path in stores.sessions.glob(f"[0-9][0-9][0-9][0-9]/[0-9][0-9]/*/{name}")})
 
 
 def index_line(folder):
@@ -1002,7 +1099,7 @@ def index_line(folder):
     size = sum(path.stat().st_size for path in folder.rglob("*") if path.is_file())
     tools = sorted({tool["tool"] for tool in record.get("toolSessions", [])})
     return "\t".join([record.get("id") or folder.name, record.get("startedAt") or "-", ",".join(record.get("agents") or []) or "-",
-                      ",".join(tools) or "-", str(size), "verified" if record.get("verified") else "unverified"])
+                      ",".join(tools) or "-", str(size), "verified" if record.get("verified") else "unverified", close_state(folder)])
 
 
 def main(argv=None):
@@ -1015,6 +1112,8 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     write = commands.add_parser("write", help="write or update one session folder")
     write.add_argument("--session", required=True, help="logical id, folder id, OpenClaw session key or id, or <tool>-<id>")
+    seal = commands.add_parser("seal", help="run or record close steps from a JSON payload on stdin")
+    seal.add_argument("--session", required=True, help="logical id or folder id")
     backfill = commands.add_parser("backfill", help="write every session the stores hold")
     backfill.add_argument("--dry-run", action="store_true")
     backfill.add_argument("--since", help="YYYY-MM-DD; skip sessions that started earlier")
@@ -1029,6 +1128,8 @@ def main(argv=None):
     stores = Stores(args.data_root, args.openclaw_state, args.claude_root, args.codex_home, args.cursor_root)
     if args.command == "write":
         print(json.dumps(command_write(stores, args.session), indent=2))
+    elif args.command == "seal":
+        print(json.dumps(command_seal(stores, args.session, json.load(sys.stdin)), indent=2))
     elif args.command == "backfill":
         print(json.dumps(command_backfill(stores, args.dry_run, args.since, args.limit,
                                           log=None if args.dry_run else lambda line: print(line, file=sys.stderr)), indent=2))

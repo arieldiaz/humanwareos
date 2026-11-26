@@ -1,5 +1,4 @@
-import { appendFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { appendFile, mkdir, readFile, readdir, stat } from "node:fs/promises";
 import { zstdDecompressSync } from "node:zlib";
 import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
@@ -178,7 +177,7 @@ export function slackMrkdwn(markdown) {
   return String(markdown ?? "").replace(/\*\*(.+?)\*\*/g, "*$1*").replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, "<$2|$1>").replace(/^- /gm, "• ");
 }
 
-export async function loadSlackThreadSnapshot({channel, threadId, latest, token, call, limit = 20}) {
+export async function loadSlackThreadSnapshot({channel, threadId, latest, token, call, limit = 200}) {
   const messages = [];
   let cursor;
   do {
@@ -190,18 +189,7 @@ export async function loadSlackThreadSnapshot({channel, threadId, latest, token,
   return messages;
 }
 
-export function closeReportPath(dataRoot, operationId) {
-  return join(dataRoot, 'generated', 'sessions', createHash('sha256').update(operationId).digest('hex').slice(0, 24) + '.md');
-}
-
-export async function writeCloseReport({dataRoot, operationId, report}) {
-  const viewPath = closeReportPath(dataRoot, operationId);
-  await mkdir(dirname(viewPath), {recursive: true});
-  await writeFile(viewPath, report + '\n', {mode: 0o600});
-  return viewPath;
-}
-
-export async function recordSessionClose({ dataRoot, channel, thread, agent, summary, stats, usage, operationId, report, now = new Date() }) {
+export async function recordSessionClose({ dataRoot, channel, thread, agent, summary, stats, usage, operationId, now = new Date() }) {
   const ts = now.toISOString();
   const logicalSessionId = `slack:${channel}:${thread}`;
   const id = operationId;
@@ -221,10 +209,7 @@ export async function recordSessionClose({ dataRoot, channel, thread, agent, sum
     sourceRef: { sessionKey: logicalSessionId, messageId: thread },
   };
   const eventsPath = join(dataRoot, "evidence", "sessions", "events", `${ts.slice(0, 10)}.jsonl`);
-  const viewName = createHash("sha256").update(operationId).digest("hex").slice(0, 24);
-  const viewPath = join(dataRoot, "generated", "sessions", `${viewName}.md`);
   await mkdir(dirname(eventsPath), { recursive: true });
-  await mkdir(dirname(viewPath), { recursive: true });
   let prior = "";
   try {
     prior = await readFile(eventsPath, "utf8");
@@ -232,5 +217,5 @@ export async function recordSessionClose({ dataRoot, channel, thread, agent, sum
     if (error?.code !== "ENOENT") throw error;
   }
   if (!prior.includes(`\"id\":\"${id}\"`)) await appendFile(eventsPath, `${JSON.stringify(event)}\n`, { mode: 0o600 });
-  return { event, viewPath };
+  return event;
 }

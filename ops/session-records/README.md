@@ -11,14 +11,18 @@ Gives every session one folder in the data root holding its full record, so no c
 - `tools/`: byte-exact copies of the OpenClaw events and archives and the CLI transcripts.
 - `usage.json`, `summary.md`: from the ledger and the existing summary.
 - `notes/`: the Claude Code project's notes, with `manifest.json`.
+- `slack-thread.json`, `close.json`: written when the thread closes. The export holds every message, and attached files are listed by metadata, not downloaded. `close.json` records each close step (`capture`, `slackThread`, `summary`, `ledger`, `post`) with status, time and error. After a close, `summary.md` is the close report.
 
-Unchanged sources are not recopied; a copy replaced by anything but its own extension is kept under a versioned name. A copy is verified when it and the source's first copied bytes hash the same.
+Every run end starts `write` in the gateway plugin, one at a time per session. A folder lock keeps all writers serial. Unchanged sources are not recopied; a copy replaced by anything but its own extension is kept under a versioned name. A copy is verified when it and the source's first copied bytes hash the same.
 
 ## Commands
 
 ```sh
 session_records.py write --session <id, key or tool-id>
 session_records.py backfill [--dry-run] [--since YYYY-MM-DD] [--limit N]
+session_records.py seal --session <id> < steps.json
 session_records.py verify <folder> | --all
 session_records.py index
 ```
+
+`seal` is called by the gateway's close sequence, which fetches and posts Slack itself and passes this command data on stdin. It runs or records only the steps not already ok for that close. To finish a half-closed thread, ask its lead agent to call `close_thread` with `retry`. `verify` fails a close that has a step not ok. `index` ends each line with `sealed`, `unsealed` or `open`.

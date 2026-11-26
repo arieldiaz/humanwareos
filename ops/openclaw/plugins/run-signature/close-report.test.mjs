@@ -111,7 +111,7 @@ test("unpriced models mark cost as a lower bound and missing usage stays explici
   assert.equal(slackMrkdwn("**Session closed** · 2m\n- Code: [PR #142](https://github.com/o/r/pull/142) · open"), "*Session closed* · 2m\n• Code: <https://github.com/o/r/pull/142|PR #142> · open");
 });
 
-test("records one idempotent completion event and one generated view", async () => {
+test("records one idempotent completion event", async () => {
   const dataRoot = await mkdtemp(join(tmpdir(), "close-report-"));
   const params = {
     dataRoot,
