@@ -45,6 +45,7 @@
           "reasoning": {"enum": ["off", "minimal", "low", "medium", "high", "xhigh", "adaptive", "max", "ultra"]},
           "fastMode": {"oneOf": [{"enum": ["auto"]}, {"type": "boolean"}]},
           "responseTargetSeconds": {"type": "integer", "minimum": 1, "maximum": 300},
+          "authProfile": {"type": "string", "pattern": "^[a-z0-9-]+:[^\\s@]+$"},
           "enabled": {"type": "boolean"}
         },
         "additionalProperties": false

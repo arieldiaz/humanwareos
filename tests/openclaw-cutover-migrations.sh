@@ -74,5 +74,10 @@ rollback_start=$(line '"$OPENCLAW_BIN" gateway start --json > "$report/rollback-
 rollback_check=$(line 'gateway status --require-rpc --json > "$report/rollback-gateway-status.json"')
 [ "$restore" -lt "$rollback_start" ] && [ "$rollback_start" -lt "$rollback_check" ] && [ "$rollback_check" -lt "$stop" ]
 grep -Fq 'migrations "$transaction/staged/node_modules/openclaw" "$HOME/.openclaw" > "$transaction/migrations"' "$CUTOVER"
+# A declared secrets plan writes auth stores only while the gateway is stopped: it takes the
+# rollback copies after the stop and applies after Doctor, before the start.
+plan_copy=$(line "(.openclaw.secretsPlans // []) | length > 0")
+plan_apply=$(line 'secrets apply --from "$instance/$plan" --allow-exec --json >> "$report/secrets-apply.jsonl"')
+[ -n "$plan_copy" ] && [ "$stop" -lt "$plan_copy" ] && [ "$plan_copy" -lt "$copy" ] && [ "$doctor" -lt "$plan_apply" ] && [ "$plan_apply" -lt "$start" ]
 
 echo "openclaw cutover migrations: OK"

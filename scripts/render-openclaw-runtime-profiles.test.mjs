@@ -119,6 +119,19 @@ test("renders the worker profile over existing sub-agent settings and checks the
   assert.throws(() => applyRuntimeProfiles(source, policy), /agent max cannot delegate to disabled profile native-deep/);
 });
 
+test("a profile's authProfile selects that account on the primary only", () => {
+  const policy = structuredClone(catalog);
+  policy.profiles.native.authProfile = "openai:work";
+  const rendered = applyRuntimeProfiles(source, policy);
+  const max = rendered.agents.list[1];
+  assert.equal(max.model.primary, "openai/gpt-5.6-sol@openai:work");
+  assert.deepEqual(max.models["openai/gpt-5.6-sol"].agentRuntime, {id: "openclaw"});
+  assert.ok(Object.keys(max.models).every((model) => !model.includes("@")));
+  assert.deepEqual(rendered.agents.defaults.modelPolicy.allow, ["openai/gpt-5.6-sol"]);
+  policy.profiles.native.authProfile = "work";
+  assert.throws(() => applyRuntimeProfiles(source, policy), /profile native has an invalid authProfile/);
+});
+
 test("agents without their own allowlist inherit the shared one", () => {
   const policy = structuredClone(catalog);
   policy.allowedProfiles = ["native", "native-deep"];

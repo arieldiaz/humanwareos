@@ -186,7 +186,7 @@ prepare() {
 
 activate() {
   [ "$#" -eq 2 ] || usage
-  local prepared approval framework instance runtime transaction version data runtime_root current control instance_id db
+  local prepared approval framework instance runtime transaction version data runtime_root current control instance_id db plan
   local report previous_runtime live_state live_config config_rollback workspace_rollback state_rollback candidate_package candidate_bin candidate_config active=1 previous_patch_set="" stock_needed=0
   local cutover_started=0 state_backed_up=0 package_installed=0 config_replaced=0 workspace_applied=0 runtime_switched=0
   prepared=$(CDPATH= cd -- "$(dirname "$1")" && pwd)/$(basename "$1")
@@ -310,8 +310,9 @@ activate() {
   fi
   # The first mutation below (a plugin update) already migrates the state database, so the
   # copies are taken before any of it; every database is copied so rollback restores one
-  # consistent set, including the agent registry the state database keeps.
-  if [ -s "$report/migrations" ]; then
+  # consistent set, including the agent registry the state database keeps. A declared
+  # secrets plan writes agent auth stores, so it takes the same copies.
+  if [ -s "$report/migrations" ] || $JQ -e '(.openclaw.secretsPlans // []) | length > 0' "$instance/humanware.instance.json" >/dev/null; then
     while IFS= read -r db; do
       copy_database "$db" "$state_rollback/$(dirname "${db#"$live_state"/}")"
     done < <(state_databases "$live_state")
@@ -344,6 +345,10 @@ activate() {
   if [ -s "$report/migrations" ]; then
     "$OPENCLAW_BIN" doctor --fix --non-interactive > "$report/doctor.log" 2>&1
   fi
+  # Auth stores accept writes only while the gateway is stopped; an unchanged plan writes nothing.
+  while IFS= read -r plan; do
+    "$OPENCLAW_BIN" secrets apply --from "$instance/$plan" --allow-exec --json >> "$report/secrets-apply.jsonl"
+  done < <($JQ -r '.openclaw.secretsPlans[]?' "$instance/humanware.instance.json")
   "$OPENCLAW_BIN" gateway install --force --json > "$report/gateway-install.json"
   "$OPENCLAW_BIN" gateway start --json > "$report/gateway-start.json"
   local attempt=1

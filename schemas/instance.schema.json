@@ -27,7 +27,8 @@
       "properties": {
         "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-.][A-Za-z0-9.-]+)?$"},
         "config": {"const": "openclaw/config.patch.json5"},
-        "plugins": {"type": "array", "items": {"type": "string"}}
+        "plugins": {"type": "array", "items": {"type": "string"}},
+        "secretsPlans": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^openclaw/[A-Za-z0-9._-]+\\.json$"}}
       }
     },
     "runtimeProfiles": {"type": "string"},

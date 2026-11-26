@@ -39,6 +39,8 @@ Each run performs three bounded reads:
 
 Optional `claudeChecks` run an absolute CLI command with `auth status --json` and a 20-second timeout. Only login state and normalized expiry enter the feed; account details and raw command output are discarded. Missing or malformed status is unavailable, not healthy. A seven-day warning precedes login expiry. Local status is not proof of remote model acceptance, and a login with unknown expiry remains attention. No credential store is read, changed, or repaired by the collector.
 
+A `claude-oauth-token` check probes a `claude setup-token` subscription token on the same Anthropic models route with an OAuth bearer. The provider reports no token expiry, so a check may declare `expiresAt`; it becomes `expiring` within `warnDays` (default 30) even while the remote check passes.
+
 The first adapters cover OpenAI, Anthropic, OpenRouter, Gemini, and xAI. OpenRouter exposes key-level usage and limits through its ordinary key endpoint. Other providers require management credentials or a console review for complete budget confirmation; a successful API health check must not be presented as budget verification.
 
 The output is written atomically and contains source freshness, a normalized credential list, provider observations, summary counts, and deterministic findings.

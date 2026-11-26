@@ -135,6 +135,36 @@ class CredentialPostureTests(unittest.TestCase):
         self.assertNotIn("secret-value", seen["url"])
         self.assertEqual(seen["header"], "secret-value")
 
+    def test_claude_token_check_uses_oauth_bearer_and_declared_expiry(self):
+        seen = {}
+
+        class Response:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self): return b'{"data":[]}'
+
+        def opener(request, timeout):
+            seen.update(url=request.full_url, auth=request.headers.get("Authorization"),
+                        beta=request.headers.get("Anthropic-beta"), key=request.headers.get("X-api-key"))
+            return Response()
+
+        check = {"id": "token", "provider": "claude-oauth-token", "credentialEnv": "CLAUDE_CODE_OAUTH_TOKEN",
+                 "expiresAt": "2999-01-01T00:00:00Z", "warnDays": 30}
+        result = collector.check_provider(check, environ={"CLAUDE_CODE_OAUTH_TOKEN": "secret-value"}, opener=opener)
+        self.assertEqual(result["state"], "verified")
+        self.assertEqual(seen["auth"], "Bearer secret-value")
+        self.assertEqual(seen["beta"], "oauth-2025-04-20")
+        self.assertIsNone(seen["key"])
+        self.assertNotIn("secret-value", seen["url"] + json.dumps(result))
+        soon = dict(check, expiresAt=datetime.now(timezone.utc).replace(microsecond=0).isoformat())
+        self.assertEqual(collector.check_provider(soon, environ={"CLAUDE_CODE_OAUTH_TOKEN": "x"}, opener=opener)["state"], "expiring")
+        snapshot = collector.build_snapshot({"schemaVersion": 1}, {"credentials": []}, [], [],
+            [{"id": "token", "provider": "claude-oauth-token", "state": "auth_failed", "httpStatus": 401}])
+        self.assertEqual(snapshot["findings"][0]["code"], "claude-token-auth_failed")
+        with self.assertRaises(RuntimeError):
+            collector.validate_config({**self.config(), "checks": [dict(check, expiresAt="soon")]})
+
     def test_atomic_write_replaces_complete_document(self):
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, "status.json")

@@ -61,8 +61,12 @@ def validate_config(config):
         missing = [key for key in ("id", "provider", "credentialEnv") if not check.get(key)]
         if missing:
             raise RuntimeError(f"provider check is missing {', '.join(missing)}")
-        if check["provider"] not in {"openai", "anthropic", "openrouter", "gemini", "xai"}:
+        if check["provider"] not in {"openai", "anthropic", "claude-oauth-token", "openrouter", "gemini", "xai"}:
             raise RuntimeError(f"unsupported provider {check['provider']}")
+        try:
+            parse_time(check.get("expiresAt"))
+        except (TypeError, ValueError, AttributeError) as error:
+            raise RuntimeError(f"provider check {check['id']} has an invalid expiresAt") from error
 
 
 def validate_register(register):
@@ -168,6 +172,11 @@ def check_provider(check, environ=os.environ, opener=urllib.request.urlopen):
     elif provider == "anthropic":
         url = "https://api.anthropic.com/v1/models?limit=1"
         headers.update({"x-api-key": credential, "anthropic-version": "2023-06-01"})
+    elif provider == "claude-oauth-token":
+        # A `claude setup-token` subscription token: same metadata route, OAuth bearer.
+        url = "https://api.anthropic.com/v1/models?limit=1"
+        headers.update({"Authorization": f"Bearer {credential}", "anthropic-version": "2023-06-01",
+                        "anthropic-beta": "oauth-2025-04-20"})
     elif provider == "openrouter":
         url = "https://openrouter.ai/api/v1/key"
         headers["Authorization"] = f"Bearer {credential}"
@@ -190,6 +199,12 @@ def check_provider(check, environ=os.environ, opener=urllib.request.urlopen):
         return {**base, "state": "unavailable", "httpStatus": status}
 
     result = {**base, "state": "verified", "httpStatus": status}
+    # The provider does not report a token's expiry, so the instance declares it.
+    expires = parse_time(check.get("expiresAt"))
+    if expires:
+        result["expiresAt"] = expires.isoformat()
+        if (expires - utcnow()).total_seconds() <= check.get("warnDays", 30) * 86400:
+            result["state"] = "expiring"
     if provider == "openrouter" and isinstance(payload, dict):
         data = payload.get("data") or {}
         result["usage"] = {
@@ -323,6 +338,12 @@ def build_snapshot(config, register, discoveries, doppler_sources, checks, now=N
                 "claude-auth-" + check["state"], "Claude CLI authentication needs attention",
                 f"{check['id']} local status: {check['state']}.",
                 action="Inspect the service authentication context; preserve existing credentials."))
+        if check.get("provider") == "claude-oauth-token" and check["state"] != "verified":
+            findings.append(finding(
+                "high" if check["state"] == "auth_failed" else "medium",
+                "claude-token-" + check["state"], "Claude subscription token needs attention",
+                f"{check['id']} remote status: {check['state']}.",
+                action="Mint a replacement with `claude setup-token`, store it under the same secret name, then reload secrets."))
 
     severity = Counter(item["severity"] for item in findings)
     status = "critical" if severity["high"] else "attention" if severity["medium"] else "healthy"

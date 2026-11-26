@@ -135,9 +135,14 @@ export function applyRuntimeProfiles(sourceConfig, catalog) {
       const model = String(profile.model ?? "").trim();
       if (!model.includes("/")) fail(`profile ${profileId} must use a provider/model reference`);
       const priorModel = agent.model && typeof agent.model === "object" && !Array.isArray(agent.model) ? agent.model : {};
+      // An instance can bind a profile to one saved OpenClaw account. The
+      // `model@profile` primary is an explicit selection, so sessions created
+      // under another account move to it on their next turn.
+      const authProfile = profile.authProfile === undefined ? "" : String(profile.authProfile).trim();
+      if (profile.authProfile !== undefined && !/^[a-z0-9-]+:[^\s@]+$/.test(authProfile)) fail(`profile ${profileId} has an invalid authProfile`);
       return {
         ...agent,
-        model: {...priorModel, primary: model},
+        model: {...priorModel, primary: authProfile ? `${model}@${authProfile}` : model},
         models: modelPolicies,
         ...defaults,
         ...subagents,
