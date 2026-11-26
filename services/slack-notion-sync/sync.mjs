@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { createHash } from "node:crypto";
-import { pathToFileURL } from "node:url";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const DATA_ROOT = process.env.HUMANWARE_DATA_ROOT || null;
 const INPUT_PATH = process.env.SLACK_NOTION_INPUT
@@ -605,13 +606,55 @@ async function upsertRow(row, previous, now) {
   const properties = notionProperties(row, previous, now);
   if (previous?.pageId) {
     await notion(`pages/${previous.pageId}`, { method: "PATCH", body: { properties } });
-    return "updated";
+    return {action: "updated", pageId: previous.pageId};
   }
-  await notion("pages", {
+  const page = await notion("pages", {
     method: "POST",
     body: { parent: { type: "data_source_id", data_source_id: NOTION_DATA_SOURCE_ID }, properties },
   });
-  return "created";
+  return {action: "created", pageId: page.id};
+}
+
+// A close appends one of these; the entry it writes comes from the sealed session folder, not the session projection.
+export function pendingSealCommands(text, state) {
+  const processed = state.processedCommands ?? {};
+  return String(text ?? "").split("\n").flatMap((line) => {
+    try {
+      const command = JSON.parse(line);
+      return command?.kind === "seal" && command.id && !processed[command.id] && command.channelId && command.messageTs
+        && command.session && command.closeId && command.folder ? [command] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export function sealedSessionStats(folder) {
+  const session = readJson(path.join(folder, "session.json"), {}) ?? {};
+  const usage = readJson(path.join(folder, "usage.json"), {}) ?? {};
+  const thread = readJson(path.join(folder, "slack-thread.json"), {}) ?? {};
+  const windows = session.openclaw?.windows?.length || 1;
+  const messages = Number(thread.messageCount ?? 0);
+  const stamps = (thread.messages ?? []).map((message) => Number(message.ts)).filter(Number.isFinite);
+  const elapsed = stamps.length ? (Math.max(...stamps) - Math.min(...stamps)) * 1000 : 0;
+  const tokens = Object.entries(usage.totals ?? {}).reduce((sum, [name, count]) => name === "total" ? sum : sum + (Number(count) || 0), 0);
+  const compact = tokens >= 1e6 ? `${(tokens / 1e6).toFixed(1)}M` : tokens >= 1e3 ? `${Math.round(tokens / 1e3)}k` : String(tokens);
+  return `${windows} session${windows === 1 ? "" : "s"} · ${messages} msg${messages === 1 ? "" : "s"} · ${formatDuration(elapsed)} · ${compact} tokens`;
+}
+
+export function sealedRow(discovered, command, now, status) {
+  const summaryName = `${createHash("sha256").update(command.session).digest("hex").slice(0, 24)}.md`;
+  return {...buildRowFromRoot(discovered, null, now, now, status), sessionStats: sealedSessionStats(command.folder),
+    sessionSummary: `${SUMMARY_BASE_URL}/${encodeURIComponent(summaryName)}`};
+}
+
+// Step f's outcome, page id included, goes into the folder's close.json through the folder's own writer,
+// which ships beside this service in the framework tree.
+const SESSION_RECORDS = fileURLToPath(new URL("../../ops/session-records/session_records.py", import.meta.url));
+export function recordSealStep(command, step, {dataRoot = DATA_ROOT, run = execFileSync} = {}) {
+  if (!dataRoot) throw new Error("HUMANWARE_DATA_ROOT is required to record a close step");
+  run("python3", [SESSION_RECORDS, "--data-root", dataRoot, "seal", "--session", command.session],
+    {input: JSON.stringify({closeId: command.closeId, steps: {notion: step}}), stdio: ["pipe", "pipe", "pipe"]});
 }
 
 function changedAtMs(file) {
@@ -635,7 +678,13 @@ async function main() {
   const missing = missingRequiredConfig({ dryRun });
   if (missing.length) throw new Error(`missing required configuration: ${missing.join(", ")}`);
   const now = new Date();
-  const sessions = validateInput(readJson(INPUT_PATH), now);
+  let sessions, projectionError;
+  try {
+    sessions = validateInput(readJson(INPUT_PATH), now);
+  } catch (error) {
+    if (dryRun) throw error;
+    projectionError = error;  // a close's entry does not read the projection, so it still runs
+  }
   if (dryRun) {
     const discovered = process.env.SLACK_BOT_TOKEN ? await discoverSlackRoots() : null;
     process.stdout.write(`${JSON.stringify({
@@ -662,6 +711,38 @@ async function main() {
   const statusBotIds = new Set(statusBots.map(({userId}) => userId));
   const ensureChannelOption = await notionSelectOptionWriter("Channel");
   const ensureStatusOption = await notionSelectOptionWriter("Status");
+  const totals = { created: 0, updated: 0, skipped: 0, failed: 0 };
+  for (const command of pendingSealCommands(readText(COMMANDS_PATH), state)) {
+    const threadKey = `${command.channelId}:${command.messageTs}`;
+    let step;
+    try {
+      const item = await discoverSlackRoot(command.channelId, command.messageTs);
+      if (!item) throw new Error("close target is not a Slack message root");
+      const status = effectiveStatusForThread(threadKey, item.root, baselineStatuses, state.migrationClaims, HUMAN_STATUS_ACTORS, statusBotIds);
+      const row = sealedRow(item, command, now.toISOString(), status);
+      await ensureChannelOption(row.channel);
+      await ensureStatusOption(row.status);
+      const {action, pageId} = await upsertRow(row, await existingNotionRow(threadKey), now.toISOString());
+      totals[action] += 1;
+      state.threads[threadKey] = {...state.threads[threadKey], fingerprint: rootFingerprint(item.channelName, item.root, status), projectedStatus: status};
+      step = {pageId};
+    } catch (error) {
+      totals.failed += 1;
+      step = {error: error.message};
+      process.stderr.write(`${JSON.stringify({event: "slack_notion_seal_failed", threadKey, commandId: command.id, error: error.message})}\n`);
+    }
+    try {
+      recordSealStep(command, step);
+    } catch (error) {
+      totals.failed += 1;
+      process.stderr.write(`${JSON.stringify({event: "slack_notion_seal_unrecorded", threadKey, commandId: command.id, error: String(error.stderr || error.message).trim()})}\n`);
+    }
+    state.processedCommands[command.id] = now.toISOString();
+  }
+  if (projectionError) {
+    atomicJson(STATE_PATH, {...state, updatedAt: now.toISOString()});
+    throw projectionError;
+  }
   const fullSync = !state.lastFullSyncAt || now.getTime() - new Date(state.lastFullSyncAt).getTime() >= FULL_SYNC_INTERVAL_MS;
   const sessionByThread = new Map(sessions.map((session) => [
     `${session.channelId}:${session.threadId}`,
@@ -674,7 +755,6 @@ async function main() {
     eventText = readText(EVENTS_PATH);
     pendingEvents = pendingStatusEvents(eventText, state, new Date());
   }
-  const totals = { created: 0, updated: 0, skipped: 0, failed: 0 };
   const pendingCommands = pendingStatusCommands(readText(COMMANDS_PATH), state);
   for (const command of pendingCommands) {
     const threadKey = `${command.channelId}:${command.messageTs}`;
@@ -692,8 +772,8 @@ async function main() {
       await ensureChannelOption(row.channel);
       await ensureStatusOption(row.status);
       const previous = await existingNotionRow(threadKey);
-      const result = await upsertRow(row, previous, now.toISOString());
-      totals[result] += 1;
+      const {action} = await upsertRow(row, previous, now.toISOString());
+      totals[action] += 1;
       state.threads[threadKey] = {
         fingerprint: rootFingerprint(item.channelName, item.root, command.status),
         projectedStatus: command.status,
@@ -734,8 +814,8 @@ async function main() {
         await ensureChannelOption(row.channel);
         await ensureStatusOption(row.status);
         const previous = await existingNotionRow(pending.threadKey);
-        const result = await upsertRow(row, previous, now.toISOString());
-        totals[result] += 1;
+        const {action} = await upsertRow(row, previous, now.toISOString());
+        totals[action] += 1;
         state.threads[pending.threadKey] = {fingerprint: rootFingerprint(item.channelName, item.root, status), projectedStatus: status};
         for (const id of pending.ids) state.processedEvents[id] = now.toISOString();
       } catch (error) {
@@ -781,8 +861,8 @@ async function main() {
         const row = buildRowFromRoot(item, sessionByThread.get(threadKey), now.toISOString(), now.toISOString(), status);
         await ensureChannelOption(row.channel);
         await ensureStatusOption(row.status);
-        const result = await upsertRow(row, previous, now.toISOString());
-        totals[result] += 1;
+        const {action} = await upsertRow(row, previous, now.toISOString());
+        totals[action] += 1;
         state.threads[threadKey] = {fingerprint, projectedStatus: status, ...(managedStatusBot ? {managedStatusBot} : {})};
       } catch (error) {
         totals.failed += 1;
@@ -814,8 +894,17 @@ async function main() {
   if (totals.failed) process.exitCode = 1;
 }
 
+// Journals are append-only; launchd does not start a running job, so one that grew during a run earns another.
+const journalSizes = () => [EVENTS_PATH, COMMANDS_PATH].map((file) => { try { return fs.statSync(file).size; } catch { return -1; } }).join();
+
 if (isMainModule(import.meta.url, process.argv[1])) {
-  main().catch((error) => {
+  (async () => {
+    let seen;
+    do {
+      seen = journalSizes();
+      await main();
+    } while (journalSizes() !== seen);
+  })().catch((error) => {
     process.stderr.write(`${JSON.stringify({ event: "slack_notion_sync_failed", error: error.message })}\n`);
     process.exitCode = 1;
   });

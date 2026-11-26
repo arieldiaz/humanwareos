@@ -1,6 +1,8 @@
 import {
   formatCloseReport, loadPullRequests, modelPrices, loadThreadUsage, measureSlackThread, recordSessionClose, slackMrkdwn,
 } from "./close-report.mjs";
+import {appendFile, mkdir} from "node:fs/promises";
+import {join} from "node:path";
 import {ThreadLifecycle} from "./lifecycle.mjs";
 import {slackRoute, slackRouteKey} from "./slack-route.mjs";
 import {createSessionCapture, exportSlackThread, runSessionRecords, sessionRecordId} from "./session-record.mjs";
@@ -8,7 +10,15 @@ import {createSessionCapture, exportSlackThread, runSessionRecords, sessionRecor
 const reply = (text, isError) => ({content: [{type: "text", text}], ...(isError ? {isError} : {})});
 const message = error => String(error?.message ?? error);
 // The close steps session_records.py records in close.json, in order, with the name the thread sees.
-const STEPS = {capture: "session record", slackThread: "Slack export", summary: "summary file", ledger: "ledger event", post: "close report post"};
+const STEPS = {capture: "session record", slackThread: "Slack export", summary: "summary file", ledger: "ledger event", post: "close report post", notion: "Notion entry"};
+
+// Step f is the Notion projector's: it reads this journal, writes the session's entry from the sealed folder,
+// and records the page id in close.json. Its token stays with the projector.
+async function queueNotionEntry(dataRoot, command) {
+  const path = join(dataRoot, "operations", "slack-notion-sync", "commands.jsonl");
+  await mkdir(join(dataRoot, "operations", "slack-notion-sync"), {recursive: true, mode: 0o700});
+  await appendFile(path, `${JSON.stringify(command)}\n`, {mode: 0o600});
+}
 
 export function closeThreadTool(context, {lifecycle}) {
   if (context.messageChannel !== "slack" || !context.sessionKey) return;
@@ -55,10 +65,10 @@ export function registerHostClose(api, {
     const dataRoot = dataRootFor(turn.accountId);
     if (!dataRoot) throw new Error("the canonical Humanware data root is unavailable");
     const now = Date.now();
-    let close = {closeId: turn.retry ? undefined : `${turn.conversation}:close:${now}`, closedAt: new Date(now).toISOString(), steps: {}};
+    let close = {closeId: turn.retry ? undefined : `${turn.conversation}:close:${now}`, closedAt: new Date(now).toISOString(), steps: {}}, folder;
     const seal = async steps => {
       try {
-        ({close} = JSON.parse(await records(dataRoot, ["seal", "--session", slackRouteKey(turn.route)],
+        ({close, folder} = JSON.parse(await records(dataRoot, ["seal", "--session", slackRouteKey(turn.route)],
           {input: JSON.stringify({closeId: close.closeId, closedAt: close.closedAt, retry: !close.closeId, steps})})));
       } catch (error) {
         for (const name of Object.keys(steps)) close.steps[name] = {status: "failed", error: message(error)};
@@ -101,8 +111,15 @@ export function registerHostClose(api, {
         throw error;
       }));
     }
+    if (pending("notion")) {
+      const error = await outcome(queueNotionEntry(dataRoot, {schemaVersion: 1, id: `seal-command:${close.closeId}:${now}`, kind: "seal",
+        observedAt: new Date(now).toISOString(), channelId: channel, messageTs: threadId, session: slackRouteKey(turn.route), closeId: close.closeId, folder}));
+      if (error.error) done.notion = error;
+    }
     if (Object.keys(done).length) await seal(done);
-    return Object.keys(STEPS).filter(pending).map(name => `${STEPS[name]} (${close.steps[name]?.error ?? "not run"})`);
+    // The Notion entry lands after this returns, so only a failure to queue it counts here.
+    return Object.keys(STEPS).filter(name => pending(name) && (name !== "notion" || close.steps.notion?.status === "failed"))
+      .map(name => `${STEPS[name]} (${close.steps[name]?.error ?? "not run"})`);
   }
 
   const lifecycle = new ThreadLifecycle({
