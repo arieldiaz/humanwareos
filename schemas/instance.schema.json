@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanwareos.com/schemas/instance.schema.json",
-  "title": "Humanware OS instance",
+  "title": "HumanwareOS instance",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "name", "paths", "agents", "openclaw", "runtimeProfiles", "channels", "surfaces", "services", "secrets"],

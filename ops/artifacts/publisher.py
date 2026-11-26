@@ -29,7 +29,7 @@ def runtime_json(relative: str) -> dict:
 CONFIG = runtime_json("config/services/artifacts.json")
 INSTANCE = runtime_json("config/instance.json")
 DATA_ROOT = os.environ.get("HUMANWARE_DATA_ROOT") or INSTANCE.get("paths", {}).get("dataRoot", "")
-SHELL_CHROME = re.compile("|".join([re.escape(INSTANCE.get("name", "Humanware OS")), "Design Artifacts", "Design HQ"]), re.IGNORECASE)
+SHELL_CHROME = re.compile("|".join([re.escape(INSTANCE.get("name", "HumanwareOS")), "Design Artifacts", "Design HQ"]), re.IGNORECASE)
 HOST = "127.0.0.1"
 PORT = int(CONFIG.get("listen", "127.0.0.1:8791").rsplit(":", 1)[1])
 PRIVATE_ROOT = (Path(DATA_ROOT) / "artifacts").resolve()

@@ -354,11 +354,11 @@ class ArtifactManagerTests(unittest.TestCase):
     def test_every_artifact_page_carries_the_one_server_side_breadcrumb_trail(self) -> None:
         self.promote("s:a", "Draft")
         self.promote("s:a", "Final", body="<p>final</p>")
-        live, home = self.review / "learning", '<a href="/">Humanware OS</a><span class="sep">/</span><a href="/artifacts/">Artifacts</a>'
+        live, home = self.review / "learning", '<a href="/">HumanwareOS</a><span class="sep">/</span><a href="/artifacts/">Artifacts</a>'
         project = f'{home}<span class="sep">/</span><a href="/artifacts/learning/">Learning</a>'
         artifact = f'{project}<span class="sep">/</span><a href="/artifacts/learning/1/">Final</a><span class="sep">/</span>'
         versions = f'{artifact}<a href="/artifacts/learning/1/versions/">Versions</a><span class="sep">/</span>'
-        with patch.object(am, "BRAND", "Humanware OS"):
+        with patch.object(am, "BRAND", "HumanwareOS"):
             am.materialize(self.root, self.review, am.load_registry(self.root))
         pages = {"index.html": f'{home}<span class="sep">/</span><span class="current">Learning</span>',
                  "1.crumbs.html": f'{project}<span class="sep">/</span><span class="current">Final</span>',

@@ -15,7 +15,7 @@ Configuration (environment):
 | `HUMANWARE_DATA_ROOT` | unless `CALENDAR_DATABASE` | Database at `<data>/working/projects/calendar/calendar.sqlite3` |
 | `CALENDAR_DATABASE` | no | Explicit database path |
 | `CALENDAR_PORT` | no (8794) | Loopback port |
-| `CALENDAR_BRAND_NAME` | no ("Humanware OS") | Dashboard title/eyebrow |
+| `CALENDAR_BRAND_NAME` | no ("HumanwareOS") | Dashboard title/eyebrow |
 | `CALENDAR_FOOTER_TEXT` | no | Dashboard footer |
 | `HUMANWARE_FRAMEWORK_ROOT` | no | Defaults to two directories above this file |
 | `CALENDAR_SERVICE_ROOT` | no | Directory containing `public/`; defaults to this directory |

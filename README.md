@@ -1,16 +1,16 @@
-# Humanware OS
+# HumanwareOS
 
 **The open operating system for the human side of AI.**
 
-Humanware OS is a reusable framework for durable AI agents: behavioral rules, identity templates, channel contracts, execution profiles, data schemas, and a public/private domain surface. It is deliberately separate from one person's configuration and from the material those agents create.
+HumanwareOS is a reusable framework for durable AI agents: behavioral rules, identity templates, channel contracts, execution profiles, data schemas, and a public/private domain surface. It is deliberately separate from one person's configuration and from the material those agents create.
 
 ## The system boundary
 
 Humanware installations have three sources and one generated output:
 
-1. **Humanware OS** is the public framework. Reusable fixes and capabilities land here through reviewed pull requests.
-2. **The private instance** contains only local configuration: agent overlays, channel routing, model and harness profiles, domain routes, local-server selection, host paths and ports, Caddy routes, and secret identifiers. It is the source of truth for what runs on a particular Mac or server, while reusable service implementations remain in Humanware OS. Each generated runtime records the framework revision used to assemble it.
-3. **The data plane** holds the stream, memory, strategy, sessions, working documents, artifacts, derived indexes, and caches outside Git. Most durable evidence is append-only; current projections and working documents are versioned.
+1. **HumanwareOS** is the public framework. Reusable fixes and capabilities land here through reviewed pull requests.
+2. **The private instance** contains only local configuration: agent overlays, channel routing, model and harness profiles, domain routes, local-server selection, host paths and ports, Caddy routes, and secret identifiers. It is the source of truth for what runs on a particular Mac or server, while reusable service implementations remain in HumanwareOS. Each generated runtime records the framework revision used to assemble it.
+3. **The data plane** holds the stream, memory, sessions, working documents, artifacts, derived indexes, and caches outside Git. Most durable evidence is append-only; current projections and working documents are versioned.
 4. **The runtime** is a checksummed immutable build assembled from recorded framework and instance revisions. Services use its `current` symlink. It is output, never source.
 
 This separation makes updates reviewable, restores mechanical, and debugging local: a behavior defect belongs to the framework, a deployment fact belongs to the instance, accumulated material belongs to data, and a runtime discrepancy is fixed by rebuilding.
@@ -29,7 +29,7 @@ A full installation can also expose one domain with public and private halves. T
 
 ## Install
 
-From a Humanware OS checkout:
+From a HumanwareOS checkout:
 
 ```bash
 ./install.sh /absolute/path/to/my-instance --repo OWNER/my-instance
@@ -49,23 +49,31 @@ Continue with [Getting Started](docs/getting-started.md) to configure an agent a
 
 [`templates/instance`](templates/instance) is the one authored starter for a private installation. It is published to [`arieldiaz/my-humanware-template`](https://github.com/arieldiaz/my-humanware-template) as generated distribution, not a second source to maintain. A personal repository such as `my-humanware` is created from that template and then owns that installation's identities, channel and domain identifiers, local-server configuration, host paths, and secret references.
 
-Prefer `./install.sh /absolute/path/to/my-humanware --repo OWNER/my-humanware` to create an instance: it resolves the required absolute storage paths and placeholder values before the first commit. The GitHub template remains useful for inspection or manual setup, but it does not guess machine paths. The starter deliberately contains no personal Caddy routes, LaunchAgent inventory, account identifiers, or service implementations. Add those to the private instance as local-server configuration; add reusable service code or deployment mechanics to Humanware OS. Never copy mutable sessions, artifacts, media, logs, caches, or secret values into either repository.
+Prefer `./install.sh /absolute/path/to/my-humanware --repo OWNER/my-humanware` to create an instance: it resolves the required absolute storage paths and placeholder values before the first commit. The GitHub template remains useful for inspection or manual setup, but it does not guess machine paths. The starter deliberately contains no personal Caddy routes, LaunchAgent inventory, account identifiers, or service implementations. Add those to the private instance as local-server configuration; add reusable service code or deployment mechanics to HumanwareOS. Never copy mutable sessions, artifacts, media, logs, caches, or secret values into either repository.
 
 ## Repository map
 
 ```text
 humanwareos/
 ├── AGENTS.md          global operating rules
+├── STREAM.md          raw-evidence stream contract
+├── install.sh         create a private instance and its first runtime
 ├── agents/            reusable identity templates
 ├── commands/          operating-loop commands
 ├── docs/              architecture and behavior contracts
+├── infra/             secrets runbook and host infrastructure notes
 ├── ops/               reusable host and data-plane mechanisms
+├── runtime/           execution-profile catalog
 ├── schemas/           typed instance contracts
 ├── scripts/           validation, data initialization, runtime build
-└── templates/         private-instance and data-plane seeds
+├── services/          reusable background services and bridges
+├── skills/            operating-loop skills
+├── surfaces/          domain web frontend and macOS app
+├── templates/         private-instance and data-plane seeds
+└── tests/             shell and deploy contract tests
 ```
 
-Personal strategy, memory, working documents, sessions, and artifacts do not appear in this tree. Their schemas and seed templates do.
+Personal memory, working documents, sessions, and artifacts do not appear in this tree. Their schemas and seed templates do.
 
 ## Change flow
 
@@ -73,7 +81,7 @@ Framework and instance repositories use trunk-based development: branch in an is
 
 ## Status
 
-Humanware OS is early. OpenClaw plus Slack is the supported starting path. Alternative harnesses and channels are selectable adapters, not forks of an agent.
+HumanwareOS is early. OpenClaw plus Slack is the supported starting path. Alternative harnesses and channels are selectable adapters, not forks of an agent.
 
 ## License
 

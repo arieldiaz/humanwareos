@@ -1,6 +1,6 @@
 # Yin and yang
 
-Humanware OS starts with two agents because continuity benefits from two durable perspectives without multiplying personas for every task.
+HumanwareOS starts with two agents because continuity benefits from two durable perspectives without multiplying personas for every task.
 
 Liv protects the life and its operating rhythm. Her recurring question is whether a commitment is sustainable and honest about its human cost.
 

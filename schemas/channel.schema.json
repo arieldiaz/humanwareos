@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanwareos.com/schemas/channel.schema.json",
-  "title": "Humanware OS channel adapter",
+  "title": "HumanwareOS channel adapter",
   "type": "object",
   "required": ["schemaVersion", "id", "adapter", "enabled"],
   "properties": {

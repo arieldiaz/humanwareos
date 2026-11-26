@@ -1,12 +1,12 @@
 # STREAM.md — append-only evidence in the data plane
 
-The stream lives under the external data root declared by the private instance. It never lives in Humanware OS, the private instance repository, or a generated runtime. This file is the reusable contract; the instance chooses actual paths, capture devices, retention, and backup targets.
+The stream lives under the external data root declared by the private instance. It never lives in HumanwareOS, the private instance repository, or a generated runtime. This file is the reusable contract; the instance chooses actual paths, capture devices, retention, and backup targets.
 
 ## Shape
 
 ```text
-$HUMANWARE_DATA_ROOT/stream/YYYY/MM/DD/HHMMSS-short-slug.ext
-$HUMANWARE_DATA_ROOT/stream/YYYY/MM/DD/HHMMSS-short-slug.md
+$HUMANWARE_DATA_ROOT/evidence/stream/YYYY/MM/DD/HHMMSS-short-slug.ext
+$HUMANWARE_DATA_ROOT/evidence/stream/YYYY/MM/DD/HHMMSS-short-slug.md
 ```
 
 The stream is the rawest durable evidence available: recordings, photos, screenshots, imported messages, meeting exports, documents as received, URLs with captured content, and decisions as made. A sidecar may add provenance and context without modifying the event.
@@ -26,7 +26,7 @@ Capture paths must support an excluded private area and a filename marker such a
 
 Transcripts, summaries, indexes, and reports belong under `$HUMANWARE_DATA_ROOT/generated/`. Each carries source identifiers, creation time, model or tool, schema version, and privacy scope. They are replaceable.
 
-Curated facts and decisions are appended under `evidence/memory/events/`, then merged into compact files under `current/memory/`. Strategy has the same split between evidence and current projection. Working documents live under `working/<owner>/` with version history. Published or reviewable revisions live under `artifacts/` and are immutable once addressed.
+Curated facts and decisions are appended under `evidence/memory/events/`, then merged into compact files under `current/memory/`. Working documents live under `working/<owner>/` with version history. Published or reviewable revisions live under `artifacts/` and are immutable once addressed.
 
 ## Durability
 

@@ -1,13 +1,13 @@
 # Architecture
 
-Humanware OS is the reusable framework for durable human-agent systems. An installation combines a framework revision, a private instance configuration, and a separately governed data plane into an immutable runtime. Conversation surfaces, model providers, and coding harnesses are adapters around that core.
+HumanwareOS is the reusable framework for durable human-agent systems. An installation combines a framework revision, a private instance configuration, and a separately governed data plane into an immutable runtime. Conversation surfaces, model providers, and coding harnesses are adapters around that core.
 
 Budget: 1,200 words. Over it, consolidate into the owning specification.
 
 ## System shape
 
 ```text
-Humanware OS framework ─┐
+HumanwareOS framework ─┐
                        ├─► immutable runtime ─► agent core ─► tools and data
 private instance config ┘          ▲                  ▲
                                   │                  │
@@ -38,7 +38,7 @@ The data plane separates evidence from current views:
 
 - The stream is append-only evidence.
 - Memory events are append-only learned facts, decisions, corrections, and provenance.
-- Current memory and strategy are compact mutable projections over those events.
+- Current memory is a compact mutable projection over those events.
 - Working documents are mutable and automatically versioned without PRs.
 - Published artifact revisions are immutable.
 - Derived indexes, transcripts, summaries, and caches are rebuildable.
@@ -51,7 +51,7 @@ The reference installation serves its private frontend from the instance's priva
 
 ## Source and deployment flow
 
-Humanware OS is the upstream. A private instance contains only instance-owned configuration or code and does not pin the framework; each build records the framework revision it used ([Runtime and deployment](runtime.md)). Generic improvements return upstream first. Temporary downstream patches carry an upstream reference, owner, and expiration.
+HumanwareOS is the upstream. A private instance contains only instance-owned configuration or code and does not pin the framework; each build records the framework revision it used ([Runtime and deployment](runtime.md)). Generic improvements return upstream first. Temporary downstream patches carry an upstream reference, owner, and expiration.
 
 Checkouts and worktrees follow [Coding sessions](coding-sessions.md); the generated runtime is read-only. A deployment builds a new runtime directory, verifies its manifest and end-to-end health, then atomically changes a `current` reference. Rollback changes that reference to the previous verified build.
 

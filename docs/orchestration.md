@@ -32,7 +32,7 @@ Delegated work that outlives the run receives the durable scheduled check the fr
 
 A worker is a child session with no identity, no channel, and no standing authority. It receives one brief and returns one result.
 
-The brief states the objective, the smallest context the task needs, the write scope, the data scope, the verification that proves the work, and the profile. A worker does not load strategy or memory projections unless the brief names them.
+The brief states the objective, the smallest context the task needs, the write scope, the data scope, the verification that proves the work, and the profile. A worker does not load memory projections unless the brief names them.
 
 The result states the output, the actions taken, the verification performed and its outcome, anything left open, and any observation the worker thinks is a durable fact. That last item is a proposal only: the root decides whether it enters the normal memory path.
 

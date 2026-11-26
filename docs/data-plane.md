@@ -1,6 +1,6 @@
 # Data plane
 
-The Humanware OS data plane stores what happened, what was learned, what is being worked on, and what was produced. It lives outside source repositories and does not require pull requests for ordinary writes.
+The HumanwareOS data plane stores what happened, what was learned, what is being worked on, and what was produced. It lives outside source repositories and does not require pull requests for ordinary writes.
 
 Budget: 1,200 words. Over it, consolidate.
 
@@ -8,8 +8,8 @@ Budget: 1,200 words. Over it, consolidate.
 
 ```text
 data-root/
-├── evidence/        immutable facts: stream, sessions, memory/strategy events, imports, provenance, legacy
-├── current/         compact mutable memory and strategy projections loaded by agents
+├── evidence/        immutable facts: stream, sessions, memory events, imports, provenance, legacy
+├── current/         compact mutable memory projections loaded by agents
 ├── working/         agent, session, and project workspaces plus the classification inbox
 ├── artifacts/       immutable revisions, blobs, manifests, and archives
 ├── generated/       rebuildable transcripts, session views, reports, indexes, and review projections
@@ -25,8 +25,6 @@ The instance declares `dataRoot`; framework code never hardcodes a username or m
 Raw stream events are immutable. A correction is a new event that references and supersedes the earlier event.
 
 Memory evidence follows the same rule. An agent appends a learned fact or decision with its source and confidence under `evidence/memory/events`. `current/memory` is a curated projection over those events. It may merge, replace, or omit stale facts because events keep the history, so daily context stays small without rewriting evidence.
-
-Strategy uses the same shape: agents load `current/strategy/current.md`, while changes append a dated decision event under `evidence/memory/events` that preserves why the projection changed.
 
 ## Working documents
 
@@ -64,7 +62,7 @@ The data plane enforces scopes at retrieval time:
 
 - Tier 0 raw events stay on the trusted local network unless a human explicitly supplies an item to another context.
 - Tier 1 generated material is local by default and shared deliberately.
-- Tier 2 current memory and strategy are available only to approved agent identities and tasks.
+- Tier 2 current memory is available only to approved agent identities and tasks.
 - Public artifacts contain only explicitly published revisions.
 
 Search returns references and the smallest relevant projection before returning full source material. A cloud harness does not gain raw-data access merely because it can edit code.

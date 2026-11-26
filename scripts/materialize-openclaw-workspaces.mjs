@@ -6,7 +6,7 @@ import {fileURLToPath} from "node:url";
 import {basename, dirname, join} from "node:path";
 import {readAgentEntries} from "./openclaw-agent-entries.mjs";
 
-const CONTEXT_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md", "STRATEGY.md"];
+const CONTEXT_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md"];
 
 function fail(message) {
   throw new Error(`openclaw-workspaces: ${message}`);
@@ -147,7 +147,6 @@ export function applyWorkspaceContext({runtimeDir, configPath, backupDir}) {
     }
     if (!existsSync(join(runtimeDir, "instructions", "skills"))) fail("canonical runtime skills are missing");
     if (!existsSync(join(instance.paths.dataRoot, "current", "memory", "index.md"))) fail("current memory index is missing");
-    if (!existsSync(join(instance.paths.dataRoot, "current", "strategy", "current.md"))) fail("current strategy is missing");
   }
 
   try {

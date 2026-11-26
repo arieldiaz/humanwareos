@@ -53,7 +53,6 @@ git -C "$FRAMEWORK" commit -m "test framework" >/dev/null
 [ -f "$DATA/operations/control/restart-freeze.json" ]
 [ "$("$JQ" -r '.active' "$DATA/operations/control/restart-freeze.json")" = "true" ]
 [ -d "$DATA/evidence/imports" ]
-[ -f "$DATA/current/strategy/current.md" ]
 [ "$(find "$DATA" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | LC_ALL=C sort | tr '\n' ' ')" = "artifacts current evidence generated operations working " ]
 "$JQ" -e '.mutableStateIncluded == false and .dataRoot == $root' --arg root "$DATA" "$RUNTIME/current/manifest.json" >/dev/null
 "$FRAMEWORK/scripts/validate-instance.sh" "$FRAMEWORK" "$INSTANCE" >/dev/null

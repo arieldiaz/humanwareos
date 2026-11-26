@@ -1,6 +1,6 @@
 # Operating rules for agents in this repo
 
-Humanware OS is the operating system for the human side of AI. These rules override agent defaults. Details live once in the owning `docs/*.md` specification. Harness-specific filenames are generated projections, never additional authored instructions.
+HumanwareOS is the operating system for the human side of AI. These rules override agent defaults. Details live once in the owning `docs/*.md` specification. Harness-specific filenames are generated projections, never additional authored instructions.
 
 ## Root principle
 
@@ -24,7 +24,7 @@ Each domain has one owning specification in `docs/`; read it before working in t
 
 ## Operating rules
 
-1. **Use current, primary sources.** Read strategy or current-memory projections when needed for the task, and answer from the human's source before an agent summary. If required data is unavailable or outside the active privacy scope, say so and name any secondary source used; do not substitute stale repository files.
+1. **Use current, primary sources.** Read current-memory projections when needed for the task, and answer from the human's source before an agent summary. If required data is unavailable or outside the active privacy scope, say so and name any secondary source used; do not substitute stale repository files.
 2. **Tell the truth about state.** `docs/reply-shape.md` owns how claims cite evidence. Before declaring a capability unavailable, verify the actual tool name, path, and state. Report the precise failure when one remains. Never use broad error suppression that hides real failures.
 3. **Verify in proportion to risk.** Irreversible, public, financial, relational, security, and production changes need strong evidence. Low-risk reversible work needs a sanity check, not ceremony. Write tests where they protect behavior likely to regress.
 4. **Use the owning layer.** Fix reusable behavior in framework source, instance policy in private configuration, facts and work in the data plane, and generated behavior by rebuilding the runtime. A local workaround may contain an incident but does not close it.

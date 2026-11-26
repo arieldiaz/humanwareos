@@ -31,7 +31,7 @@ test("renders framework, instance, identity, and data-plane references", () => {
   assert.match(rendered["IDENTITY.md"], /Name: Max/);
   assert.match(rendered["IDENTITY.md"], /Emoji: fox_face/);
   assert.match(rendered["MEMORY.md"], /\/data\/current\/memory/);
-  assert.match(rendered["STRATEGY.md"], /\/data\/current\/strategy\/current\.md/);
+  assert.equal(rendered["STRATEGY.md"], undefined);
   assert.match(rendered["AGENTS.md"], /## Worker contract[\s\S]*### Workers\n\nOne brief[\s\S]*#### Nested workers\n\nDepth one[\s\S]*## Private instance context/);
   assert.doesNotMatch(rendered["AGENTS.md"], /Root plans|Lowest rung/);
   assert.match(rendered["SOUL.md"], /## Orchestration\n\n### The ladder\n\nLowest rung[\s\S]*### Root agents[\s\S]*### Routing\n\nData scope first/);
@@ -74,7 +74,7 @@ test("renders every declared agent into the runtime bundle", () => {
     for (const agent of ["liv", "max"]) {
       const bridge = readFileSync(join(root, "instructions", "openclaw", agent, "MEMORY.md"), "utf8");
       assert.ok(bridge.includes(join(data, "current", "memory")));
-      for (const name of ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md", "STRATEGY.md"]) {
+      for (const name of ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md"]) {
         const context = readFileSync(join(root, "instructions", "openclaw", agent, name), "utf8");
         assert.doesNotMatch(context, /SENTINEL_RAW_RULE|SENTINEL_CURRENT_FACT|evidence\/stream/);
       }

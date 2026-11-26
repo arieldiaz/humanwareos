@@ -10,7 +10,7 @@ An agent receives four ordered layers. A lower layer may narrow a higher one onl
 
 ### Layer 1 — framework rules
 
-`AGENTS.md` is the constitution shared by every Humanware OS installation. It defines hard safety, ownership, verification, privacy, and working-process boundaries. Agents may propose a diff; only reviewed framework changes alter it.
+`AGENTS.md` is the constitution shared by every HumanwareOS installation. It defines hard safety, ownership, verification, privacy, and working-process boundaries. Agents may propose a diff; only reviewed framework changes alter it.
 
 ### Layer 2 — framework domain specifications
 
@@ -18,13 +18,13 @@ Each `docs/*.md` file owns one reusable subject, such as replies, permissions, c
 
 ### Layer 3 — identity template plus instance overlay
 
-Humanware OS supplies durable identity templates such as Liv and Max. The private instance may add a person's chosen name, voice preference, memory scope, channel account, and narrower authority. An overlay cannot restate or weaken framework rules.
+HumanwareOS supplies durable identity templates such as Liv and Max. The private instance may add a person's chosen name, voice preference, memory scope, channel account, and narrower authority. An overlay cannot restate or weaken framework rules.
 
 Harness, model, reasoning, permissions, and working directory are execution-profile fields. They are not identity facts.
 
-### Layer 4 — current memory and strategy projections
+### Layer 4 — current memory projection
 
-The data plane supplies concise non-normative context: current strategy, active facts, decisions, project state, and references to evidence. Memory can inform judgment but cannot establish a rule. Contradictory memory is stale data to correct, never a policy tiebreaker.
+The data plane supplies concise non-normative context: active facts, decisions, project state, and references to evidence. Memory can inform judgment but cannot establish a rule. Contradictory memory is stale data to correct, never a policy tiebreaker.
 
 The human's current task instructions override ordinary style and workflow defaults. Privacy, security, data scope, and authorization boundaries remain binding; historical memory cannot override the current request.
 
@@ -51,7 +51,7 @@ An observation never silently becomes a rule.
 1. Apply one-off feedback to the active task.
 2. Record relevant evidence or a personal fact in the data plane; separate factual context from proposed procedure before updating current memory.
 3. If the behavior should recur, locate its authoritative owner and implement the authorized correction there, replacing conflicting text rather than adding a parallel rule. Evidence capture alone does not complete a requested behavior change; completion follows the authorized outcome, with source-ready and runtime-active states distinguished.
-4. Reusable behavior changes Humanware OS through review.
+4. Reusable behavior changes HumanwareOS through review.
 5. Private approved behavior changes the instance through review.
 6. Rebuild the runtime after merge; do not patch a generated prompt.
 
@@ -76,7 +76,7 @@ runtime/<build-id>/
 └── adapters/
 ```
 
-The runtime references current memory and strategy through the data service or instance-declared paths. It does not copy personal data into the build. Service definitions point at the stable `runtime/current` bundle; when a harness rejects instruction symlinks, the adapter materializes verified regular-file projections from that bundle and checks them for drift.
+The runtime references current memory through the data service or instance-declared paths. It does not copy personal data into the build. Service definitions point at the stable `runtime/current` bundle; when a harness rejects instruction symlinks, the adapter materializes verified regular-file projections from that bundle and checks them for drift.
 
 ## Harness independence
 

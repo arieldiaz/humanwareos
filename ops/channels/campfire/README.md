@@ -1,12 +1,12 @@
 # Campfire channel adapter
 
-The Campfire bridge accepts native Campfire bot webhooks, acknowledges them immediately, runs the selected Humanware OS identity through OpenClaw, and posts the completed response to the bot-scoped room API supplied by Campfire.
+The Campfire bridge accepts native Campfire bot webhooks, acknowledges them immediately, runs the selected HumanwareOS identity through OpenClaw, and posts the completed response to the bot-scoped room API supplied by Campfire.
 
 Run one private bridge for an installation. Point each Campfire bot at `/campfire/<agent-id>`. Bind the listener to loopback or another private interface: Campfire webhooks are not signed. Do not publish the bridge through the Campfire ingress hostname.
 
 The adapter preserves one OpenClaw session per agent and Campfire room, serializes turns inside that session, treats webhook text as untrusted input, validates reply paths, and never stores bot keys. Campfire includes the bot-scoped reply path in each webhook payload.
 
-The adapter injects the canonical Humanware OS reply-shape contract, converts the agent's Markdown into sanitized Campfire rich text, and appends a surface-native run signature resolved from OpenClaw's returned model, harness, and thinking metadata.
+The adapter injects the canonical HumanwareOS reply-shape contract, converts the agent's Markdown into sanitized Campfire rich text, and appends a surface-native run signature resolved from OpenClaw's returned model, harness, and thinking metadata.
 
 Required environment:
 

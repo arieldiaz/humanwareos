@@ -44,7 +44,7 @@ export function buildMcpServer(bridge) {
   server.registerTool(
     "get_context",
     {
-      description: "Read the configured Tier 2 Humanware strategy and current-context projections. Request only the sections needed for the task.",
+      description: "Read the configured Tier 2 Humanware current-context projections. Request only the sections needed for the task.",
       inputSchema: z.object({ sections: z.array(z.string().min(1).max(64)).max(8).optional() }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },

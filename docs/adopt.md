@@ -1,13 +1,13 @@
-# Adopting Humanware OS
+# Adopting HumanwareOS
 
-Humanware OS is a versioned framework consumed by a small private instance repository. Personal memory and work live in a separate data plane. The three systems do not share a Git history or change process.
+HumanwareOS is a versioned framework consumed by a small private instance repository. Personal memory and work live in a separate data plane. The three systems do not share a Git history or change process.
 
 Budget: 1,200 words. Over it, consolidate.
 
 ## Reference layout
 
 ```text
-~/github/humanware-os/       public framework checkout
+~/github/humanwareos/        public framework checkout
 ~/github/my-humanware/       private instance configuration
 ~/humanware-data/            private data plane, not a source repository
 ~/Library/Application Support/HumanwareOS/
@@ -19,7 +19,7 @@ The instance does not pin or merge framework history. Each build takes the frame
 
 ## Create an instance
 
-The installer clones or locates Humanware OS, initializes a new private instance from the instance template, creates the external data layout, and builds the first runtime:
+The installer clones or locates HumanwareOS, initializes a new private instance from the instance template, creates the external data layout, and builds the first runtime:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/arieldiaz/humanwareos/main/install.sh | sh -s -- my-humanware --repo YOUR-GITHUB-USER/my-humanware
@@ -31,7 +31,7 @@ Creating a private GitHub repository is optional. Without `--repo`, the instance
 
 Framework adoption is a checkout update, not a merge or an instance change:
 
-1. Fast-forward the clean Humanware OS checkout to the reviewed revision.
+1. Fast-forward the clean HumanwareOS checkout to the reviewed revision.
 2. Review release notes and migrations.
 3. Build a new runtime; its manifest records the framework revision.
 4. Run instance, data-schema, adapter, domain, and end-to-end checks.
@@ -41,7 +41,7 @@ The deployed instance and framework checkouts remain clean. A failed upgrade lea
 
 ## Send an improvement upstream
 
-The stranger test decides ownership: if another installation would benefit, the change belongs in Humanware OS. Create the framework task from current Humanware OS `origin/main`, implement the generic fix, and verify it against an example instance. After the framework PR merges, deploy from the updated framework checkout.
+The stranger test decides ownership: if another installation would benefit, the change belongs in HumanwareOS. Create the framework task from current HumanwareOS `origin/main`, implement the generic fix, and verify it against an example instance. After the framework PR merges, deploy from the updated framework checkout.
 
 Do not prototype a generic rule by copying a framework file into the instance. When urgent containment must ship before upstream review, place the smallest patch under the instance's declared compatibility-patch directory with:
 
@@ -65,4 +65,4 @@ Framework schemas define allowed fields and defaults. The private instance suppl
 
 ## Data portability
 
-The data plane is not Git, but it is not opaque. Append-only events and artifact manifests use documented schemas. Current memory and strategy are plain readable projections. Large files are content-addressed. Search indexes are rebuildable. Encrypted snapshots and restore tests provide history without imposing code-review semantics on daily life.
+The data plane is not Git, but it is not opaque. Append-only events and artifact manifests use documented schemas. Current memory is a plain readable projection. Large files are content-addressed. Search indexes are rebuildable. Encrypted snapshots and restore tests provide history without imposing code-review semantics on daily life.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanwareos.com/schemas/artifact-registry.schema.json",
-  "title": "Humanware OS artifact registry",
+  "title": "HumanwareOS artifact registry",
   "description": "Written only by ops/artifacts/artifact_manager.py. Contract: docs/versioning.md.",
   "type": "object",
   "required": ["schemaVersion", "projects"],

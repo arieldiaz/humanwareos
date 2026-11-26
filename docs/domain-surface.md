@@ -1,12 +1,12 @@
 # Domain surface
 
-A complete Humanware OS installation has a first-class domain surface with public and private halves. It is an interface to the system, not the source of agent identity, memory, or orchestration.
+A complete HumanwareOS installation has a first-class domain surface with public and private halves. It is an interface to the system, not the source of agent identity, memory, or orchestration.
 
 Budget: 1,000 words. Over it, consolidate.
 
 ## Ownership
 
-Humanware OS owns:
+HumanwareOS owns:
 
 - the reusable shell and navigation contract;
 - public/private route classes;
@@ -36,7 +36,7 @@ The public half explains the installation or project and serves intentionally pu
 
 ### Public discovery contract
 
-A public surface serves people and research agents from the same editorial source. Humanware OS defines the reusable contract; the instance chooses the identity facts, editorial priorities, and published documents.
+A public surface serves people and research agents from the same editorial source. HumanwareOS defines the reusable contract; the instance chooses the identity facts, editorial priorities, and published documents.
 
 Every canonical editorial page provides:
 
@@ -85,7 +85,7 @@ Service control planes and independent public products remain separate hostnames
 
 ## Reference instance
 
-The reference instance serves its private Humanware OS frontend from one authenticated origin on the instance's private domain. It consolidates sessions, security, design review, and artifacts beneath that origin, and earlier per-module hostnames redirect into it during migration. Product and service-control hostnames remain separate where their trust boundary requires it.
+The reference instance serves its private HumanwareOS frontend from one authenticated origin on the instance's private domain. It consolidates sessions, security, design review, and artifacts beneath that origin, and earlier per-module hostnames redirect into it during migration. Product and service-control hostnames remain separate where their trust boundary requires it.
 
 The current Mini/Caddy deployment is one adapter. The same instance route manifest must be renderable for a cloud-hosted private origin later without changing frontend components or data contracts.
 
