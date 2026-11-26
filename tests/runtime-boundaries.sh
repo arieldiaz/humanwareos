@@ -104,6 +104,20 @@ if "$FRAMEWORK/scripts/validate-instance.sh" "$FRAMEWORK" "$INSTANCE" >/dev/null
 fi
 cp "$TEST_ROOT/domain.json" "$INSTANCE/surfaces/domain.json"
 
+# A declared secrets plan holds SecretRefs, never a literal value.
+cp "$INSTANCE/humanware.instance.json" "$TEST_ROOT/instance.json"
+printf '%s\n' '{"version":1,"protocolVersion":1,"targets":[{"type":"auth-profiles.token.token","path":"profiles.vendor:unattended.token","agentId":"liv","ref":{"source":"exec","provider":"vault","id":"agents/TOKEN"}}]}' > "$INSTANCE/openclaw/token-plan.json"
+"$JQ" '.openclaw.secretsPlans = ["openclaw/token-plan.json"]' "$TEST_ROOT/instance.json" > "$INSTANCE/humanware.instance.json"
+"$FRAMEWORK/scripts/validate-instance.sh" "$FRAMEWORK" "$INSTANCE" >/dev/null
+"$JQ" '.targets[0].value = "literal"' "$INSTANCE/openclaw/token-plan.json" > "$TEST_ROOT/plan.json"
+cp "$TEST_ROOT/plan.json" "$INSTANCE/openclaw/token-plan.json"
+if "$FRAMEWORK/scripts/validate-instance.sh" "$FRAMEWORK" "$INSTANCE" >/dev/null 2>&1; then
+  printf '%s\n' "runtime-boundaries: a literal secret in a secrets plan was not rejected" >&2
+  exit 1
+fi
+cp "$TEST_ROOT/instance.json" "$INSTANCE/humanware.instance.json"
+rm "$INSTANCE/openclaw/token-plan.json"
+
 mkdir -p "$INSTANCE/memory"
 printf '%s\n' "must not be tracked" > "$INSTANCE/memory/example.md"
 git -C "$INSTANCE" add memory/example.md

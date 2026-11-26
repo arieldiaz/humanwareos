@@ -42,11 +42,20 @@ done
   (.agents | type == "array" and length > 0) and
   (.openclaw.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+([-.][A-Za-z0-9.-]+)?$")) and
   .openclaw.config == "openclaw/config.patch.json5" and
-  (.openclaw.plugins | type == "array")
+  (.openclaw.plugins | type == "array") and
+  ((.openclaw.secretsPlans // []) | type == "array" and all(type == "string" and test("^openclaw/[A-Za-z0-9._-]+\\.json$")))
 ' "$INSTANCE_DIR/humanware.instance.json" >/dev/null || {
   printf '%s\n' "validate-instance: invalid humanware.instance.json" >&2
   exit 1
 }
+
+# A secrets plan holds SecretRefs only; the cutover applies it while the gateway is stopped.
+for plan in $("$JQ" -r '.openclaw.secretsPlans[]?' "$INSTANCE_DIR/humanware.instance.json"); do
+  "$JQ" -e '.version == 1 and (.targets | type == "array" and length > 0) and all(.targets[]; .ref.source != null and (has("value") | not))' "$INSTANCE_DIR/$plan" >/dev/null 2>&1 || {
+    printf 'validate-instance: invalid secrets plan %s\n' "$plan" >&2
+    exit 1
+  }
+done
 
 DATA_ROOT=$($JQ -r '.paths.dataRoot' "$INSTANCE_DIR/humanware.instance.json")
 RUNTIME_ROOT=$($JQ -r '.paths.runtimeRoot' "$INSTANCE_DIR/humanware.instance.json")
