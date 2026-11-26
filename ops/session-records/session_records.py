@@ -22,6 +22,8 @@ import sys
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "session-console"))
+import activity  # noqa: E402
 from openclaw_sessions import (  # noqa: E402
     SessionStoreError, database_path, iter_agent_ids, iter_sessions, iter_transcript_archives,
     iter_transcript_texts, logical_session_id, session_key_fields, zstd_decompress)
@@ -752,6 +754,24 @@ class Ledger:
         return {"logicalId": logical, "source": "evidence/sessions/events", "reports": len(reports),
                 "withoutTokens": unavailable, "totals": dict(sorted(totals.items())), "runs": list(runs.values())}
 
+    def cost(self, logical):
+        """The session's API list-price equivalent: its own usage reports plus its workers', rolled up and priced
+        by the session console's code (`activity.cost_summary`, `pricing`), so every surface shows one number."""
+        events = []
+        for path in sorted(self.root.glob("*.jsonl")) if self.root.is_dir() else []:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                for raw in handle:
+                    try:
+                        event = json.loads(raw) if "usage.cost" in raw or '"run.' in raw else {}
+                    except json.JSONDecodeError:  # a line still being appended
+                        continue
+                    if event.get("kind") in activity.USAGE_KINDS + ("run.spawned",):
+                        events.append(event)
+        runs = [e for e in events if str(e["kind"]).startswith("run.") and (e.get("run") or {}).get("rootSessionId") == logical]
+        scope = {logical} | {e["run"]["childSessionId"] for e in runs}
+        total = activity.cost_summary(activity.read_model(runs + [e for e in events if e["kind"] == "usage.cost" and e.get("logicalSessionId") in scope])[0], logical)
+        return {key: total[key] for key in ("amount", "reports", "unavailable", "tokens")}
+
 
 def summary_path(stores, logical):
     return stores.data / "generated" / "sessions" / "summaries" / (hashlib.sha256(logical.encode()).hexdigest()[:24] + ".md")
@@ -966,6 +986,12 @@ def command_seal(stores, query, payload):
         except Exception as error:  # the rest of the close still runs
             errors["capture"] = f"{type(error).__name__}: {error}"
         folder = existing_folder(stores, fid)
+    usage = None
+    if "capture" in steps:  # the close report's token and cost line; an error here never stops the close
+        try:
+            usage = Ledger(stores).cost(query)
+        except Exception as error:
+            usage = {"error": f"{type(error).__name__}: {error}"}
     if folder is None:
         closed = datetime.fromtimestamp((millis(payload.get("closedAt")) or millis(now())) / 1000, timezone.utc)
         folder = stores.sessions / f"{closed:%Y}" / f"{closed:%m}" / fid
@@ -996,7 +1022,7 @@ def command_seal(stores, query, payload):
         session = read_json(folder / "session.json")
         if isinstance(session, dict):
             write_atomic(folder / "session.json", pretty(dict(session, files=record_files(folder), updatedAt=now())))
-    return {"folder": str(folder), "close": record}
+    return {"folder": str(folder), "close": record, **({"usage": usage} if usage else {})}
 
 
 def close_state(folder):

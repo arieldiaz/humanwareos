@@ -1,5 +1,5 @@
 import {
-  formatCloseReport, loadPullRequests, modelPrices, loadThreadUsage, measureSlackThread, recordSessionClose, slackMrkdwn,
+  formatCloseReport, loadPullRequests, measureSlackThread, recordSessionClose, slackMrkdwn,
 } from "./close-report.mjs";
 import {appendFile, mkdir} from "node:fs/promises";
 import {join} from "node:path";
@@ -66,11 +66,13 @@ export function registerHostClose(api, {
     const dataRoot = dataRootFor(turn.accountId);
     if (!dataRoot) throw new Error("the canonical Humanware data root is unavailable");
     const now = Date.now();
-    let close = {closeId: turn.retry ? undefined : `${turn.conversation}:close:${now}`, closedAt: new Date(now).toISOString(), steps: {}}, folder;
+    let close = {closeId: turn.retry ? undefined : `${turn.conversation}:close:${now}`, closedAt: new Date(now).toISOString(), steps: {}}, folder, usage;
     const seal = async steps => {
       try {
-        ({close, folder} = JSON.parse(await records(dataRoot, ["seal", "--session", slackRouteKey(turn.route)],
-          {input: JSON.stringify({closeId: close.closeId, closedAt: close.closedAt, retry: !close.closeId, steps})})));
+        const sealed = JSON.parse(await records(dataRoot, ["seal", "--session", slackRouteKey(turn.route)],
+          {input: JSON.stringify({closeId: close.closeId, closedAt: close.closedAt, retry: !close.closeId, steps})}));
+        ({close, folder} = sealed);
+        usage ??= sealed.usage;  // the capture step returns the ledger usage the report prints
       } catch (error) {
         for (const name of Object.keys(steps)) close.steps[name] = {status: "failed", error: message(error)};
       }
@@ -88,10 +90,7 @@ export function registerHostClose(api, {
       } catch (error) { slackError = error; }
     }
     const stats = thread?.messages.length ? measureSlackThread(thread.messages) : undefined;
-    const before = Date.parse(close.closedAt);
-    const usage = (await Promise.all(Object.keys(api.config?.channels?.slack?.accounts ?? {}).map(async agent =>
-      ({agent, usage: await loadThreadUsage({agent, channel, thread: threadId, before}).catch(() => undefined)})))).filter(record => record.usage);
-    const report = formatCloseReport({stats, usage, pullRequests: await loadPullRequests(stats?.pullRequests), agent: turn.accountId, prices: modelPrices(api.config)});
+    const report = formatCloseReport({stats, usage, pullRequests: await loadPullRequests(stats?.pullRequests)});
     const files = {
       ...(pending("slackThread") ? {slackThread: thread ? {data: thread} : {error: message(slackError)}} : {}),
       ...(pending("summary") ? {summary: {text: report}} : {}),
