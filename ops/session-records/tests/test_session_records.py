@@ -345,6 +345,25 @@ class SessionRecordsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.seal({"retry": True, "steps": {}}, "slack:C8:6.6")
 
+    def test_the_notion_step_keeps_its_page_id_and_audit_finds_what_is_missing(self):
+        self.seal({"closeId": "c1", "closedAt": R.iso(START), "steps": {name: {"data": {}, "text": "r"} for name in R.CLOSE_STEPS[:5]}})
+        self.assertEqual(R.command_audit(self.f.stores), [f"no Notion page\t{R.folder_id(LOGICAL)}\tnot recorded"])
+        self.assertEqual(self.index()[0][-1], "unsealed", "sealed only once Notion has the entry")
+        state = self.f.data / "operations" / "slack-notion-sync" / "state.json"
+        state.parent.mkdir(parents=True)
+        state.write_text(json.dumps({"threads": {"C1:100.1": {"projectedStatus": R.NOTION_CLOSED},
+                                                 "C2:1790000000.000001": {"projectedStatus": R.NOTION_CLOSED},
+                                                 "C3:1700000000.000001": {"projectedStatus": R.NOTION_CLOSED},
+                                                 "C4:1790000000.000001": {"projectedStatus": None}}}))
+        close = self.seal({"closeId": "c1", "steps": {"notion": {"pageId": "page-1"}}})["close"]
+        self.assertEqual((close["steps"]["notion"]["pageId"], close["complete"]), ("page-1", True))
+        self.assertEqual(R.command_audit(self.f.stores), ["closed in Notion, no close record\tC2:1790000000.000001",
+                                                          "closed in Notion, no close record\tC3:1700000000.000001"])
+        self.assertEqual(R.command_audit(self.f.stores, since="2026-01-01"), ["closed in Notion, no close record\tC2:1790000000.000001"])
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(R.main(["--data-root", str(self.f.data), "audit", "--since", "2026-12-01"]), 0)
+            self.assertEqual(R.main(["--data-root", str(self.f.data), "audit"]), 1)
+
     def test_one_writer_per_folder_across_processes(self):
         folder = self.f.folder()
         probe = ("import fcntl, os, sys\nfd = os.open(sys.argv[1], os.O_RDONLY)\n"

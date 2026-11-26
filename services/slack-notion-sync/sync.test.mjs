@@ -3,7 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   buildRowFromRoot,
@@ -23,6 +24,10 @@ import {
   notionMigrationCommand,
   pendingStatusEvents,
   pendingStatusCommands,
+  pendingSealCommands,
+  recordSealStep,
+  sealedRow,
+  sealedSessionStats,
   hasUnprocessedStatusEvents,
   humanClaimedStatus,
   titleFromSlackText,
@@ -298,4 +303,39 @@ test("rejects stale projections", () => {
   assert.deepEqual(validateInput(quiet, new Date("2026-10-15T12:01:00Z"), Date.parse("2026-10-15T09:59:00Z")), [], "built after the last change: current, however old");
   assert.deepEqual(validateInput(quiet, new Date("2026-10-15T12:01:00Z"), Date.parse("2026-10-15T12:00:30Z")), [], "a change whose build is still running");
   assert.throws(() => validateInput(quiet, new Date("2026-10-15T12:01:00Z"), Date.parse("2026-10-15T10:00:01Z")), /stale/, "a change the builder never caught up with");
+});
+
+const seal = {schemaVersion: 1, id: "seal-command:c1", kind: "seal", channelId: "C1", messageTs: "1790050400.000001",
+  session: "slack:C1:1790050400.000001", closeId: "c1", folder: "/data/evidence/sessions/2026/09/slack-C1-1790050400.000001"};
+
+test("a close queues one seal command that the status-command reader ignores", () => {
+  const text = [JSON.stringify(seal), JSON.stringify({...seal, id: "seal-command:done"}), JSON.stringify({...seal, id: "seal-command:x", folder: undefined}),
+    JSON.stringify({id: "status-command:1", channelId: "C1", messageTs: "1.0", status: "✅ Closed"}), "{torn"].join("\n");
+  assert.deepEqual(pendingSealCommands(text, {processedCommands: {"seal-command:done": "t"}}).map((command) => command.id), ["seal-command:c1"]);
+  assert.deepEqual(pendingStatusCommands(text.replace("\n{torn", ""), {}).map((command) => command.id), ["status-command:1"]);
+});
+
+test("the close entry is built from the sealed folder, not the session projection", () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "sealed-"));
+  fs.writeFileSync(path.join(folder, "session.json"), JSON.stringify({openclaw: {windows: [{}, {}]}}));
+  fs.writeFileSync(path.join(folder, "usage.json"), JSON.stringify({totals: {input: 1200, output: 300, cacheRead: 500000, total: 501500}}));
+  fs.writeFileSync(path.join(folder, "slack-thread.json"), JSON.stringify({messageCount: 3, messages: [{ts: "100.0"}, {ts: "160.0"}, {ts: "3700.0"}]}));
+  assert.equal(sealedSessionStats(folder), "2 sessions · 3 msgs · 1h · 502k tokens");
+  const discovered = {channelId: "C1", channelName: "ops", root: {ts: "1790050400.000001", text: "please fix", reply_count: 2}, slackLink: "https://x/archives/C1/p1"};
+  const row = sealedRow(discovered, {...seal, folder}, "2026-09-21T12:00:00Z", "✅ Closed");
+  assert.deepEqual([row.threadKey, row.status, row.sessionStats, row.title], ["C1:1790050400.000001", "✅ Closed", "2 sessions · 3 msgs · 1h · 502k tokens", "please fix"]);
+  assert.match(row.sessionSummary, /\/[0-9a-f]{24}\.md$/);
+  fs.rmSync(folder, {recursive: true, force: true});
+});
+
+test("step f records its page id in close.json through session_records.py", () => {
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-step-"));
+  const script = fileURLToPath(new URL("../../ops/session-records/session_records.py", import.meta.url));
+  const opened = JSON.parse(execFileSync("python3", [script, "--data-root", dataRoot, "seal", "--session", seal.session],
+    {input: JSON.stringify({closeId: "c1", closedAt: "2026-09-21T12:00:00Z", steps: {summary: {text: "report"}}})}));
+  recordSealStep(seal, {pageId: "page-1"}, {dataRoot});
+  const close = JSON.parse(fs.readFileSync(path.join(opened.folder, "close.json"), "utf8"));
+  assert.deepEqual([close.steps.notion.status, close.steps.notion.pageId], ["ok", "page-1"]);
+  assert.throws(() => recordSealStep({...seal, closeId: undefined, session: "slack:C9:1.1"}, {pageId: "p"}, {dataRoot}), /seal needs a closeId/);
+  fs.rmSync(dataRoot, {recursive: true, force: true});
 });

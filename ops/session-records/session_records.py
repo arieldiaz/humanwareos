@@ -41,7 +41,8 @@ UNSAFE = re.compile(r"[^A-Za-z0-9._-]")
 CURSOR_TOOLS = ("cursor-agent", "cursor-ask")
 PROJECTIONS = ("transcript.jsonl", "usage.json", "summary.md")
 SEALED = ("slack-thread.json", "close.json")
-CLOSE_STEPS = ("capture", "slackThread", "summary", "ledger", "post")
+CLOSE_STEPS = ("capture", "slackThread", "summary", "ledger", "post", "notion")
+NOTION_CLOSED = "\u2705 Closed"  # the Notion projector's label for a thread its owner closed
 
 
 class Stores:
@@ -987,7 +988,8 @@ def command_seal(stores, query, payload):
                     write_atomic(folder / "summary.md", steps[name]["text"].rstrip("\n").encode() + b"\n")
             except (KeyError, TypeError, AttributeError, OSError) as failure:
                 error = f"{type(failure).__name__}: {failure}"
-            record["steps"][name] = dict({"status": "failed" if error else "ok", "at": now()}, **({"error": str(error)[:2000]} if error else {}))
+            record["steps"][name] = dict({"status": "failed" if error else "ok", "at": now()}, **({"error": str(error)[:2000]} if error else {}),
+                                         **({"pageId": steps[name]["pageId"]} if not error and steps[name].get("pageId") else {}))
         record["steps"] = {name: record["steps"][name] for name in CLOSE_STEPS if name in record["steps"]}
         record["complete"] = all(record["steps"].get(name, {}).get("status") == "ok" for name in CLOSE_STEPS)
         write_atomic(folder / "close.json", pretty(record))
@@ -1001,6 +1003,32 @@ def close_state(folder):
     """sealed, unsealed (a close with a step not ok), or open (never closed)."""
     close = read_json(folder / "close.json")
     return "open" if not isinstance(close, dict) else "sealed" if close.get("complete") else "unsealed"
+
+
+def command_audit(stores, since=None):
+    """Problems, one line each: a close without a Notion page, and a thread Notion shows closed without a close record.
+
+    The second reads the Notion projector's local state, so it needs no network call. `since` (YYYY-MM-DD) skips
+    threads that started earlier.
+    """
+    problems, closed = [], set()
+    first = millis(f"{since}T00:00:00Z") if since else None
+    for folder in folders(stores):
+        close = read_json(folder / "close.json")
+        if not isinstance(close, dict):
+            continue
+        parts = str(close.get("session") or "").split(":")
+        if parts[0] == "slack" and len(parts) == 3:
+            closed.add(f"{parts[1]}:{parts[2]}")
+        notion = (close.get("steps") or {}).get("notion") or {}
+        if not notion.get("pageId"):
+            problems.append(f"no Notion page\t{folder.name}\t{notion.get('error') or 'not recorded'}")
+    state = read_json(stores.data / "operations" / "slack-notion-sync" / "state.json") or {}
+    for key, thread in sorted((state.get("threads") or {}).items()):
+        started = float(key.rpartition(":")[2] or 0) * 1000 if key.rpartition(":")[2].replace(".", "").isdigit() else 0
+        if isinstance(thread, dict) and thread.get("projectedStatus") == NOTION_CLOSED and key not in closed and not (first and started < first):
+            problems.append(f"closed in Notion, no close record\t{key}")
+    return problems
 
 
 def command_backfill(stores, dry=False, since=None, limit=None, log=None):
@@ -1122,6 +1150,8 @@ def main(argv=None):
     verify.add_argument("folder", nargs="?")
     verify.add_argument("--all", action="store_true")
     commands.add_parser("index", help="one line per session folder")
+    audit = commands.add_parser("audit", help="closes without a Notion page and Notion closes without a record; exits 1 on any")
+    audit.add_argument("--since", help="YYYY-MM-DD; skip threads that started earlier")
     args = parser.parse_args(argv)
     if not args.data_root:
         parser.error("no data root: set HUMANWARE_DATA_ROOT or pass --data-root")
@@ -1147,6 +1177,12 @@ def main(argv=None):
             if not problems:
                 print(f"ok {folder.name}")
         return 1 if failed else 0
+    elif args.command == "audit":
+        problems = command_audit(stores, args.since)
+        for line in problems:
+            print(line)
+        print(f"{len(problems)} problem{'' if len(problems) == 1 else 's'}", file=sys.stderr)
+        return 1 if problems else 0
     else:
         for folder in folders(stores):
             print(index_line(folder))
