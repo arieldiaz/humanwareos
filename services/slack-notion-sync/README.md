@@ -28,7 +28,8 @@ The `set_thread_status` tool is the only conversational bot-write path. It appea
 | `SLACK_NOTION_COMMANDS` | no | Override explicit bot-status command journal path |
 | `SLACK_NOTION_REVIEW` | no | Override ambiguity-review journal path |
 | `SLACK_NOTION_MIGRATION_BASELINE` | no | Override the one-time migrated-status baseline path |
-| `SLACK_NOTION_MAX_INPUT_AGE_MS` | no (`300000`) | Fail-closed freshness bound |
+| `SLACK_NOTION_CHANGE_MARKER` | no (`<data-root>/generated/sessions/.changed`) | Session change marker; when present, input is fresh if built after it changed, or if it changed within the age bound |
+| `SLACK_NOTION_MAX_INPUT_AGE_MS` | no (`300000`) | Fail-closed freshness bound: input age without a change marker, otherwise how long a change may wait for its build |
 | `SLACK_NOTION_FULL_SYNC_INTERVAL_MS` | no (`21600000`) | Recheck every thread at least this often |
 | `SLACK_NOTION_WRITE_DELAY_MS` | no (`350`) | Minimum spacing between Notion writes during backfill |
 | `SLACK_NOTION_EVENT_DEBOUNCE_MS` | no (`2000`) | Delay used to coalesce a human remove/add status change |

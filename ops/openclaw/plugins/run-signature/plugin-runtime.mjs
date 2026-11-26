@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { readdirSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import {loadSessionEntry} from "./session-store.mjs";
@@ -61,6 +61,15 @@ async function recordRunLifecycle({ dataRoot, channel, threadId, status, agent, 
   let prior = '';
   try { prior = await readFile(path, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   if (!prior.includes(`"id":${JSON.stringify(event.id)}`)) await appendFile(path, `${JSON.stringify(event)}\n`, {mode: 0o600});
+  await noteSessionChange(dataRoot);
+}
+
+// The sessions page is built when this file changes: launchd watches it, so no build runs on a timer.
+export async function noteSessionChange(dataRoot) {
+  if (!dataRoot) return;
+  const marker = join(dataRoot, "generated", "sessions", ".changed");
+  await mkdir(dirname(marker), {recursive: true, mode: 0o700});
+  await writeFile(marker, `${new Date().toISOString()}\n`, {mode: 0o600});
 }
 
 async function appendFaultJournal(entry) {
@@ -277,6 +286,12 @@ const plugin = {
     };
     registerWorkThreadTool(api, {resolveSlackRuntimeModule, retrySlackRateLimit, workThreadPosts});
     registerHostClose(api, {isExcludedChannel, recordRunLifecycle, appendFaultJournal, resolveDataRoot, resolveSlackRuntimeModule, slackApi});
+    // Every run end changes what the sessions page shows, lifecycle or not (cron, direct and worker sessions too).
+    api.on("agent_end", async (event, ctx) => {
+      const agentId = String(event.sessionKey ?? ctx.sessionKey ?? "").split(":")[1];
+      try { await noteSessionChange(resolveDataRoot(api.config, api.pluginConfig, agentId)); }
+      catch (error) { await appendFaultJournal({reason: `Session change marker: ${String(error)}`}); }
+    });
     api.registerTool?.({contextVersion: 2, create: context => setThreadStatusTool(context, {dataRoot})}, {name: "set_thread_status"});
     registerSwitchModelTool(api);
     registerThreadLead(api, {isExcludedChannel, botUserIds: slackBotUserIds});

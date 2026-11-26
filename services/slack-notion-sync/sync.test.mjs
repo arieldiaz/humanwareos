@@ -292,6 +292,10 @@ test("reads the upsert key and prior status from a Notion page", () => {
 });
 
 test("rejects stale projections", () => {
-  assert.equal(validateInput({ generatedAt: "2026-10-15T12:00:00Z", sessions: [{ channelId: "C1", threadId: "1" }, {}] }, new Date("2026-10-15T12:01:00Z")).length, 1);
-  assert.throws(() => validateInput({ generatedAt: "2026-10-15T10:00:00Z", sessions: [] }, new Date("2026-10-15T12:01:00Z")), /stale/);
+  assert.equal(validateInput({ generatedAt: "2026-10-15T12:00:00Z", sessions: [{ channelId: "C1", threadId: "1" }, {}] }, new Date("2026-10-15T12:01:00Z"), null).length, 1);
+  assert.throws(() => validateInput({ generatedAt: "2026-10-15T10:00:00Z", sessions: [] }, new Date("2026-10-15T12:01:00Z"), null), /stale/);
+  const quiet = { generatedAt: "2026-10-15T10:00:00Z", sessions: [] };
+  assert.deepEqual(validateInput(quiet, new Date("2026-10-15T12:01:00Z"), Date.parse("2026-10-15T09:59:00Z")), [], "built after the last change: current, however old");
+  assert.deepEqual(validateInput(quiet, new Date("2026-10-15T12:01:00Z"), Date.parse("2026-10-15T12:00:30Z")), [], "a change whose build is still running");
+  assert.throws(() => validateInput(quiet, new Date("2026-10-15T12:01:00Z"), Date.parse("2026-10-15T10:00:01Z")), /stale/, "a change the builder never caught up with");
 });

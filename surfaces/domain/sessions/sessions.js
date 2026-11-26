@@ -1,4 +1,4 @@
-import {escapeHtml as esc, freshness, renderTrace, runTreeHtml} from '../activity/trace.js';
+import {escapeHtml as esc, renderTrace, runTreeHtml} from '../activity/trace.js';
 const $ = id => document.getElementById(id);
 const FILTERS = [['open','Open'],['all','All'],['active','Active'],['needs_you','Needs you'],['error','Errors'],['completed','Completed'],['idle','Idle']];
 const LEVELS = [['normal','Normal'],['verbose','Verbose'],['forensic','Forensic']];
@@ -57,7 +57,7 @@ async function load() {
     const r = await fetch('/sessions/data.json', {cache: 'no-store'});
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     DATA = await r.json();
-    $('updated').textContent = `${freshness(DATA)} · updated ${age(DATA.generatedAt)} ago`;
+    $('updated').textContent = `updated ${age(DATA.generatedAt)} ago`;
     const source = DATA.sources?.[0] || {};
     $('source').textContent = `${source.label || 'Session ledger'} · ${fmtNum(source.events || 0)} events`;
     render();
@@ -66,4 +66,4 @@ async function load() {
 }
 load();
 setInterval(load, 5000);
-setInterval(() => { if (DATA.generatedAt) $('updated').textContent = `${freshness(DATA)} · updated ${age(DATA.generatedAt)} ago`; }, 1000);
+setInterval(() => { if (DATA.generatedAt) $('updated').textContent = `updated ${age(DATA.generatedAt)} ago`; }, 1000);

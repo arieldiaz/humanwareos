@@ -31,6 +31,7 @@ MANIFEST = {
          "watchPaths": ["{dataRoot}/events.jsonl"], "processType": "Standard"},
         {"name": "backup", "command": ["{dataRoot}/backup.sh"], "trigger": {"calendar": {"Hour": 2, "Minute": 15}},
          "lowPriority": True},
+        {"name": "pages", "command": ["/usr/bin/python3", "{runtime}/build.py"], "trigger": {"watchPaths": ["{dataRoot}/.changed"]}},
     ],
 }
 
@@ -42,7 +43,7 @@ def render(manifest=MANIFEST, app=APP):
 class RenderTests(unittest.TestCase):
     def test_every_job_is_started_by_the_app_launcher_under_one_label_scheme(self):
         jobs = {label: job for label, job, _ in render()}
-        self.assertEqual(list(jobs), ["org.example.web", "org.example.sync", "org.example.backup"])
+        self.assertEqual(list(jobs), ["org.example.web", "org.example.sync", "org.example.backup", "org.example.pages"])
         web = jobs["org.example.web"]
         self.assertEqual(web["ProgramArguments"],
                          [LAUNCHER, "run", "web", "--", "/bin/sh", "/rt/current/config/services/caddy/run.sh"])
@@ -65,6 +66,9 @@ class RenderTests(unittest.TestCase):
         self.assertEqual((backup["StartCalendarInterval"], backup["RunAtLoad"]), ({"Hour": 2, "Minute": 15}, False))
         self.assertEqual((backup["Nice"], backup["LowPriorityIO"]), (10, True))
         self.assertNotIn("StandardOutPath", backup)
+        pages = jobs["org.example.pages"]
+        self.assertEqual((pages["WatchPaths"], pages["RunAtLoad"]), (["/data/.changed"], True))
+        self.assertFalse({"StartInterval", "StartCalendarInterval", "KeepAlive"} & set(pages), "a change is the only trigger")
 
     def test_invalid_manifests_are_rejected(self):
         def broken(change):
@@ -80,6 +84,10 @@ class RenderTests(unittest.TestCase):
             "false keepAlive": lambda m: m["services"][0].update(trigger={"keepAlive": False}),
             "zero interval": lambda m: m["services"][1].update(trigger={"everySeconds": 0}),
             "bad calendar key": lambda m: m["services"][2].update(trigger={"calendar": {"hour": 2}}),
+            "empty watch trigger": lambda m: m["services"][3].update(trigger={"watchPaths": []}),
+            "relative watch trigger": lambda m: m["services"][3].update(trigger={"watchPaths": ["events.jsonl"]}),
+            "watch trigger and watchPaths": lambda m: m["services"][3].update(watchPaths=["/data/other"]),
+            "watch trigger and interval": lambda m: m["services"][3].update(trigger={"watchPaths": ["/x"], "everySeconds": 5}),
             "relative program": lambda m: m["services"][0].update(command=["sh", "run.sh"]),
             "unknown placeholder": lambda m: m["services"][0].update(command=["{home}/run.sh"]),
             "relative log": lambda m: m["services"][0].update(logs={"stdout": "web.log", "stderr": "/e"}),
@@ -132,7 +140,7 @@ class CommandLineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             result, output = self.run_cli(folder, MANIFEST)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout.split(), ["org.example.web", "org.example.sync", "org.example.backup"])
+            self.assertEqual(result.stdout.split(), ["org.example.web", "org.example.sync", "org.example.backup", "org.example.pages"])
             self.assertEqual(sorted(os.listdir(output)), sorted(f"{label}.plist" for label in result.stdout.split()))
             for name in os.listdir(output):
                 subprocess.run(["/usr/bin/plutil", "-lint", str(output / name)], check=True, capture_output=True)
