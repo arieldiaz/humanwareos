@@ -10,7 +10,7 @@ An agent receives four ordered layers. A lower layer may narrow a higher one onl
 
 ### Layer 1 — framework rules
 
-`AGENTS.md` is the constitution shared by every Humanware OS installation. It defines hard safety, ownership, verification, privacy, and working-process boundaries. Agents may propose a diff; only reviewed framework changes alter it.
+`AGENTS.md` is the constitution shared by every HumanwareOS installation. It defines hard safety, ownership, verification, privacy, and working-process boundaries. Agents may propose a diff; only reviewed framework changes alter it.
 
 ### Layer 2 — framework domain specifications
 
@@ -18,7 +18,7 @@ Each `docs/*.md` file owns one reusable subject, such as replies, permissions, c
 
 ### Layer 3 — identity template plus instance overlay
 
-Humanware OS supplies durable identity templates such as Liv and Max. The private instance may add a person's chosen name, voice preference, memory scope, channel account, and narrower authority. An overlay cannot restate or weaken framework rules.
+HumanwareOS supplies durable identity templates such as Liv and Max. The private instance may add a person's chosen name, voice preference, memory scope, channel account, and narrower authority. An overlay cannot restate or weaken framework rules.
 
 Harness, model, reasoning, permissions, and working directory are execution-profile fields. They are not identity facts.
 
@@ -51,7 +51,7 @@ An observation never silently becomes a rule.
 1. Apply one-off feedback to the active task.
 2. Record relevant evidence or a personal fact in the data plane; separate factual context from proposed procedure before updating current memory.
 3. If the behavior should recur, locate its authoritative owner and implement the authorized correction there, replacing conflicting text rather than adding a parallel rule. Evidence capture alone does not complete a requested behavior change; completion follows the authorized outcome, with source-ready and runtime-active states distinguished.
-4. Reusable behavior changes Humanware OS through review.
+4. Reusable behavior changes HumanwareOS through review.
 5. Private approved behavior changes the instance through review.
 6. Rebuild the runtime after merge; do not patch a generated prompt.
 

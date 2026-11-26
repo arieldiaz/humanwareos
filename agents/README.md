@@ -1,6 +1,6 @@
 # Agents: two durable relationships
 
-Humanware OS starts with two durable identities. Liv owns the personal and operating domain; Max owns the work domain. The boundary is subject matter, not importance or altitude.
+HumanwareOS starts with two durable identities. Liv owns the personal and operating domain; Max owns the work domain. The boundary is subject matter, not importance or altitude.
 
 | Agent | Domain | Default contribution |
 |---|---|---|

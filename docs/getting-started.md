@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide creates one Humanware OS installation and verifies a real conversation through a channel adapter. The finish line is an agent whose identity survives model, harness, interface, and host changes because those concerns are configured separately.
+This guide creates one HumanwareOS installation and verifies a real conversation through a channel adapter. The finish line is an agent whose identity survives model, harness, interface, and host changes because those concerns are configured separately.
 
 Budget: 1,000 words.
 
@@ -12,17 +12,17 @@ For the complete reference setup, add a Cloudflare-managed domain. Its public ha
 
 ## 2. Create the three sources
 
-Run the installer from a Humanware OS checkout:
+Run the installer from a HumanwareOS checkout:
 
 ```bash
 ./install.sh /absolute/path/to/my-instance --repo OWNER/my-instance
 ```
 
-It creates or resolves a Humanware OS checkout, a configuration-only private instance repository, an external data plane, and a generated runtime root with the active `current` symlink. [System boundaries](system-boundaries.md) defines what each holds. The installer validates those boundaries and prints the exact paths.
+It creates or resolves a HumanwareOS checkout, a configuration-only private instance repository, an external data plane, and a generated runtime root with the active `current` symlink. [System boundaries](system-boundaries.md) defines what each holds. The installer validates those boundaries and prints the exact paths.
 
 ## 3. Configure the first agent
 
-Edit the private instance, not the framework. Start with one agent overlay under `agents/`, and keep it narrow: local role, private relationships, approved tone differences, and trust limits. Generic identity behavior belongs upstream in Humanware OS. Personal facts and evolving context belong in the data plane.
+Edit the private instance, not the framework. Start with one agent overlay under `agents/`, and keep it narrow: local role, private relationships, approved tone differences, and trust limits. Generic identity behavior belongs upstream in HumanwareOS. Personal facts and evolving context belong in the data plane.
 
 Fill the compact memory index at `<DATA_ROOT>/current/memory/index.md`. Do not commit it.
 
@@ -51,7 +51,7 @@ Verify provider login and local execution before adding a channel. The agent sho
 
 ## 6. Add Slack as the first adapter
 
-Create one Slack app/account for each durable agent, use Socket Mode, and store credentials in the secrets provider. Set `channels/slack.json` to enabled only after credential probes pass. The adapter owns transport; OpenClaw owns thread routing; Humanware OS owns reply and lifecycle semantics.
+Create one Slack app/account for each durable agent, use Socket Mode, and store credentials in the secrets provider. Set `channels/slack.json` to enabled only after credential probes pass. The adapter owns transport; OpenClaw owns thread routing; HumanwareOS owns reply and lifecycle semantics.
 
 Restart the controller cleanly and verify the entire path:
 

@@ -1,6 +1,6 @@
 # Operating rules for agents in this repo
 
-Humanware OS is the operating system for the human side of AI. These rules override agent defaults. Details live once in the owning `docs/*.md` specification. Harness-specific filenames are generated projections, never additional authored instructions.
+HumanwareOS is the operating system for the human side of AI. These rules override agent defaults. Details live once in the owning `docs/*.md` specification. Harness-specific filenames are generated projections, never additional authored instructions.
 
 ## Root principle
 

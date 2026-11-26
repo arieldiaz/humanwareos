@@ -1,6 +1,6 @@
 # Runtime and deployment
 
-The Humanware OS runtime is an immutable build assembled from a framework revision and a private instance revision. It is generated, verified, activated atomically, and never edited in place.
+The HumanwareOS runtime is an immutable build assembled from a framework revision and a private instance revision. It is generated, verified, activated atomically, and never edited in place.
 
 Budget: 1,000 words. Over it, consolidate.
 

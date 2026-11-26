@@ -30,7 +30,7 @@ INSTANCE = runtime_json("config/instance.json")
 DATA_ROOT = os.environ.get("HUMANWARE_DATA_ROOT") or INSTANCE.get("paths", {}).get("dataRoot")
 ROOT = Path(DATA_ROOT) / "artifacts" if DATA_ROOT else None
 REVIEW_ROOT = Path(DATA_ROOT) / "generated" / "review-projections" if DATA_ROOT else None
-BRAND = INSTANCE.get("name", "Humanware OS")
+BRAND = INSTANCE.get("name", "HumanwareOS")
 VERSIONING = (Path(os.environ["HUMANWARE_FRAMEWORK_ROOT"]) / "surfaces" / "domain" / "versioning"
               if os.environ.get("HUMANWARE_FRAMEWORK_ROOT") else RUNTIME / "surface" / "versioning") / "versioning.mjs"
 SCHEMA = 4

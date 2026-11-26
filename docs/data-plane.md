@@ -1,6 +1,6 @@
 # Data plane
 
-The Humanware OS data plane stores what happened, what was learned, what is being worked on, and what was produced. It lives outside source repositories and does not require pull requests for ordinary writes.
+The HumanwareOS data plane stores what happened, what was learned, what is being worked on, and what was produced. It lives outside source repositories and does not require pull requests for ordinary writes.
 
 Budget: 1,200 words. Over it, consolidate.
 

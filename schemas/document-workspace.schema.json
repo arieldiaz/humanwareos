@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanwareos.com/schemas/document-workspace.schema.json",
-  "title": "Humanware OS document workspace",
+  "title": "HumanwareOS document workspace",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "title", "dataRoot", "proposalDirectory", "collections"],

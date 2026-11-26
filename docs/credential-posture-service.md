@@ -6,7 +6,7 @@ Budget: 900 words.
 
 ## Ownership
 
-Humanware OS owns the collector, register schema, provider adapters, findings, generated feed, tests, and Security Dashboard component. The private instance selects Doppler projects and configs, maps runtime checks to secret references, and installs the schedule. Secret values remain in the instance secret manager.
+HumanwareOS owns the collector, register schema, provider adapters, findings, generated feed, tests, and Security Dashboard component. The private instance selects Doppler projects and configs, maps runtime checks to secret references, and installs the schedule. Secret values remain in the instance secret manager.
 
 The data plane owns two different records:
 

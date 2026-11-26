@@ -1,6 +1,6 @@
 # __INSTANCE_NAME__ — instance configuration
 
-This file contains private instance facts and approved narrowings only. Generic behavior belongs to Humanware OS. Personal facts, memory, sessions, working documents, and artifacts belong to the data plane at `__DATA_ROOT__`.
+This file contains private instance facts and approved narrowings only. Generic behavior belongs to HumanwareOS. Personal facts, memory, sessions, working documents, and artifacts belong to the data plane at `__DATA_ROOT__`.
 
 ## Instance
 

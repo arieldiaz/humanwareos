@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanwareos.com/schemas/versioned-item.schema.json",
-  "title": "Humanware OS versioned item",
+  "title": "HumanwareOS versioned item",
   "description": "One stable item with an ordered, immutable version chain. Owned by docs/versioning.md.",
   "type": "object",
   "required": ["id", "title", "url", "current_version", "versions"],

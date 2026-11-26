@@ -1,6 +1,6 @@
 # Channels, agents, and execution profiles
 
-Humanware OS separates identity, channel, harness, model, permissions, and workspace.
+HumanwareOS separates identity, channel, harness, model, permissions, and workspace.
 
 Budget: 1,100 words. Over it, consolidate.
 

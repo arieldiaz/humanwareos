@@ -6,7 +6,7 @@
       return response.json();
     })
     .then((surface) => {
-      document.title = `${surface.id || 'System'} · Humanware OS`;
+      document.title = `${surface.id || 'System'} · HumanwareOS`;
       document.getElementById('origin').textContent = surface.privateOrigin || surface.publicOrigin || 'Configured domain surface';
       document.getElementById('modules').innerHTML = (surface.routes || []).map((route) => `<a class="card" href="${escapeHtml(route.mount)}"><div class="title">${escapeHtml(route.label || route.id)}</div><div class="meta">${escapeHtml(route.visibility)} · ${escapeHtml(route.source)}</div></a>`).join('');
     })

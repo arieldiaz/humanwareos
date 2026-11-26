@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanwareos.com/schemas/session-event.schema.json",
-  "title": "Humanware OS normalized session event",
+  "title": "HumanwareOS normalized session event",
   "$defs": {
     "reference": {
       "type": "object",

@@ -6,7 +6,7 @@ Budget: 900 words.
 
 ## Contract
 
-Humanware OS owns the browser shell, manifest schema, safe read/search service, proposal format, and responsive accessible behavior. The private instance owns enabled collections, absolute source roots, labels, exclusions, route policy, proposal destination, and the work agent that handles proposals. The data plane owns proposal events and every private document displayed from it.
+HumanwareOS owns the browser shell, manifest schema, safe read/search service, proposal format, and responsive accessible behavior. The private instance owns enabled collections, absolute source roots, labels, exclusions, route policy, proposal destination, and the work agent that handles proposals. The data plane owns proposal events and every private document displayed from it.
 
 The workspace is read-only with respect to source documents. A person may submit a proposal against a document or selected passage. The service appends that request to an instance-owned queue with the document ID, content hash, selection, comment, author, and time. An authorized agent later re-reads the current source, detects stale context, applies the change at the owning layer through its normal review path, and records the result. The browser never patches a source file.
 

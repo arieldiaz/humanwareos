@@ -1,4 +1,4 @@
-"""Project explicit lifecycle state into the Humanware OS thread menu."""
+"""Project explicit lifecycle state into the HumanwareOS thread menu."""
 
 from __future__ import annotations
 

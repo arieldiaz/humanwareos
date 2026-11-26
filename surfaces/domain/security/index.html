@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Security · Humanware OS</title>
+<title>Security · HumanwareOS</title>
 <!-- No external requests beyond this origin. A page whose job is to report what
      this host talks to should not itself add a destination. Charts are inline SVG. -->
 <style>
@@ -366,7 +366,7 @@ function setHost(host) {
 fetch('/surface.json', { cache: 'no-store' })
   .then(r => r.ok ? r.json() : {})
   .then(surface => {
-    document.title = `Security · ${surface.name || 'Humanware OS'}`;
+    document.title = `Security · ${surface.name || 'HumanwareOS'}`;
     if (!data) setHost(surface.deployment?.host);
   })
   .catch(() => {});

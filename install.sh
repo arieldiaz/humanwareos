@@ -5,7 +5,7 @@ FRAMEWORK_REPO="https://github.com/arieldiaz/humanwareos.git"
 
 usage() {
   printf '%s\n' \
-    "Install a private Humanware OS instance beside a pinned framework checkout." \
+    "Install a private HumanwareOS instance beside a pinned framework checkout." \
     "" \
     "Usage:" \
     "  ./install.sh INSTANCE_DIR [options]" \
@@ -144,13 +144,13 @@ if [ -n "$PRIVATE_REPO" ]; then
     die "GitHub repo $PRIVATE_REPO already exists"
   fi
   git -C "$TARGET_DIR" add AGENTS-instance.md README.md agents channels humanware.instance.json openclaw runtime surfaces .gitignore
-  git -C "$TARGET_DIR" commit -m "Initialize Humanware OS instance"
+  git -C "$TARGET_DIR" commit -m "Initialize HumanwareOS instance"
   gh repo create "$PRIVATE_REPO" --private
   git -C "$TARGET_DIR" remote add origin "https://github.com/$PRIVATE_REPO.git"
   git -C "$TARGET_DIR" push -u origin main
 fi
 
-printf '\nHumanware OS instance: %s\n' "$TARGET_DIR"
+printf '\nHumanwareOS instance: %s\n' "$TARGET_DIR"
 printf 'Framework: %s at %s\n' "$FRAMEWORK_DIR" "$FRAMEWORK_REVISION"
 printf 'Mutable data plane: %s\n' "$DATA_ROOT"
 printf 'Active generated runtime: %s/current\n' "$RUNTIME_ROOT"

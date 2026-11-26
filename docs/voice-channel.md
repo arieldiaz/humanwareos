@@ -8,7 +8,7 @@ Budget: 1,000 words.
 
 The client performs speech recognition and playback and sends only the recognized text to a loopback service through the instance's private tailnet surface. The service authenticates the request, serializes turns onto one configured agent session, invokes OpenClaw without delivery elsewhere, and returns the visible reply plus bounded run metadata.
 
-For an iPhone Shortcut, Apple Dictation supplies text and Speak Text renders the response. Raw audio does not reach Humanware OS.
+For an iPhone Shortcut, Apple Dictation supplies text and Speak Text renders the response. Raw audio does not reach HumanwareOS.
 
 The instance selects the agent and provisions the bearer credential. The reference service is fixed to Liv and accepts only an authenticated owner request. The selected agent keeps its normal profile, context, tools, and permissions.
 

@@ -19,7 +19,7 @@ const DATABASE = process.env.CALENDAR_DATABASE ?? join(required("HUMANWARE_DATA_
 const PUBLIC_FEED_BASE = required("CALENDAR_PUBLIC_FEED_BASE");
 const BOT_DOMAIN = required("CALENDAR_BOT_DOMAIN");
 const AGENT_ALLOWLIST = new Set(required("CALENDAR_AGENT_ALLOWLIST").split(",").map((value) => value.trim()).filter(Boolean));
-const BRAND_NAME = process.env.CALENDAR_BRAND_NAME || "Humanware OS";
+const BRAND_NAME = process.env.CALENDAR_BRAND_NAME || "HumanwareOS";
 const FOOTER_TEXT = process.env.CALENDAR_FOOTER_TEXT || "Read-only projection. Ask an agent to create or change events.";
 const PORT = Number(process.env.CALENDAR_PORT ?? 8794);
 

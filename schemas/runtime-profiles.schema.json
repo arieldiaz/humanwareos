@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://humanwareos.com/schemas/runtime-profiles.schema.json",
-  "title": "Humanware OS execution profiles",
+  "title": "HumanwareOS execution profiles",
   "type": "object",
   "required": ["schemaVersion", "defaultProfile", "agents", "profiles"],
   "properties": {
