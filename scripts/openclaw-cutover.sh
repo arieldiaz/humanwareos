@@ -220,6 +220,23 @@ activate() {
   candidate_gateway() {
     "$NODE_BIN" "$candidate_bin" gateway "$@"
   }
+  # With an app setting the gateway job starts through the signed service app. OpenClaw reads only
+  # its own form back, so each install sees the job unwrapped, and a job that will not run wrapped
+  # is restored and left running as installed: wrapping never takes the gateway down. The name must
+  # not be `gateway`, which OpenClaw would read as the gateway subcommand.
+  gateway_app() {
+    local app="$runtime/config/services/app.json" job="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
+    local adopt="$framework/surfaces/macos/service-app/adopt-job.py"
+    [ -f "$app" ] && [ -f "$job" ] || return 0
+    if [ "$1" = unwrap ]; then
+      /usr/bin/python3 "$adopt" unwrap --job "$job" --app "$app" >/dev/null ||
+        echo "Warning: could not unwrap $job before reinstalling the gateway" >&2
+    else
+      /usr/bin/python3 "$adopt" apply --job "$job" --app "$app" --name openclaw-gateway --report "$2" \
+        -- "$OPENCLAW_BIN" gateway status --require-rpc --json >/dev/null ||
+        echo "Warning: the gateway runs without the service app; see $2" >&2
+    fi
+  }
   mkdir -p "$report"
   chmod 700 "$report"
   # A candidate that cannot open the databases refuses here, before anything is drained,
@@ -279,7 +296,9 @@ activate() {
       fi
       if [ "$package_installed" -eq 1 ] || [ "$config_replaced" -eq 1 ] || [ "$runtime_switched" -eq 1 ]; then
         "$OPENCLAW_BIN" plugins registry --refresh --json >/dev/null 2>&1
+        gateway_app unwrap
         "$OPENCLAW_BIN" gateway install --force --json >/dev/null 2>&1
+        gateway_app apply "$report/rollback-gateway-app/report.json"
       fi
       "$OPENCLAW_BIN" gateway resume --json >/dev/null 2>&1
       "$OPENCLAW_BIN" gateway start --json > "$report/rollback-gateway-start.json" 2>&1
@@ -344,7 +363,9 @@ activate() {
   if [ -s "$report/migrations" ]; then
     "$OPENCLAW_BIN" doctor --fix --non-interactive > "$report/doctor.log" 2>&1
   fi
+  gateway_app unwrap
   "$OPENCLAW_BIN" gateway install --force --json > "$report/gateway-install.json"
+  gateway_app apply "$report/gateway-app/report.json"
   "$OPENCLAW_BIN" gateway start --json > "$report/gateway-start.json"
   local attempt=1
   until "$OPENCLAW_BIN" gateway status --require-rpc --json > "$report/gateway-status.json" 2> "$report/gateway-status.err"; do
