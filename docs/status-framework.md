@@ -1,6 +1,6 @@
 # Status framework
 
-Run lifecycle and workflow status are separate facts. The host records run lifecycle; a human controls current Slack root status, with one bounded legacy-migration exception. Neither substitutes for the other.
+Run lifecycle and workflow status are separate facts. The host records run lifecycle; a human controls current Slack root status, except as stated below. Neither substitutes for the other.
 
 Budget: 900 words. Over it, consolidate.
 
@@ -12,9 +12,9 @@ Budget: 900 words. Over it, consolidate.
 
 `done` is not a current alias. Historical append-only records are not rewritten. Domain processing states, human workflow status, and harness completion are separate vocabularies.
 
-The first model-start event admits a run as `working`; duplicate starts are idempotent, and the end of the latest admitted run records `act`. When the owner asks to close, the agent finishes the other requested work and calls `close_thread`. The host records `closed`, then seals the session record: it captures the record, exports the whole Slack thread, writes the close report as the record's summary (its tokens and cost come from the ledger, priced like the session console), appends the ledger completion event, posts the report, and queues the session's Notion entry, which the projector writes from the sealed record. Each step is idempotent and recorded in `close.json`; a failed step does not stop independent ones, the post names it in one line, and `close_thread` with `retry` runs only what is missing. Every run end also captures the record in the background, without a timer. Closure remains soft: later sends, completions, scheduled wakes, and human messages proceed normally.
+The first model-start event admits a run as `working`; duplicate starts are idempotent, and the end of the latest admitted run records `act`. When the owner asks to close, the agent finishes the other requested work and calls `close_thread`. The host records `closed`, then seals the session record: it captures the record, exports the whole Slack thread, writes the close report as the record's summary (tokens and cost from the ledger, priced like the session console), appends the ledger completion event, posts the report, and queues the `closed` root status and the session's Notion entry, which the projector writes from the sealed record. Each step is idempotent and recorded in `close.json`; a failed step does not stop independent ones, the post names it in one line, and `close_thread` with `retry` runs only what is missing. Every run end also captures the record in the background, without a timer. Closure remains soft: later sends, completions, scheduled wakes, and human messages proceed normally.
 
-Slack never renders run lifecycle as a root reaction. Run admission, completion, closure, acknowledgement, typing, work-thread creation, recovery, and sweeps may not add, replace, or remove reactions on a Slack root. The dedicated status tool may write a bot-owned root status only on the owner's explicit request; generic reaction tools remain blocked from canonical status emoji. This restriction does not affect per-message provenance reactions on delivered agent replies.
+Slack never renders run lifecycle as a root reaction. Run admission, completion, acknowledgement, typing, work-thread creation, recovery, and sweeps may not add, replace, or remove reactions on a Slack root. Only the owner's explicit request, through the status tool or a close, writes a bot-owned root status; generic reaction tools remain blocked from canonical status emoji. Per-message provenance reactions on delivered replies are unaffected.
 
 ## Human Slack status
 
@@ -48,4 +48,4 @@ Cutover disables acknowledgement, typing, native status-reaction, and custom lif
 
 ## Verification and release
 
-Verify that agent runs, closure, and work-thread creation make zero root-reaction writes; closure still records lifecycle and posts one report; per-message provenance remains; status reduction covers authorized and unauthorized holders, zero, one, and multiple statuses, and `hand`; events converge after retries and reordering without waking a model; reconciliation repairs a dropped event; and Notion preserves page bodies, comments, and unrelated properties. Live acceptance has the configured human add, change, and remove each status while Notion follows. Fixtures alone do not establish live Slack acceptance. Merge and production activation require separate human approval.
+Verify that agent runs and work-thread creation make zero root-reaction writes; closure records lifecycle, posts one report, and queues the closed status; per-message provenance remains; status reduction covers authorized and unauthorized holders, zero, one, and multiple statuses, and `hand`; events converge after retries and reordering without waking a model; reconciliation repairs a dropped event; and Notion preserves page bodies, comments, and unrelated properties. Live acceptance has the configured human add, change, and remove each status while Notion follows. Fixtures alone do not establish live Slack acceptance. Merge and production activation require separate human approval.

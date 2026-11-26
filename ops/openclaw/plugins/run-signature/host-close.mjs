@@ -6,18 +6,20 @@ import {join} from "node:path";
 import {ThreadLifecycle} from "./lifecycle.mjs";
 import {slackRoute, slackRouteKey} from "./slack-route.mjs";
 import {createSessionCapture, exportSlackThread, runSessionRecords, sessionRecordId, sessionRecordsScript} from "./session-record.mjs";
+import {STATUS} from "./status-command.mjs";
 
 const reply = (text, isError) => ({content: [{type: "text", text}], ...(isError ? {isError} : {})});
 const message = error => String(error?.message ?? error);
 // The close steps session_records.py records in close.json, in order, with the name the thread sees.
 const STEPS = {capture: "session record", slackThread: "Slack export", summary: "summary file", ledger: "ledger event", post: "close report post", notion: "Notion entry"};
 
-// Step f is the Notion projector's: it reads this journal, writes the session's entry from the sealed folder,
-// and records the page id in close.json. Its token stays with the projector.
-async function queueNotionEntry(dataRoot, command) {
+// Step f is the Notion projector's: it reads this journal, sets the root's bot-owned closed status (the owner
+// asked for the close), writes the session's entry from the sealed folder, and records the page id in close.json.
+// Its tokens stay with the projector.
+async function queueNotionEntry(dataRoot, ...commands) {
   const path = join(dataRoot, "operations", "slack-notion-sync", "commands.jsonl");
   await mkdir(join(dataRoot, "operations", "slack-notion-sync"), {recursive: true, mode: 0o700});
-  await appendFile(path, `${JSON.stringify(command)}\n`, {mode: 0o600});
+  await appendFile(path, commands.map(command => `${JSON.stringify(command)}\n`).join(""), {mode: 0o600});
 }
 
 export function closeThreadTool(context, {lifecycle}) {
@@ -112,8 +114,10 @@ export function registerHostClose(api, {
       }));
     }
     if (pending("notion")) {
-      const error = await outcome(queueNotionEntry(dataRoot, {schemaVersion: 1, id: `seal-command:${close.closeId}:${now}`, kind: "seal",
-        observedAt: new Date(now).toISOString(), channelId: channel, messageTs: threadId, session: slackRouteKey(turn.route), closeId: close.closeId, folder}));
+      const target = {schemaVersion: 1, observedAt: new Date(now).toISOString(), channelId: channel, messageTs: threadId};
+      const error = await outcome(queueNotionEntry(dataRoot,
+        {...target, id: `status-command:${close.closeId}:${now}`, status: STATUS.closed, requestedBy: turn.accountId},
+        {...target, id: `seal-command:${close.closeId}:${now}`, kind: "seal", session: slackRouteKey(turn.route), closeId: close.closeId, folder}));
       if (error.error) done.notion = error;
     }
     if (Object.keys(done).length) await seal(done);

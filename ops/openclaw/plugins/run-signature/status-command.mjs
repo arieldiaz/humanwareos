@@ -3,7 +3,7 @@ import {appendFile, mkdir} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {slackRoute} from "./slack-route.mjs";
 
-const STATUS = {
+export const STATUS = {
   working: "🔄 Working",
   act: "✋ Act",
   scheduled: "🗓️ Scheduled",

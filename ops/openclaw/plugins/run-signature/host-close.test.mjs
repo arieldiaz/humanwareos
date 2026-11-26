@@ -198,7 +198,8 @@ test('close runs every step in order and records each one', async (t) => {
   assert.doesNotMatch(slack.posts[0], /Not saved/);
   const [day] = await readdir(join(dataRoot, 'evidence/sessions/events'));
   assert.match(await readFile(join(dataRoot, 'evidence/sessions/events', day), 'utf8'), /"kind":"session.completed"/);
-  const [queued] = (await readFile(join(dataRoot, 'operations/slack-notion-sync/commands.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  const [status, queued] = (await readFile(join(dataRoot, 'operations/slack-notion-sync/commands.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual([status.status, status.channelId, status.messageTs, status.requestedBy, status.kind], ['✅ Closed', 'C123', '1790050400.000001', 'max', undefined], 'the close the owner asked for sets the root status');
   assert.deepEqual([queued.kind, queued.session, queued.closeId, queued.folder, queued.channelId], ['seal', 'slack:C123:1790050400.000001', fake.state.close.closeId, '/data/x', 'C123']);
   assert.equal(fake.state.close.steps.notion, undefined, 'the projector records step f itself');
   assert.deepEqual(faults, []);
@@ -230,7 +231,7 @@ test('a failed post falls back to one short line, and a retry completes only wha
   assert.deepEqual(await lifecycle.close({route, sessionKey: params.sessionKey, accountId: 'max', retry: true}), []);
   assert.deepEqual(fake.calls.map(call => call.steps), [['capture'], ['post']], 'no re-export, no rewrite, no second ledger event');
   const commands = (await readFile(join(dataRoot, 'operations/slack-notion-sync/commands.jsonl'), 'utf8')).trim().split('\n');
-  assert.equal(commands.length, 2, 'the Notion entry is queued again until the projector records it');
+  assert.equal(commands.length, 4, 'the closed status and the Notion entry are queued again until the projector records the entry');
   assert.equal(fake.calls[0].payload.retry, true);
   assert.equal(fake.state.close.closeId, first.closeId);
   assert.equal(slack.posts.length, 2);
