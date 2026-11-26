@@ -110,7 +110,7 @@ function fakeRecords({writes = []} = {}) {
   const calls = [], state = {};
   const records = async (dataRoot, args, {input} = {}) => {
     const payload = input ? JSON.parse(input) : undefined;
-    calls.push({command: args[0], session: args.at(-1), steps: Object.keys(payload?.steps ?? {}), payload});
+    calls.push({command: args[0], session: args.at(-1), dataRoot, steps: Object.keys(payload?.steps ?? {}), payload});
     if (args[0] === 'write') return writes.shift()?.promise;
     if (payload.retry && !state.close) throw new Error('no close to retry');
     if (!payload.retry && state.close?.closeId !== payload.closeId) state.close = {closeId: payload.closeId, closedAt: payload.closedAt, steps: {}};
@@ -160,10 +160,12 @@ test('a run end starts one detached write and coalesces the ends that arrive whi
   const {hooks} = await host({slack: fakeSlack().slack, records: fake.records});
   for (const runId of ['r1', 'r2', 'r3']) await hooks.get('agent_end')({sessionKey: params.sessionKey, runId}, {});
   await settle();
-  assert.deepEqual(fake.calls.map(call => [call.command, call.session]), [['write', 'slack:C123:1790050400.000001']]);
+  assert.deepEqual(fake.calls.map(call => [call.command, call.session, call.dataRoot]), [['write', 'slack:C123:1790050400.000001', '/nonexistent']],
+    'the write goes to the configured data root');
   writes[0].resolve('{}');
   await settle();
   assert.equal(fake.calls.length, 2, 'exactly one more write for the ends that came in meanwhile');
+  assert.equal(fake.calls[1].dataRoot, '/nonexistent', 'the owed write keeps the data root');
   writes[1].resolve('{}');
   await settle();
   assert.equal(fake.calls.length, 2);
