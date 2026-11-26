@@ -15,9 +15,9 @@ const OWNER_PASSWORD = "test-owner-password-with-enough-entropy";
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "humanware-grok-mcp-"));
-  await mkdir(join(root, "current/strategy"), { recursive: true });
+  await mkdir(join(root, "current/projects"), { recursive: true });
   await mkdir(join(root, "current/memory"), { recursive: true });
-  await writeFile(join(root, "current/strategy/current.md"), "# Strategy\n\nShip the bridge.\n");
+  await writeFile(join(root, "current/projects/current.md"), "# Projects\n\nShip the bridge.\n");
   await writeFile(join(root, "current/memory/index.md"), "# Memory\n\nCurrent facts.\n");
   const config = {
     schemaVersion: 1,
@@ -35,7 +35,7 @@ async function fixture() {
       scopes: ["humanware"],
     },
     contextFiles: [
-      { id: "strategy", label: "Strategy", path: "current/strategy/current.md", maxBytes: 1000 },
+      { id: "projects", label: "Projects", path: "current/projects/current.md", maxBytes: 1000 },
       { id: "memory", label: "Memory", path: "current/memory/index.md", maxBytes: 1000 },
     ],
     turnRoot: "evidence/sessions/raw/grok-bot",
@@ -142,7 +142,7 @@ test("reads only configured context and makes write tools idempotent", async (t)
   const client = await connected(url);
   t.after(() => client.close());
 
-  const context = await client.callTool({ name: "get_context", arguments: { sections: ["strategy"] } });
+  const context = await client.callTool({ name: "get_context", arguments: { sections: ["projects"] } });
   assert.equal(context.structuredContent.context.length, 1);
   assert.match(context.structuredContent.context[0].content, /Ship the bridge/);
 

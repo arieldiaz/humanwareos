@@ -65,4 +65,4 @@ Framework schemas define allowed fields and defaults. The private instance suppl
 
 ## Data portability
 
-The data plane is not Git, but it is not opaque. Append-only events and artifact manifests use documented schemas. Current memory and strategy are plain readable projections. Large files are content-addressed. Search indexes are rebuildable. Encrypted snapshots and restore tests provide history without imposing code-review semantics on daily life.
+The data plane is not Git, but it is not opaque. Append-only events and artifact manifests use documented schemas. Current memory is a plain readable projection. Large files are content-addressed. Search indexes are rebuildable. Encrypted snapshots and restore tests provide history without imposing code-review semantics on daily life.

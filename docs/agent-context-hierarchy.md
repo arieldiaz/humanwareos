@@ -22,9 +22,9 @@ Humanware OS supplies durable identity templates such as Liv and Max. The privat
 
 Harness, model, reasoning, permissions, and working directory are execution-profile fields. They are not identity facts.
 
-### Layer 4 — current memory and strategy projections
+### Layer 4 — current memory projection
 
-The data plane supplies concise non-normative context: current strategy, active facts, decisions, project state, and references to evidence. Memory can inform judgment but cannot establish a rule. Contradictory memory is stale data to correct, never a policy tiebreaker.
+The data plane supplies concise non-normative context: active facts, decisions, project state, and references to evidence. Memory can inform judgment but cannot establish a rule. Contradictory memory is stale data to correct, never a policy tiebreaker.
 
 The human's current task instructions override ordinary style and workflow defaults. Privacy, security, data scope, and authorization boundaries remain binding; historical memory cannot override the current request.
 
@@ -76,7 +76,7 @@ runtime/<build-id>/
 └── adapters/
 ```
 
-The runtime references current memory and strategy through the data service or instance-declared paths. It does not copy personal data into the build. Service definitions point at the stable `runtime/current` bundle; when a harness rejects instruction symlinks, the adapter materializes verified regular-file projections from that bundle and checks them for drift.
+The runtime references current memory through the data service or instance-declared paths. It does not copy personal data into the build. Service definitions point at the stable `runtime/current` bundle; when a harness rejects instruction symlinks, the adapter materializes verified regular-file projections from that bundle and checks them for drift.
 
 ## Harness independence
 

@@ -24,7 +24,7 @@ It creates or resolves a Humanware OS checkout, a configuration-only private ins
 
 Edit the private instance, not the framework. Start with one agent overlay under `agents/`, and keep it narrow: local role, private relationships, approved tone differences, and trust limits. Generic identity behavior belongs upstream in Humanware OS. Personal facts and evolving context belong in the data plane.
 
-Fill the first honest strategy at `<DATA_ROOT>/current/strategy/current.md` and the compact memory index at `<DATA_ROOT>/current/memory/index.md`. Do not commit either file.
+Fill the compact memory index at `<DATA_ROOT>/current/memory/index.md`. Do not commit it.
 
 The instance's `runtime/profiles.json` separates identity from execution: it selects from the framework catalog in `runtime/profile-catalog.json` and changes a profile only through an explicit instance override. Give each equivalent agent the same allowed profiles unless a documented trust boundary requires a difference. The selected default profile is rendered directly into the agent configuration before activation. Cursor CLI, Codex app-server, native OpenClaw, ACP, OpenCode, and Pi are supported profiles rather than permanent identities; runtime simplicity or an integration refactor never selects the default implicitly. See [Channels, agents, and execution profiles](channel-runtime.md) for the policy contract.
 
@@ -45,9 +45,9 @@ Prove both access and isolation: each intended consumer can read the key names i
 
 OpenClaw is the current native runtime. Install the current stable release using its official instructions, then configure its workspace and instruction paths from the generated runtime's `current` link. Do not point a daemon at a feature worktree or mutable repository checkout.
 
-For each OpenClaw agent, render the harness-required context files into the immutable runtime and materialize byte-identical regular-file projections with `scripts/materialize-openclaw-workspaces.mjs`; OpenClaw deliberately rejects workspace symlinks during prompt assembly. Generated `MEMORY.md` and `STRATEGY.md` bridge files name the scoped data-plane projections without copying personal facts, while the instance indexes those canonical paths for recall. The materializer archives replaced bootstrap files and supports transactional restore.
+For each OpenClaw agent, render the harness-required context files into the immutable runtime and materialize byte-identical regular-file projections with `scripts/materialize-openclaw-workspaces.mjs`; OpenClaw deliberately rejects workspace symlinks during prompt assembly. A generated `MEMORY.md` bridge file names the scoped data-plane projection without copying personal facts, while the instance indexes those canonical paths for recall. The materializer archives replaced bootstrap files and supports transactional restore.
 
-Verify provider login and local execution before adding a channel. The agent should be able to state its framework identity, private overlay, current strategy, selected execution profile, and data root from the assembled runtime.
+Verify provider login and local execution before adding a channel. The agent should be able to state its framework identity, private overlay, selected execution profile, and data root from the assembled runtime.
 
 ## 6. Add Slack as the first adapter
 
@@ -59,7 +59,7 @@ Restart the controller cleanly and verify the entire path:
 Slack inbound → adapter → OpenClaw → identity → execution profile → tool or data access → Slack thread reply
 ```
 
-A running process is not proof. Send a mention, require one harmless strategy read and one harmless local command, and confirm the reply lands in the same thread for every configured agent.
+A running process is not proof. Send a mention, require one harmless memory read and one harmless local command, and confirm the reply lands in the same thread for every configured agent.
 
 ## 7. Add the domain surface
 

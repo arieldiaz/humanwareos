@@ -10,7 +10,7 @@ Humanware installations have three sources and one generated output:
 
 1. **Humanware OS** is the public framework. Reusable fixes and capabilities land here through reviewed pull requests.
 2. **The private instance** contains only local configuration: agent overlays, channel routing, model and harness profiles, domain routes, local-server selection, host paths and ports, Caddy routes, and secret identifiers. It is the source of truth for what runs on a particular Mac or server, while reusable service implementations remain in Humanware OS. Each generated runtime records the framework revision used to assemble it.
-3. **The data plane** holds the stream, memory, strategy, sessions, working documents, artifacts, derived indexes, and caches outside Git. Most durable evidence is append-only; current projections and working documents are versioned.
+3. **The data plane** holds the stream, memory, sessions, working documents, artifacts, derived indexes, and caches outside Git. Most durable evidence is append-only; current projections and working documents are versioned.
 4. **The runtime** is a checksummed immutable build assembled from recorded framework and instance revisions. Services use its `current` symlink. It is output, never source.
 
 This separation makes updates reviewable, restores mechanical, and debugging local: a behavior defect belongs to the framework, a deployment fact belongs to the instance, accumulated material belongs to data, and a runtime discrepancy is fixed by rebuilding.
@@ -65,7 +65,7 @@ humanwareos/
 └── templates/         private-instance and data-plane seeds
 ```
 
-Personal strategy, memory, working documents, sessions, and artifacts do not appear in this tree. Their schemas and seed templates do.
+Personal memory, working documents, sessions, and artifacts do not appear in this tree. Their schemas and seed templates do.
 
 ## Change flow
 

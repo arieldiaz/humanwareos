@@ -20,7 +20,7 @@ An instance must not copy generic framework files and edit them locally. It supp
 
 ### Data plane
 
-The data plane owns accumulated human and agent material: source events, memory evidence, current memory projections, strategy, conversations, working documents, artifacts, media, records, and derived indexes. It uses append, version, provenance, retention, and backup semantics rather than pull requests.
+The data plane owns accumulated human and agent material: source events, memory evidence, current memory projections, conversations, working documents, artifacts, media, records, and derived indexes. It uses append, version, provenance, retention, and backup semantics rather than pull requests.
 
 Data is never a hidden authority for agent rules. When accumulated evidence implies a behavioral change, an agent proposes a framework or instance diff through the corresponding reviewed path.
 

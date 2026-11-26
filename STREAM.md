@@ -26,7 +26,7 @@ Capture paths must support an excluded private area and a filename marker such a
 
 Transcripts, summaries, indexes, and reports belong under `$HUMANWARE_DATA_ROOT/generated/`. Each carries source identifiers, creation time, model or tool, schema version, and privacy scope. They are replaceable.
 
-Curated facts and decisions are appended under `evidence/memory/events/`, then merged into compact files under `current/memory/`. Strategy has the same split between evidence and current projection. Working documents live under `working/<owner>/` with version history. Published or reviewable revisions live under `artifacts/` and are immutable once addressed.
+Curated facts and decisions are appended under `evidence/memory/events/`, then merged into compact files under `current/memory/`. Working documents live under `working/<owner>/` with version history. Published or reviewable revisions live under `artifacts/` and are immutable once addressed.
 
 ## Durability
 

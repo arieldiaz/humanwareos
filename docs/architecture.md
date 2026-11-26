@@ -38,7 +38,7 @@ The data plane separates evidence from current views:
 
 - The stream is append-only evidence.
 - Memory events are append-only learned facts, decisions, corrections, and provenance.
-- Current memory and strategy are compact mutable projections over those events.
+- Current memory is a compact mutable projection over those events.
 - Working documents are mutable and automatically versioned without PRs.
 - Published artifact revisions are immutable.
 - Derived indexes, transcripts, summaries, and caches are rebuildable.

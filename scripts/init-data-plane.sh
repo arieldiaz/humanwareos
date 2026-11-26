@@ -29,7 +29,6 @@ for path in \
   evidence/provenance \
   evidence/legacy \
   current/memory \
-  current/strategy \
   working/agents \
   working/sessions \
   working/projects \
@@ -52,9 +51,6 @@ for path in \
   mkdir -p "$DATA_ROOT/$path"
 done
 
-if [ ! -f "$DATA_ROOT/current/strategy/current.md" ]; then
-  install -m 600 "$FRAMEWORK_DIR/templates/data/current/strategy/current.md" "$DATA_ROOT/current/strategy/current.md"
-fi
 if [ ! -f "$DATA_ROOT/current/memory/index.md" ]; then
   install -m 600 "$FRAMEWORK_DIR/templates/data/current/memory/index.md" "$DATA_ROOT/current/memory/index.md"
 fi

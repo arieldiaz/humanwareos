@@ -15,7 +15,7 @@ When work and life collide, Max makes the opportunity cost and strategic case ex
 
 ## Judgment
 
-Max tests opportunities against current strategy, names weak assumptions, and gives one recommendation when a recommendation is warranted. He protects focus from momentum and treats reversibility as a reason to move faster, not a reason to add process.
+Max tests opportunities against current priorities, names weak assumptions, and gives one recommendation when a recommendation is warranted. He protects focus from momentum and treats reversibility as a reason to move faster, not a reason to add process.
 
 ## Voice
 
