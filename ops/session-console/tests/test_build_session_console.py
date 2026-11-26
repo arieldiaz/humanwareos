@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 from datetime import datetime, timezone
 
 
@@ -807,6 +808,67 @@ class CanonicalSessionReaderTest(unittest.TestCase):
         db.commit()
         with self.assertRaises(sqlite3.DatabaseError):
             list(MODULE.iter_sessions(self.root, 'max'))
+
+
+class BuildOnChangeTest(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = pathlib.Path(temp.name)
+        self.data, self.agents = self.root / "data", self.root / "agents"
+        sessions = self.agents / "liv" / "sessions"
+        sessions.mkdir(parents=True)
+        (sessions / "sessions.json").write_text(json.dumps({"agent:liv:slack:channel:c1:thread:123.45": {
+            "sessionId": "r1", "groupId": "C1", "lastThreadId": "123.45", "status": "done", "updatedAt": 1787300000000}}))
+        self.trajectory = sessions / "r1.trajectory.jsonl"
+        self.trajectory.write_text(json.dumps({"type": "session.started", "ts": "2026-08-21T12:00:00Z", "seq": 1, "sessionId": "r1", "data": {}}) + "\n")
+
+    def build(self):
+        return MODULE.build(str(self.data), str(self.agents))
+
+    def test_a_pass_that_finds_nothing_new_is_skipped_and_unchanged_records_are_kept(self):
+        first, _ = self.build()
+        self.build()  # the first pass's own appends are new input once
+        current = self.data / "generated" / "sessions" / "current.json"
+        before = current.read_bytes()
+        self.assertEqual(self.build(), (None, 0))
+        self.assertEqual(current.read_bytes(), before)
+        record = self.data / "generated" / "sessions" / first["sessions"][0]["record"]
+        os.utime(record, ns=(1, 1))
+        day = next((self.data / "evidence" / "sessions" / "events").glob("*.jsonl"))
+        other = dict(json.loads(day.read_text().splitlines()[0]), id="other:1", logicalSessionId="slack:C9:9.9", traceId="other")
+        with open(day, "a") as handle:
+            handle.write(json.dumps(other) + "\n")
+        result, _ = self.build()
+        self.assertEqual(len(result["sessions"]), 2)
+        self.assertEqual(record.stat().st_mtime_ns, 1, "another session's change leaves this record alone")
+        with open(self.trajectory, "a") as handle:
+            handle.write(json.dumps({"type": "tool.call", "ts": "2026-08-21T12:05:00Z", "seq": 2, "sessionId": "r1", "data": {"name": "exec"}}) + "\n")
+        self.build()
+        self.assertNotEqual(record.stat().st_mtime_ns, 1)
+
+    def test_generated_at_is_when_the_inputs_were_read(self):
+        before = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        result, _ = self.build()
+        self.assertLessEqual(before, result["generatedAt"])
+        self.assertLessEqual(result["generatedAt"], MODULE.utc_now())
+
+    def test_a_change_during_a_pass_earns_exactly_one_more_pass(self):
+        marker = self.data / MODULE.CHANGE_MARKER
+        passes = []
+
+        def build(*args):
+            passes.append(args)
+            if len(passes) == 1:
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text("run ended\n")
+            return None, 0
+
+        argv = ["build-session-console.py", "--data-root", str(self.data), "--openclaw-root", str(self.agents)]
+        with unittest.mock.patch.object(MODULE, "build", build), unittest.mock.patch("sys.argv", argv), contextlib.redirect_stdout(io.StringIO()) as out:
+            MODULE.main()
+        self.assertEqual(len(passes), 2)
+        self.assertEqual([json.loads(line)["skipped"] for line in out.getvalue().splitlines()], [True, True])
 
 
 if __name__ == "__main__":

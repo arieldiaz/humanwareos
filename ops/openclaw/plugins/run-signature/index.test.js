@@ -331,3 +331,19 @@ test('agent reaction calls cannot add, remove, or clear lifecycle tiles', () => 
     assert.equal(guard({toolName: 'message', params: {action: 'react', emoji}}, {}).block, true);
   assert.equal(guard({toolName: 'message', params: {action: 'react', emoji: 'thumbsup'}}, {}), undefined);
 });
+
+test('a run end and every recorded lifecycle change rewrite the sessions change marker', async (t) => {
+  const {mkdtemp, rm, readFile} = await import('node:fs/promises');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const dataRoot = await mkdtemp(join(tmpdir(), 'marker-'));
+  t.after(() => rm(dataRoot, {recursive: true, force: true}));
+  const hooks = {};
+  runSignaturePlugin.register({config: {}, pluginConfig: {dataRoot}, on: (name, fn) => (hooks[name] ??= []).push(fn), registerTool() {}});
+  const marker = join(dataRoot, 'generated/sessions/.changed');
+  for (const hook of hooks.agent_end) await hook({sessionKey: 'agent:liv:cron:nightly', runId: 'r1'}, {});
+  assert.match(await readFile(marker, 'utf8'), /^\d{4}-\d\d-\d\dT/, 'a run end outside Slack still marks a change');
+  await rm(marker);
+  for (const hook of hooks.llm_input) await hook({sessionKey: 'agent:liv:slack:channel:c1:thread:1790050400.000001', runId: 'r2'}, {});
+  assert.ok(await readFile(marker, 'utf8'), 'the working lifecycle record marks a change');
+});

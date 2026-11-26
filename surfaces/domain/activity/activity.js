@@ -1,4 +1,4 @@
-import {escapeHtml as esc, freshness, matches, renderTrace, sessionLink} from './trace.js';
+import {escapeHtml as esc, matches, renderTrace, sessionLink} from './trace.js';
 const form = document.getElementById('filters');
 let manifest;
 let loadError = null;
@@ -12,7 +12,7 @@ async function json(url) {
 }
 function health(error = null) {
   loadError = error;
-  document.getElementById('health').textContent = error ? `Unavailable · ${error.message}` : `${freshness(manifest)} · built ${manifest.generatedAt} · ${manifest.eventCount} observed events`;
+  document.getElementById('health').textContent = error ? `Unavailable · ${error.message}` : `built ${manifest.generatedAt} · ${manifest.eventCount} observed events`;
 }
 async function render() {
   const ticket = ++request;

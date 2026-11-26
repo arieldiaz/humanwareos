@@ -1,10 +1,6 @@
 /* Shared metadata trace, used by Activity and by the session view/instance overlay. */
 export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const sessionLink = (session, run = null) => `/sessions/?${new URLSearchParams({session, ...(run ? {run} : {})})}`;
-export function freshness(data, now = Date.now()) {
-  const time = Date.parse(data?.generatedAt);
-  return !Number.isFinite(time) ? 'Unavailable' : now - time > 120000 ? 'Stale' : 'Current';
-}
 export function matches(row, filters = {}) {
   return Object.entries(filters).every(([key, value]) => {
     if (!value) return true;

@@ -21,6 +21,9 @@ const REVIEW_PATH = process.env.SLACK_NOTION_REVIEW
   || (DATA_ROOT ? path.join(DATA_ROOT, "operations/slack-notion-sync/manual-review.jsonl") : null);
 const MIGRATION_BASELINE_PATH = process.env.SLACK_NOTION_MIGRATION_BASELINE
   || (DATA_ROOT ? path.join(DATA_ROOT, "operations/slack-notion-sync/migration-baseline.json") : null);
+// Rewritten at every session change; the session projection is built when it changes, not on a timer.
+const CHANGE_MARKER = process.env.SLACK_NOTION_CHANGE_MARKER
+  || (DATA_ROOT ? path.join(DATA_ROOT, "generated/sessions/.changed") : null);
 const SUMMARY_BASE_URL = (process.env.SLACK_NOTION_SUMMARY_BASE_URL || "").replace(/\/$/, "");
 const NOTION_DATA_SOURCE_ID = process.env.NOTION_DATA_SOURCE_ID || null;
 const NOTION_API_VERSION = process.env.NOTION_API_VERSION || "2026-03-11";
@@ -611,12 +614,19 @@ async function upsertRow(row, previous, now) {
   return "created";
 }
 
-export function validateInput(input, now = new Date()) {
+function changedAtMs(file) {
+  try { return file ? fs.statSync(file).mtimeMs : null; } catch { return null; }
+}
+
+// With a change marker, the projection is current when it was built after the last change, however long ago,
+// or while that change is younger than the age bound (its build is still running); without one, the bound is on age.
+export function validateInput(input, now = new Date(), changedAt = changedAtMs(CHANGE_MARKER)) {
   if (!input || !Array.isArray(input.sessions)) throw new Error("input sessions array is required");
   const generatedAt = new Date(input.generatedAt);
   if (Number.isNaN(generatedAt.getTime())) throw new Error("input generatedAt is invalid");
   const age = now.getTime() - generatedAt.getTime();
-  if (age < 0 || age > MAX_INPUT_AGE_MS) throw new Error(`input is stale: generatedAt=${input.generatedAt} ageMs=${age}`);
+  const behind = changedAt == null ? age > MAX_INPUT_AGE_MS : generatedAt.getTime() < changedAt && now.getTime() - changedAt > MAX_INPUT_AGE_MS;
+  if (age < 0 || behind) throw new Error(`input is stale: generatedAt=${input.generatedAt} ageMs=${age}`);
   return input.sessions.filter((session) => session.channelId && session.threadId);
 }
 

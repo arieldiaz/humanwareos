@@ -32,6 +32,8 @@ SLACK_TEAM_ID = os.environ.get("HUMANWARE_SLACK_TEAM_ID", "")
 SLACK_WORKSPACE_DOMAIN = os.environ.get("HUMANWARE_SLACK_WORKSPACE_DOMAIN", "")
 MAX_SESSIONS = 150
 MAX_EVENTS_PER_SESSION = 100
+# The OpenClaw plugin rewrites this file at every run end and lifecycle change; launchd starts a build when it changes.
+CHANGE_MARKER = os.path.join("generated", "sessions", ".changed")
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -522,7 +524,26 @@ def render_session_summary(session: dict, summary: dict) -> str:
     ])
 
 
-def write_session_records(derived_root: str, sessions: list[dict], trace: list[dict]):
+def input_fingerprint(data_root: str, openclaw_root: str) -> str:
+    """Path, size and mtime of every file a pass reads; equal fingerprints mean a pass would find nothing new."""
+    state_root = os.path.dirname(openclaw_root.rstrip("/"))
+    patterns = [os.path.join(openclaw_root, "*", "agent", "openclaw-agent.sqlite"), os.path.join(openclaw_root, "*", "agent", "openclaw-agent.sqlite-wal"),
+                os.path.join(state_root, "state", "openclaw.sqlite"), os.path.join(state_root, "state", "openclaw.sqlite-wal"),
+                os.path.join(openclaw_root, "*", "sessions", "*.trajectory.jsonl"),
+                os.path.join(data_root, "evidence", "sessions", "events", "*.jsonl"), os.path.join(data_root, "evidence", "sessions", "raw", "openclaw", "*.jsonl"),
+                os.path.join(data_root, "evidence", "memory", "events", "**", "*.json*")]
+    digest = hashlib.sha256()
+    for path in sorted({path for pattern in patterns for path in glob(pattern, recursive=True)}):
+        try:
+            stat = os.stat(path)
+        except OSError:
+            continue
+        digest.update(f"{path}\0{stat.st_size}\0{stat.st_mtime_ns}\n".encode())
+    return digest.hexdigest()
+
+
+def write_session_records(derived_root: str, sessions: list[dict], trace: list[dict], written: dict):
+    """Write each session's record and summary unless its content key matches the one `written` holds."""
     grouped = defaultdict(list)
     for record in trace:
         grouped[record.get("logicalSessionId")].append(record)
@@ -543,8 +564,12 @@ def write_session_records(derived_root: str, sessions: list[dict], trace: list[d
             "startedAt": session.get("startedAt"),
             "closedAt": session.get("updatedAt") if session["status"] == "completed" else None,
         }
-        payload = {"summary": summary, "details": details}
+        key = hashlib.sha256(json.dumps([summary, session.get("cost"), session.get("workerRuns"), len(details),
+                                         details[-1].get("id") if details else None], sort_keys=True, default=str).encode()).hexdigest()
         target = os.path.join(derived_root, session["record"])
+        if written.get(session["id"]) == key and os.path.exists(target) and os.path.exists(os.path.join(derived_root, session["summaryMarkdown"])):
+            continue
+        payload = {"summary": summary, "details": details}
         temp = target + ".tmp"
         with open(temp, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, separators=(",", ":"))
@@ -556,6 +581,9 @@ def write_session_records(derived_root: str, sessions: list[dict], trace: list[d
             handle.write(render_session_summary(session, summary))
         os.chmod(summary_temp, 0o600)
         os.replace(summary_temp, summary_target)
+        written[session["id"]] = key
+    for gone in set(written) - {session["id"] for session in sessions}:
+        del written[gone]
 
 
 append_events = activity.append_events
@@ -631,6 +659,10 @@ def build(data_root: str, openclaw_root: str, dry_run=False, claude_root=DEFAULT
     derived_root = os.path.join(data_root, "generated", "sessions")
     state_path = os.path.join(derived_root, "state.json")
     state = read_json(state_path, {"schemaVersion": 1, "sources": {}, "runtimeByPath": {}})
+    started = utc_now()
+    inputs = input_fingerprint(data_root, openclaw_root)
+    if not dry_run and state.get("inputs") == inputs and os.path.exists(os.path.join(derived_root, "current.json")):
+        return None, 0
     state.setdefault("sources", {})
     state.pop("titles", None)
     state.setdefault("runtimeByPath", {})
@@ -809,7 +841,7 @@ def build(data_root: str, openclaw_root: str, dry_run=False, claude_root=DEFAULT
     sessions = bounded_sessions(sessions)
     result = {
         "schemaVersion": SCHEMA_VERSION,
-        "generatedAt": utc_now(),
+        "generatedAt": started,  # the moment the inputs were read, so a change after it reads as newer
         "summary": {
             "active": sum(item["status"] == "active" for item in sessions),
             "needsYou": sum(item["status"] == "needs_you" for item in sessions),
@@ -835,7 +867,8 @@ def build(data_root: str, openclaw_root: str, dry_run=False, claude_root=DEFAULT
     if not dry_run:
         activity.rebuild(data_root)
         os.makedirs(derived_root, mode=0o700, exist_ok=True)
-        write_session_records(derived_root, sessions, full_trace)
+        write_session_records(derived_root, sessions, full_trace, state.setdefault("records", {}))
+        state["inputs"] = inputs
         target = os.path.join(derived_root, "current.json")
         temp = target + ".tmp"
         with open(temp, "w", encoding="utf-8") as handle:
@@ -857,8 +890,15 @@ def main():
     parser.add_argument("--claude-root", default=DEFAULT_CLAUDE_ROOT)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    result, additions = build(args.data_root, args.openclaw_root, args.dry_run, args.claude_root)
-    print(json.dumps({"sessions": result["summary"]["total"], "newEvents": additions, "dryRun": args.dry_run}))
+    marker = os.path.join(args.data_root, CHANGE_MARKER)
+    changed_at = lambda: os.stat(marker).st_mtime_ns if os.path.exists(marker) else None
+    while True:  # launchd does not start a job that is running, so a change during a pass earns another pass here
+        seen = changed_at()
+        result, additions = build(args.data_root, args.openclaw_root, args.dry_run, args.claude_root)
+        print(json.dumps({"sessions": result["summary"]["total"] if result else None, "newEvents": additions,
+                          "skipped": result is None, "dryRun": args.dry_run}))
+        if args.dry_run or changed_at() == seen:
+            break
 
 
 if __name__ == "__main__":

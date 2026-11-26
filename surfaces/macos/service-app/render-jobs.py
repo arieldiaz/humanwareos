@@ -56,9 +56,14 @@ def calendar_entry(entry, where):
     return dict(entry)
 
 
-def trigger_keys(trigger, where):
+def watch_paths(paths, values, where):
+    require(isinstance(paths, list) and paths, f"{where} must be a nonempty list")
+    return [absolute(substitute(path, values, where), where) for path in paths]
+
+
+def trigger_keys(trigger, values, where):
     require(isinstance(trigger, dict) and len(trigger) == 1,
-            f"{where} needs exactly one of keepAlive, everySeconds, calendar")
+            f"{where} needs exactly one of keepAlive, everySeconds, calendar, watchPaths")
     (kind, value), = trigger.items()
     if kind == "keepAlive":
         require(value is True, f"{where}.keepAlive must be true")
@@ -73,7 +78,9 @@ def trigger_keys(trigger, where):
             entries = [calendar_entry(item, f"{where}.calendar[{index}]") for index, item in enumerate(value)]
             return {"StartCalendarInterval": entries, "RunAtLoad": False}
         return {"StartCalendarInterval": calendar_entry(value, f"{where}.calendar"), "RunAtLoad": False}
-    raise ManifestError(f"{where} needs exactly one of keepAlive, everySeconds, calendar")
+    if kind == "watchPaths":  # started only when a listed path changes, and once at load to catch up
+        return {"WatchPaths": watch_paths(value, values, f"{where}.watchPaths"), "RunAtLoad": True}
+    raise ManifestError(f"{where} needs exactly one of keepAlive, everySeconds, calendar, watchPaths")
 
 
 def load_app(app):
@@ -128,7 +135,7 @@ def render(manifest, app, runtime, data_root):
         if "processType" in service:
             require(service["processType"] in PROCESS_TYPES, f"{where}.processType must be one of {sorted(PROCESS_TYPES)}")
             job["ProcessType"] = service["processType"]
-        job.update(trigger_keys(service.get("trigger"), f"{where}.trigger"))
+        job.update(trigger_keys(service.get("trigger"), values, f"{where}.trigger"))
         environment = service.get("environment")
         if environment is not None:
             require(isinstance(environment, dict) and all(isinstance(k, str) and k for k in environment),
@@ -147,9 +154,8 @@ def render(manifest, app, runtime, data_root):
             if service["lowPriority"]:
                 job.update({"Nice": 10, "LowPriorityIO": True})
         if "watchPaths" in service:
-            paths = service["watchPaths"]
-            require(isinstance(paths, list) and paths, f"{where}.watchPaths must be a nonempty list")
-            job["WatchPaths"] = [absolute(substitute(p, values, f"{where}.watchPaths"), f"{where}.watchPaths") for p in paths]
+            require("WatchPaths" not in job, f"{where} lists watchPaths twice")
+            job["WatchPaths"] = watch_paths(service["watchPaths"], values, f"{where}.watchPaths")
         if "logs" in service:
             logs = service["logs"]
             require(isinstance(logs, dict) and set(logs) == {"stdout", "stderr"}, f"{where}.logs needs stdout and stderr")
